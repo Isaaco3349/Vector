@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+:root {
+  --vector-bg: #0b0b0e;
+  --vector-surface: #16151b;
+  --vector-surface-raised: #1e1c24;
+  --vector-line: #2a2830;
+  --vector-pink: #ff3d81;
+  --vector-pink-dim: #ff3d811a;
+  --vector-text: #f5f3f7;
+  --vector-text-dim: #9b98a3;
+  --vector-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  --vector-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--vector-bg);
+  color: var(--vector-text);
+  font-family: var(--vector-sans);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+::selection {
+  background: var(--vector-pink);
+  color: #0b0b0e;
+}
+
+button {
+  font-family: inherit;
+}
