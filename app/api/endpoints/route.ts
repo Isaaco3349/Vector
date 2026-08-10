@@ -4,10 +4,39 @@ const CIRCLE_BASE_URL =
   process.env.NEXT_PUBLIC_CIRCLE_BASE_URL ?? "https://api.circle.com";
 const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY as string;
 
+// Every call to Circle's API gets a hard timeout. Without this, a slow or
+// flaky connection just hangs indefinitely on the client, showing up as
+// an unexplained multi-second (or multi-minute) freeze with no error.
+async function fetchCircle(
+  url: string,
+  init: RequestInit,
+  timeoutMs = 15000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function timeoutErrorResponse(action: string) {
+  return NextResponse.json(
+    {
+      error: `Timed out talking to Circle while running "${action}". This is usually a network hiccup, please try again.`,
+      code: "TIMEOUT",
+    },
+    { status: 504 },
+  );
+}
+
 export async function POST(request: Request) {
+  let action = "unknown";
   try {
     const body = await request.json();
-    const { action, ...params } = body ?? {};
+    ({ action } = body ?? {});
+    const params = body ?? {};
 
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
@@ -23,7 +52,7 @@ export async function POST(request: Request) {
           );
         }
 
-        const response = await fetch(
+        const response = await fetchCircle(
           `${CIRCLE_BASE_URL}/v1/w3s/users/social/token`,
           {
             method: "POST",
@@ -57,7 +86,7 @@ export async function POST(request: Request) {
           );
         }
 
-        const response = await fetch(
+        const response = await fetchCircle(
           `${CIRCLE_BASE_URL}/v1/w3s/user/initialize`,
           {
             method: "POST",
@@ -94,7 +123,7 @@ export async function POST(request: Request) {
           );
         }
 
-        const response = await fetch(`${CIRCLE_BASE_URL}/v1/w3s/wallets`, {
+        const response = await fetchCircle(`${CIRCLE_BASE_URL}/v1/w3s/wallets`, {
           method: "GET",
           headers: {
             accept: "application/json",
@@ -123,7 +152,7 @@ export async function POST(request: Request) {
           );
         }
 
-        const response = await fetch(
+        const response = await fetchCircle(
           `${CIRCLE_BASE_URL}/v1/w3s/wallets/${walletId}/balances`,
           {
             method: "GET",
@@ -152,7 +181,11 @@ export async function POST(request: Request) {
         );
     }
   } catch (error) {
-    console.error("Error in /api/endpoints:", error);
+    if (error instanceof Error && error.name === "AbortError") {
+      console.error(`Circle API call timed out during "${action}"`);
+      return timeoutErrorResponse(action);
+    }
+    console.error(`Error in /api/endpoints (action: ${action}):`, error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

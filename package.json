@@ -9,11 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@circle-fin/adapter-viem-v2": "^1.15.0",
+    "@circle-fin/app-kit": "^1.12.0",
     "@circle-fin/w3s-pw-web-sdk": "^1.1.11",
+    "@tanstack/react-query": "^5.101.4",
     "cookies-next": "^6.1.1",
     "next": "16.3.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "viem": "^2.55.11",
+    "wagmi": "^3.7.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
