@@ -15,6 +15,7 @@ import { SwapPanel } from "./components/SwapPanel";
 import { BridgePanel } from "./components/BridgePanel";
 import { SendPanel } from "./components/SendPanel";
 import { ReceivePanel } from "./components/ReceivePanel";
+import { EarnPanel } from "./components/EarnPanel";
 import { bridgeChainByNumericId } from "./lib/bridge-chains";
 
 const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID as string;
@@ -50,6 +51,7 @@ export default function HomePage() {
   const [showBridge, setShowBridge] = useState(false);
   const [showSend, setShowSend] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
+  const [showEarn, setShowEarn] = useState(false);
 
   // --- Circle social-login path ---
   const sdkRef = useRef<W3SSdk | null>(null);
@@ -721,6 +723,11 @@ export default function HomePage() {
                   ? () => setShowBridge(true)
                   : undefined
               }
+              onEarn={
+                connected.source === "wallet"
+                  ? () => setShowEarn(true)
+                  : undefined
+              }
               onDisconnect={
                 connected.source === "wallet"
                   ? () => disconnect()
@@ -741,6 +748,10 @@ export default function HomePage() {
 
       {showSend && connected?.source === "wallet" && (
         <SendPanel onClose={() => setShowSend(false)} />
+      )}
+
+      {showEarn && connected?.source === "wallet" && (
+        <EarnPanel onClose={() => setShowEarn(false)} />
       )}
 
       {showReceive && connected && (
@@ -783,6 +794,7 @@ function WalletCard({
   onReceive,
   onSwap,
   onBridge,
+  onEarn,
   onDisconnect,
 }: {
   address: string;
@@ -793,6 +805,7 @@ function WalletCard({
   onReceive?: () => void;
   onSwap?: () => void;
   onBridge?: () => void;
+  onEarn?: () => void;
   onDisconnect?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -820,9 +833,9 @@ function WalletCard({
         </span>
       </p>
 
-      {/* Wallet actions. Send/Receive/Swap/Bridge are live for external wallets;
-          Receive also works for Google wallets, while Send/Swap/Bridge there are
-          honestly flagged as coming next. */}
+      {/* Wallet actions. Send/Receive/Swap/Bridge/Earn are live for external
+          wallets; Receive also works for Google wallets, while the rest there
+          are honestly flagged as coming next. */}
       {source === "wallet" ? (
         <>
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -851,6 +864,12 @@ function WalletCard({
           >
             Bridge USDC
           </button>
+          <button
+            onClick={onEarn}
+            className="w-full h-[48px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[14px] mb-3 hover:border-[var(--vector-pink)] active:opacity-80 transition-colors"
+          >
+            Earn USDC
+          </button>
         </>
       ) : (
         <>
@@ -862,8 +881,8 @@ function WalletCard({
           </button>
           <div className="w-full rounded-2xl border border-[var(--vector-line)] px-4 py-3 mb-3 text-center">
             <span className="text-[12px] leading-relaxed text-[var(--vector-text-dim)]">
-              Send, Swap &amp; Bridge for Google login are coming next — all three
-              are already live with an external wallet like MetaMask.
+              Send, Swap, Bridge &amp; Earn for Google login are coming next —
+              all four are already live with an external wallet like MetaMask.
             </span>
           </div>
         </>
