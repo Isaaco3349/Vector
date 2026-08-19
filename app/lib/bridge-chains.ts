@@ -94,6 +94,19 @@ export function bridgeChainById(id: BridgeChainId): BridgeChain | undefined {
   return BRIDGE_CHAINS.find((c) => c.appKitChain === id);
 }
 
+/**
+ * Look up a chain by its numeric (viem/wagmi) id — used by the Send feature,
+ * which operates on whatever network the wallet is currently connected to.
+ * Returns undefined for any chain Vector doesn't support, so the UI can say
+ * "switch to a supported network" instead of guessing how to move funds.
+ */
+export function bridgeChainByNumericId(
+  chainId: number | undefined,
+): BridgeChain | undefined {
+  if (chainId === undefined) return undefined;
+  return BRIDGE_CHAINS.find((c) => c.chainId === chainId);
+}
+
 /** Build an explorer tx URL for a given chain + hash, or null if unknown. */
 export function explorerTxUrl(id: BridgeChainId, hash: string): string | null {
   const chain = bridgeChainById(id);

@@ -13,6 +13,9 @@ import {
 import { formatUnits } from "viem";
 import { SwapPanel } from "./components/SwapPanel";
 import { BridgePanel } from "./components/BridgePanel";
+import { SendPanel } from "./components/SendPanel";
+import { ReceivePanel } from "./components/ReceivePanel";
+import { bridgeChainByNumericId } from "./lib/bridge-chains";
 
 const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID as string;
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID as string;
@@ -33,7 +36,7 @@ type Step = "start" | "device" | "auth" | "init" | "wallet";
 
 export default function HomePage() {
   // --- Bring-your-own-wallet path (MetaMask, Rabby, Coinbase Wallet, etc.) ---
-  const { address: injectedAddress, isConnected: isInjectedConnected } =
+  const { address: injectedAddress, isConnected: isInjectedConnected, chainId: injectedChainId } =
     useAccount();
   const { connect, connectors, isPending: isConnectPending, error: connectError } =
     useConnect();
@@ -45,6 +48,8 @@ export default function HomePage() {
   const [showWalletPicker, setShowWalletPicker] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
   const [showBridge, setShowBridge] = useState(false);
+  const [showSend, setShowSend] = useState(false);
+  const [showReceive, setShowReceive] = useState(false);
 
   // --- Circle social-login path ---
   const sdkRef = useRef<W3SSdk | null>(null);
@@ -459,6 +464,14 @@ export default function HomePage() {
         }
       : null;
 
+  // Network label for the Receive panel. For an external wallet, use the chain
+  // it's actually on (from the live chainId); for a Google wallet, use the
+  // Circle wallet's own blockchain. The address is valid regardless of network.
+  const receiveNetworkLabel =
+    connected?.source === "wallet"
+      ? bridgeChainByNumericId(injectedChainId)?.label ?? "your connected network"
+      : connected?.blockchain ?? "your wallet's network";
+
   let step: Step = "start";
   if (primaryWallet) step = "wallet";
   else if (challengeId) step = "init";
@@ -692,6 +705,12 @@ export default function HomePage() {
               blockchain={connected.blockchain}
               balance={connected.balance}
               source={connected.source}
+              onSend={
+                connected.source === "wallet"
+                  ? () => setShowSend(true)
+                  : undefined
+              }
+              onReceive={() => setShowReceive(true)}
               onSwap={
                 connected.source === "wallet"
                   ? () => setShowSwap(true)
@@ -718,6 +737,18 @@ export default function HomePage() {
 
       {showBridge && connected?.source === "wallet" && (
         <BridgePanel onClose={() => setShowBridge(false)} />
+      )}
+
+      {showSend && connected?.source === "wallet" && (
+        <SendPanel onClose={() => setShowSend(false)} />
+      )}
+
+      {showReceive && connected && (
+        <ReceivePanel
+          address={connected.address}
+          networkLabel={receiveNetworkLabel}
+          onClose={() => setShowReceive(false)}
+        />
       )}
     </main>
   );
@@ -748,6 +779,8 @@ function WalletCard({
   blockchain,
   balance,
   source,
+  onSend,
+  onReceive,
   onSwap,
   onBridge,
   onDisconnect,
@@ -756,6 +789,8 @@ function WalletCard({
   blockchain: string;
   balance: string | null;
   source: "circle" | "wallet";
+  onSend?: () => void;
+  onReceive?: () => void;
   onSwap?: () => void;
   onBridge?: () => void;
   onDisconnect?: () => void;
@@ -785,9 +820,25 @@ function WalletCard({
         </span>
       </p>
 
-      {/* Swap + Bridge: live for external wallets, honestly flagged as next for Google wallets */}
+      {/* Wallet actions. Send/Receive/Swap/Bridge are live for external wallets;
+          Receive also works for Google wallets, while Send/Swap/Bridge there are
+          honestly flagged as coming next. */}
       {source === "wallet" ? (
         <>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <button
+              onClick={onSend}
+              className="h-[48px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[14px] text-[var(--vector-text)] hover:border-[var(--vector-pink)] transition-colors"
+            >
+              Send
+            </button>
+            <button
+              onClick={onReceive}
+              className="h-[48px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[14px] text-[var(--vector-text)] hover:border-[var(--vector-pink)] transition-colors"
+            >
+              Receive
+            </button>
+          </div>
           <button
             onClick={onSwap}
             className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] mb-3 hover:opacity-90 active:opacity-80 transition-opacity"
@@ -802,11 +853,20 @@ function WalletCard({
           </button>
         </>
       ) : (
-        <div className="w-full rounded-full border border-[var(--vector-line)] px-4 py-3 mb-3 text-center">
-          <span className="text-[12px] text-[var(--vector-text-dim)]">
-            Swap &amp; Bridge for Google wallets are coming next
-          </span>
-        </div>
+        <>
+          <button
+            onClick={onReceive}
+            className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] mb-3 hover:opacity-90 active:opacity-80 transition-opacity"
+          >
+            Receive
+          </button>
+          <div className="w-full rounded-2xl border border-[var(--vector-line)] px-4 py-3 mb-3 text-center">
+            <span className="text-[12px] leading-relaxed text-[var(--vector-text-dim)]">
+              Send, Swap &amp; Bridge for Google login are coming next — all three
+              are already live with an external wallet like MetaMask.
+            </span>
+          </div>
+        </>
       )}
 
       <button
