@@ -31,8 +31,9 @@ const ARC_TESTNET_ID = 5042002;
  * switch instead of guessing.
  *
  * Like Swap/Bridge, Earn uses Circle's viem browser adapter, which only works
- * with an external wallet — the Google-login (W3S) case is gated in the wallet
- * card as "coming next".
+ * with an external wallet. The Google-login (W3S) case has its own panel
+ * (GoogleEarnPanel), which routes deposit/withdraw through Circle's challenge
+ * flow instead.
  */
 export function EarnPanel({ onClose }: { onClose: () => void }) {
   const { address, isConnected, chainId, connector } = useAccount();

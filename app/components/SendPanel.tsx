@@ -27,7 +27,7 @@ const ARC_TESTNET_ID = 5042002;
  * balance as integers (no float rounding) before anything is signed.
  *
  * Only renders for an external wallet; Google-login (W3S) sends take a
- * different, server-side path and are gated in the wallet card as "coming next".
+ * different, server-side path handled by its own panel (GoogleSendPanel).
  */
 export function SendPanel({ onClose }: { onClose: () => void }) {
   const { address, isConnected, chainId } = useAccount();

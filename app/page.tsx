@@ -14,8 +14,12 @@ import { formatUnits } from "viem";
 import { SwapPanel } from "./components/SwapPanel";
 import { BridgePanel } from "./components/BridgePanel";
 import { SendPanel } from "./components/SendPanel";
+import { GoogleSendPanel } from "./components/GoogleSendPanel";
+import { GoogleBridgePanel } from "./components/GoogleBridgePanel";
+import { GoogleSwapPanel } from "./components/GoogleSwapPanel";
 import { ReceivePanel } from "./components/ReceivePanel";
 import { EarnPanel } from "./components/EarnPanel";
+import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
 import { bridgeChainByNumericId } from "./lib/bridge-chains";
 
 const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID as string;
@@ -69,6 +73,10 @@ export default function HomePage() {
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  // Circle's own token UUID for this wallet's USDC — required as `tokenId` when
+  // creating a transfer challenge. Captured from the balances endpoint so we
+  // never hardcode a USDC address for the Google-wallet Send path.
+  const [usdcTokenId, setUsdcTokenId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
@@ -238,6 +246,11 @@ export default function HomePage() {
         }) ?? null;
       const amount = usdcEntry?.amount ?? "0";
       setUsdcBalance(amount);
+      // Circle's token UUID for USDC — needed as `tokenId` for a transfer.
+      // Only set when found; leave null so Send stays gated until it's known.
+      setUsdcTokenId(
+        typeof usdcEntry?.token?.id === "string" ? usdcEntry.token.id : null,
+      );
       return amount;
     } catch (err) {
       console.error("Failed to load USDC balance:", err);
@@ -438,6 +451,7 @@ export default function HomePage() {
     setChallengeId(null);
     setWallets([]);
     setUsdcBalance(null);
+    setUsdcTokenId(null);
     setDeviceToken("");
     setDeviceEncryptionKey("");
     setStatus("");
@@ -522,9 +536,7 @@ export default function HomePage() {
             <>
               <div className="mb-8">
                 <h1 className="text-[32px] leading-[1.15] font-semibold tracking-tight mb-3">
-                  Swap. Stake. Lend.
-                  <br />
-                  Bridge. Farm.
+                  Swap. Bridge. Earn.
                   <br />
                   <span className="text-[var(--vector-pink)]">
                     All on Arc.
@@ -540,11 +552,8 @@ export default function HomePage() {
 
               <div className="grid grid-cols-3 gap-2 mb-8">
                 <FeaturePill label="Swap" />
-                <FeaturePill label="Stake" />
-                <FeaturePill label="Lend" />
-                <FeaturePill label="Borrow" />
                 <FeaturePill label="Bridge" />
-                <FeaturePill label="Yield" />
+                <FeaturePill label="Earn" />
               </div>
 
               <p className="text-[12px] text-[var(--vector-text-dim)] mb-4 uppercase tracking-wide">
@@ -707,27 +716,11 @@ export default function HomePage() {
               blockchain={connected.blockchain}
               balance={connected.balance}
               source={connected.source}
-              onSend={
-                connected.source === "wallet"
-                  ? () => setShowSend(true)
-                  : undefined
-              }
+              onSend={() => setShowSend(true)}
               onReceive={() => setShowReceive(true)}
-              onSwap={
-                connected.source === "wallet"
-                  ? () => setShowSwap(true)
-                  : undefined
-              }
-              onBridge={
-                connected.source === "wallet"
-                  ? () => setShowBridge(true)
-                  : undefined
-              }
-              onEarn={
-                connected.source === "wallet"
-                  ? () => setShowEarn(true)
-                  : undefined
-              }
+              onSwap={() => setShowSwap(true)}
+              onBridge={() => setShowBridge(true)}
+              onEarn={() => setShowEarn(true)}
               onDisconnect={
                 connected.source === "wallet"
                   ? () => disconnect()
@@ -742,17 +735,90 @@ export default function HomePage() {
         <SwapPanel onClose={() => setShowSwap(false)} />
       )}
 
+      {showSwap &&
+        connected?.source === "circle" &&
+        primaryWallet &&
+        loginResult &&
+        sdkRef.current && (
+          <GoogleSwapPanel
+            sdk={sdkRef.current}
+            auth={loginResult}
+            walletId={primaryWallet.id}
+            walletAddress={primaryWallet.address}
+            usdcBalance={usdcBalance}
+            onClose={() => setShowSwap(false)}
+            onSuccess={() => {
+              void loadUsdcBalance(loginResult.userToken, primaryWallet.id);
+            }}
+          />
+        )}
+
       {showBridge && connected?.source === "wallet" && (
         <BridgePanel onClose={() => setShowBridge(false)} />
       )}
+
+      {showBridge &&
+        connected?.source === "circle" &&
+        primaryWallet &&
+        loginResult &&
+        sdkRef.current && (
+          <GoogleBridgePanel
+            sdk={sdkRef.current}
+            auth={loginResult}
+            walletId={primaryWallet.id}
+            walletAddress={primaryWallet.address}
+            balance={usdcBalance}
+            onClose={() => setShowBridge(false)}
+            onSuccess={() => {
+              void loadUsdcBalance(loginResult.userToken, primaryWallet.id);
+            }}
+          />
+        )}
 
       {showSend && connected?.source === "wallet" && (
         <SendPanel onClose={() => setShowSend(false)} />
       )}
 
+      {showSend &&
+        connected?.source === "circle" &&
+        primaryWallet &&
+        loginResult &&
+        sdkRef.current && (
+          <GoogleSendPanel
+            sdk={sdkRef.current}
+            auth={loginResult}
+            walletId={primaryWallet.id}
+            walletAddress={primaryWallet.address}
+            tokenId={usdcTokenId}
+            balance={usdcBalance}
+            onClose={() => setShowSend(false)}
+            onSuccess={() => {
+              void loadUsdcBalance(loginResult.userToken, primaryWallet.id);
+            }}
+          />
+        )}
+
       {showEarn && connected?.source === "wallet" && (
         <EarnPanel onClose={() => setShowEarn(false)} />
       )}
+
+      {showEarn &&
+        connected?.source === "circle" &&
+        primaryWallet &&
+        loginResult &&
+        sdkRef.current && (
+          <GoogleEarnPanel
+            sdk={sdkRef.current}
+            auth={loginResult}
+            walletId={primaryWallet.id}
+            walletAddress={primaryWallet.address}
+            usdcBalance={usdcBalance}
+            onClose={() => setShowEarn(false)}
+            onSuccess={() => {
+              void loadUsdcBalance(loginResult.userToken, primaryWallet.id);
+            }}
+          />
+        )}
 
       {showReceive && connected && (
         <ReceivePanel
@@ -833,60 +899,40 @@ function WalletCard({
         </span>
       </p>
 
-      {/* Wallet actions. Send/Receive/Swap/Bridge/Earn are live for external
-          wallets; Receive also works for Google wallets, while the rest there
-          are honestly flagged as coming next. */}
-      {source === "wallet" ? (
-        <>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <button
-              onClick={onSend}
-              className="h-[48px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[14px] text-[var(--vector-text)] hover:border-[var(--vector-pink)] transition-colors"
-            >
-              Send
-            </button>
-            <button
-              onClick={onReceive}
-              className="h-[48px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[14px] text-[var(--vector-text)] hover:border-[var(--vector-pink)] transition-colors"
-            >
-              Receive
-            </button>
-          </div>
-          <button
-            onClick={onSwap}
-            className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] mb-3 hover:opacity-90 active:opacity-80 transition-opacity"
-          >
-            Swap
-          </button>
-          <button
-            onClick={onBridge}
-            className="w-full h-[48px] rounded-full border border-[var(--vector-pink)] text-[var(--vector-pink)] font-semibold text-[14px] mb-3 hover:bg-[var(--vector-pink)] hover:text-[#0b0b0e] active:opacity-80 transition-colors"
-          >
-            Bridge USDC
-          </button>
-          <button
-            onClick={onEarn}
-            className="w-full h-[48px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[14px] mb-3 hover:border-[var(--vector-pink)] active:opacity-80 transition-colors"
-          >
-            Earn USDC
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            onClick={onReceive}
-            className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] mb-3 hover:opacity-90 active:opacity-80 transition-opacity"
-          >
-            Receive
-          </button>
-          <div className="w-full rounded-2xl border border-[var(--vector-line)] px-4 py-3 mb-3 text-center">
-            <span className="text-[12px] leading-relaxed text-[var(--vector-text-dim)]">
-              Send, Swap, Bridge &amp; Earn for Google login are coming next —
-              all four are already live with an external wallet like MetaMask.
-            </span>
-          </div>
-        </>
-      )}
+      {/* Wallet actions — Send / Receive / Swap / Bridge / Earn are all live for
+          both external and Google (Circle) wallets. */}
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <button
+          onClick={onSend}
+          className="h-[48px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[14px] text-[var(--vector-text)] hover:border-[var(--vector-pink)] transition-colors"
+        >
+          Send
+        </button>
+        <button
+          onClick={onReceive}
+          className="h-[48px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[14px] text-[var(--vector-text)] hover:border-[var(--vector-pink)] transition-colors"
+        >
+          Receive
+        </button>
+      </div>
+      <button
+        onClick={onSwap}
+        className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] mb-3 hover:opacity-90 active:opacity-80 transition-opacity"
+      >
+        Swap
+      </button>
+      <button
+        onClick={onBridge}
+        className="w-full h-[48px] rounded-full border border-[var(--vector-pink)] text-[var(--vector-pink)] font-semibold text-[14px] mb-3 hover:bg-[var(--vector-pink)] hover:text-[#0b0b0e] active:opacity-80 transition-colors"
+      >
+        Bridge USDC
+      </button>
+      <button
+        onClick={onEarn}
+        className="w-full h-[48px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[14px] mb-3 hover:border-[var(--vector-pink)] active:opacity-80 transition-colors"
+      >
+        Earn USDC
+      </button>
 
       <button
         onClick={() => {

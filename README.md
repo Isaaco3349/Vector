@@ -1,16 +1,55 @@
 # Vector
 
-Non-custodial crypto wallet, Google-login onboarding, powered by Circle's
-user-controlled wallets SDK on Arc Testnet.
+Vector is a non-custodial, USDC-native DeFi hub on **Arc Testnet** — Circle's
+stablecoin-native EVM L1, where USDC is the native gas token. It's one place to
+swap, bridge, and earn, whether you onboard with just a Google account or bring
+a wallet you already use.
 
-## How it works
+Live: https://vectorprotocol.vercel.app
 
-- `app/page.tsx` — the whole client flow: Circle Web SDK init → device
-  token → Google OAuth redirect → initialize user → execute challenge →
-  wallet + USDC balance.
-- `app/api/endpoints/route.ts` — single backend route that proxies to
-  Circle's API using your server-side `CIRCLE_API_KEY` (never exposed to
-  the browser).
+## Two ways to connect
+
+- **Continue with Google** — creates a non-custodial wallet through Circle's
+  user-controlled wallets (W3S). No seed phrase; the user secures it with a PIN,
+  and every transaction is signed via Circle's challenge flow. The wallet is
+  scoped to Arc.
+- **Connect Wallet** — any injected/browser wallet (e.g. MetaMask) via wagmi.
+
+## Features
+
+| Feature | External wallet | Google (Circle) wallet |
+| --- | :---: | :---: |
+| Receive USDC | ✅ | ✅ |
+| Send USDC | ✅ | ✅ |
+| Bridge (CCTP v2) | ✅ | ✅ |
+| Swap (Arc USDC↔EURC) | ✅ | ✅ |
+| Earn (yield vaults) | ✅ | ✅ |
+
+Bridge routes: Arc Testnet ⇄ Base Sepolia / Ethereum Sepolia, via Circle's
+CCTP v2 (approve → burn on the source; Circle's relayer mints on the
+destination).
+
+**Planned for v2 — Stake, Lend, Borrow.** These need third-party
+lending/staking protocols deployed on Arc, and there is no Circle SDK for them.
+Rather than wire them to guessed contract addresses (a real risk with funds at
+stake), they're intentionally left out until they can be built against verified,
+first-party contracts on Arc.
+
+## Architecture
+
+- `app/page.tsx` — the client app: Circle Web SDK init → Google OAuth (or wallet
+  connect) → wallet + USDC balance → the action panels.
+- `app/api/endpoints/route.ts` — the only backend route. Proxies to Circle's API
+  with your server-side `CIRCLE_API_KEY` (never exposed to the browser) and
+  handles the challenge-based flows (transfer, contract execution) the Google
+  wallet uses.
+- `app/lib/*` — one isolated wrapper per feature: `appkit.ts` + `google-swap.ts`
+  (swap), `bridge.ts` + `google-bridge.ts` (CCTP bridge), `earn.ts` +
+  `google-earn.ts` (yield vaults), `w3s-tx.ts` (challenge runner), and the
+  `bridge-chains` / `swap-tokens` registries.
+- `app/components/*` — one modal panel per action (`SwapPanel`, `BridgePanel`,
+  `SendPanel`, `ReceivePanel`, `EarnPanel`), plus `Google*Panel` variants for the
+  Circle wallet.
 - `app/globals.css` — Vector's design tokens (dark surface, pink accent).
 
 ## Setup
