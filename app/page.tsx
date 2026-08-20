@@ -20,6 +20,7 @@ import { GoogleSwapPanel } from "./components/GoogleSwapPanel";
 import { ReceivePanel } from "./components/ReceivePanel";
 import { EarnPanel } from "./components/EarnPanel";
 import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
+import { HistoryPanel } from "./components/HistoryPanel";
 import { bridgeChainByNumericId } from "./lib/bridge-chains";
 
 const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID as string;
@@ -56,6 +57,7 @@ export default function HomePage() {
   const [showSend, setShowSend] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
   const [showEarn, setShowEarn] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // --- Circle social-login path ---
   const sdkRef = useRef<W3SSdk | null>(null);
@@ -721,6 +723,7 @@ export default function HomePage() {
               onSwap={() => setShowSwap(true)}
               onBridge={() => setShowBridge(true)}
               onEarn={() => setShowEarn(true)}
+              onHistory={() => setShowHistory(true)}
               onDisconnect={
                 connected.source === "wallet"
                   ? () => disconnect()
@@ -827,6 +830,23 @@ export default function HomePage() {
           onClose={() => setShowReceive(false)}
         />
       )}
+
+      {showHistory && connected && (
+        <HistoryPanel
+          source={connected.source}
+          walletAddress={connected.address}
+          userToken={
+            connected.source === "circle" ? loginResult?.userToken : undefined
+          }
+          walletId={
+            connected.source === "circle" ? primaryWallet?.id : undefined
+          }
+          numericChainId={
+            connected.source === "wallet" ? injectedChainId : undefined
+          }
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </main>
   );
 }
@@ -861,6 +881,7 @@ function WalletCard({
   onSwap,
   onBridge,
   onEarn,
+  onHistory,
   onDisconnect,
 }: {
   address: string;
@@ -872,6 +893,7 @@ function WalletCard({
   onSwap?: () => void;
   onBridge?: () => void;
   onEarn?: () => void;
+  onHistory?: () => void;
   onDisconnect?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -944,6 +966,15 @@ function WalletCard({
       >
         {copied ? "Copied" : short}
       </button>
+
+      {onHistory && (
+        <button
+          onClick={onHistory}
+          className="w-full mt-3 h-[44px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[13px] text-[var(--vector-text-dim)] hover:border-[var(--vector-pink)] hover:text-[var(--vector-text)] transition-colors"
+        >
+          Activity
+        </button>
+      )}
 
       {onDisconnect && (
         <button

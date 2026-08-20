@@ -10,7 +10,8 @@ import {
   type EarnPlan,
 } from "../lib/google-earn";
 import { listArcVaults, type EarnPosition, type EarnVault } from "../lib/earn";
-import { explorerTxUrl } from "../lib/bridge-chains";
+import { explorerAddressUrl, explorerTxUrl } from "../lib/bridge-chains";
+import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
  * Earn panel for the Google-login (Circle user-controlled / W3S) wallet.
@@ -70,7 +71,6 @@ export function GoogleEarnPanel({
   >(null);
   const [plan, setPlan] = useState<EarnPlan | null>(null);
   const [done, setDone] = useState(false);
-  const [execTxHash, setExecTxHash] = useState<string | null>(null);
 
   const submitting = phase !== null;
 
@@ -141,10 +141,19 @@ export function GoogleEarnPanel({
   // Steps to confirm: approve (if the service asked for one) + execute.
   const totalSteps = plan?.approve ? 2 : 1;
 
-  const execExplorerUrl = useMemo(
-    () => (execTxHash ? explorerTxUrl("Arc_Testnet", execTxHash) : null),
-    [execTxHash],
-  );
+  // The execute call is a W3S contractExecution challenge, which returns no
+  // txHash, so resolve the real hash from Circle's transactions list in the
+  // background once the deposit/withdraw is done. Until it lands, the success
+  // screen links the wallet's explorer address page on Arc (always correct).
+  const execTxHash = useLatestTxHash({
+    userToken: auth.userToken,
+    walletId,
+    trigger: done,
+  });
+  const explorerUrl = execTxHash
+    ? explorerTxUrl("Arc_Testnet", execTxHash)
+    : explorerAddressUrl("Arc_Testnet", walletAddress);
+  const explorerIsTx = execTxHash != null;
 
   /** Any input change invalidates a previously built plan. */
   function invalidatePlan() {
@@ -203,7 +212,6 @@ export function GoogleEarnPanel({
   async function handleReview() {
     if (!canReview || !selected) return;
     setError(null);
-    setExecTxHash(null);
     try {
       setPhase("encoding");
       const build = mode === "deposit" ? buildDepositPlan : buildWithdrawPlan;
@@ -236,17 +244,7 @@ export function GoogleEarnPanel({
       }
 
       setPhase("executing");
-      const execOutcome = await runContractCall(plan.execute);
-
-      const raw =
-        execOutcome && typeof execOutcome.raw === "object"
-          ? (execOutcome.raw as Record<string, unknown>)
-          : null;
-      const txHash =
-        raw && typeof raw.txHash === "string" && raw.txHash.length > 0
-          ? raw.txHash
-          : null;
-      if (txHash) setExecTxHash(txHash);
+      await runContractCall(plan.execute);
 
       setPhase(null);
       setDone(true);
@@ -329,14 +327,16 @@ export function GoogleEarnPanel({
                 ? `Deposited ${amount} USDC into ${selected?.name ?? "the vault"} on Arc Testnet.`
                 : `Withdrew ${amount} USDC from ${selected?.name ?? "the vault"} on Arc Testnet.`}
             </p>
-            {execExplorerUrl && (
+            {explorerUrl && (
               <a
-                href={execExplorerUrl}
+                href={explorerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block mb-6 text-[12px] text-[var(--vector-pink)] font-mono hover:opacity-80 transition-opacity"
               >
-                View on Arc explorer ↗
+                {explorerIsTx
+                  ? "View on Arc explorer ↗"
+                  : "View wallet on Arc explorer ↗"}
               </a>
             )}
             <button

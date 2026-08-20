@@ -353,6 +353,12 @@ function readableError(err: unknown, fallback: string): string {
     if (/reject|denied|user cancel/i.test(err.message)) {
       return "You cancelled the request in your wallet.";
     }
+    // "No route available" is App Kit's own string when Circle has no swap
+    // route/liquidity for the pair on this chain. Explain it honestly rather
+    // than leaking the raw SDK string — it's not a bug in the wallet or app.
+    if (/no route|route.*(available|found)|no.*liquidity/i.test(err.message)) {
+      return "No swap route for this pair on Arc Testnet yet. Swap routes depend on Circle-provided liquidity, which isn't available for this pair right now — try again later.";
+    }
     return err.message;
   }
   if (typeof err === "string") return err;

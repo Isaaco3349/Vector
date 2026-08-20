@@ -50,6 +50,16 @@ export type BridgeChain = {
   /** Explorer tx URL template; replace `{hash}`. From SDK chains.d.mts. */
   explorerTx: string;
   /**
+   * Explorer ADDRESS URL template; replace `{address}`. This is the account's
+   * activity page on the same block explorer as `explorerTx` — every explorer
+   * we use (arcscan, basescan, etherscan) exposes it at the standard
+   * `/address/<addr>` path. It needs no API key or lookup, so it's the
+   * always-correct fallback link when a specific tx hash isn't available (e.g.
+   * a W3S CREATE_TRANSACTION challenge returns no hash) and the source of truth
+   * for "view my full history".
+   */
+  explorerAddress: string;
+  /**
    * Whether Circle's Forwarder supports this chain as a bridge DESTINATION.
    * Verified `true` for all three in chains.d.mts (`cctp.forwarderSupported`).
    * When true, we can pass `useForwarder: true` so the relayer mints on the
@@ -68,6 +78,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     // spendable balance users care about is the native one.)
     usdcKind: "native",
     explorerTx: "https://testnet.arcscan.app/tx/{hash}",
+    explorerAddress: "https://testnet.arcscan.app/address/{address}",
     forwarderDestination: true,
   },
   {
@@ -77,6 +88,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcKind: "erc20",
     usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     explorerTx: "https://sepolia.basescan.org/tx/{hash}",
+    explorerAddress: "https://sepolia.basescan.org/address/{address}",
     forwarderDestination: true,
   },
   {
@@ -86,6 +98,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcKind: "erc20",
     usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     explorerTx: "https://sepolia.etherscan.io/tx/{hash}",
+    explorerAddress: "https://sepolia.etherscan.io/address/{address}",
     forwarderDestination: true,
   },
 ];
@@ -112,4 +125,33 @@ export function explorerTxUrl(id: BridgeChainId, hash: string): string | null {
   const chain = bridgeChainById(id);
   if (!chain || !hash) return null;
   return chain.explorerTx.replace("{hash}", hash);
+}
+
+/**
+ * Build an explorer ADDRESS (account activity) URL for a given chain + address.
+ * Unlike a tx link, this needs no hash and can't be wrong — it's the fallback
+ * we always show for W3S transactions (whose challenge result carries no hash)
+ * and the "view full history" link. Returns null only if the chain is unknown.
+ */
+export function explorerAddressUrl(
+  id: BridgeChainId,
+  address: string,
+): string | null {
+  const chain = bridgeChainById(id);
+  if (!chain || !address) return null;
+  return chain.explorerAddress.replace("{address}", address);
+}
+
+/**
+ * Same as explorerAddressUrl but keyed by the numeric (viem/wagmi) chain id —
+ * used by the external-wallet history view, which only knows the connected
+ * chain's numeric id. Returns null for any chain Vector doesn't support.
+ */
+export function explorerAddressUrlByNumericId(
+  chainId: number | undefined,
+  address: string,
+): string | null {
+  const chain = bridgeChainByNumericId(chainId);
+  if (!chain || !address) return null;
+  return chain.explorerAddress.replace("{address}", address);
 }

@@ -174,6 +174,61 @@ export async function POST(request: Request) {
         return NextResponse.json(data.data, { status: 200 });
       }
 
+      case "listTransactions": {
+        // READ-ONLY history for a user-controlled (Google/W3S) wallet. This
+        // moves no funds and signs nothing — it's a plain GET, so there is no
+        // address/amount to get "wrong". It exists because a W3S
+        // CREATE_TRANSACTION challenge's completion callback returns no txHash
+        // (only a SIGN_TRANSACTION challenge does), so the ONLY place to read
+        // the on-chain hash — and any past activity — is Circle's transactions
+        // list.
+        //
+        // Same verified auth/response pattern as listWallets / getTokenBalance
+        // above: GET with `Authorization: Bearer ${CIRCLE_API_KEY}` +
+        // `X-User-Token`, and Circle wraps the payload in `{ data: {...} }`.
+        // We scope to this wallet with `walletIds` and cap the page; the client
+        // parses defensively and can still fall back to an explorer address
+        // link if the shape ever differs.
+        const { userToken, walletId, pageSize } = params;
+        if (!userToken) {
+          return NextResponse.json(
+            { error: "Missing userToken" },
+            { status: 400 },
+          );
+        }
+
+        const qs = new URLSearchParams();
+        if (typeof walletId === "string" && walletId) {
+          qs.set("walletIds", walletId);
+        }
+        const size =
+          typeof pageSize === "number" && Number.isFinite(pageSize)
+            ? Math.min(Math.max(Math.trunc(pageSize), 1), 50)
+            : 20;
+        qs.set("pageSize", String(size));
+
+        const response = await fetchCircle(
+          `${CIRCLE_BASE_URL}/v1/w3s/transactions?${qs.toString()}`,
+          {
+            method: "GET",
+            headers: {
+              accept: "application/json",
+              Authorization: `Bearer ${CIRCLE_API_KEY}`,
+              "X-User-Token": userToken,
+            },
+          },
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          return NextResponse.json(data, { status: response.status });
+        }
+
+        // Returns: { transactions: [...] }
+        return NextResponse.json(data.data, { status: 200 });
+      }
+
       case "createTransferChallenge": {
         // Creates a challenge to send USDC from a user-controlled (Google/W3S)
         // wallet. This is the ONE call that moves real funds, so every field

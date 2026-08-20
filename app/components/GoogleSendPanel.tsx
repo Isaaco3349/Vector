@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { isAddress } from "viem";
 import type { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 import { runChallenge, type W3sAuth } from "../lib/w3s-tx";
+import { explorerAddressUrl, explorerTxUrl } from "../lib/bridge-chains";
+import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
  * Send USDC panel for the Google-login (Circle user-controlled / W3S) wallet.
@@ -77,6 +79,20 @@ export function GoogleSendPanel({
     !!tokenId &&
     !submitting &&
     !done;
+
+  // A W3S transfer challenge returns no txHash, so resolve the real hash from
+  // Circle's transactions list in the background once the send is done. Until
+  // it lands, the success screen links the wallet's explorer address page on
+  // Arc (always correct, needs no hash).
+  const sendTxHash = useLatestTxHash({
+    userToken: auth.userToken,
+    walletId,
+    trigger: done,
+  });
+  const explorerUrl = sendTxHash
+    ? explorerTxUrl("Arc_Testnet", sendTxHash)
+    : explorerAddressUrl("Arc_Testnet", walletAddress);
+  const explorerIsTx = sendTxHash != null;
 
   async function handleSend() {
     if (!canSend || !tokenId) return;
@@ -174,6 +190,18 @@ export function GoogleSendPanel({
               </span>
               . Your balance will update shortly.
             </p>
+            {explorerUrl && (
+              <a
+                href={explorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mb-6 text-[12px] text-[var(--vector-pink)] font-mono hover:opacity-80 transition-opacity"
+              >
+                {explorerIsTx
+                  ? "View transaction on Arc explorer ↗"
+                  : "View wallet on Arc explorer ↗"}
+              </a>
+            )}
             <button
               onClick={onClose}
               className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] hover:opacity-90 active:opacity-80 transition-opacity"

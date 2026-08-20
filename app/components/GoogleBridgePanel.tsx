@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 import { runChallenge, type W3sAuth } from "../lib/w3s-tx";
 import {
@@ -9,9 +9,11 @@ import {
 } from "../lib/google-bridge";
 import {
   bridgeChainById,
+  explorerAddressUrl,
   explorerTxUrl,
   type BridgeChainId,
 } from "../lib/bridge-chains";
+import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
  * Bridge USDC panel for the Google-login (Circle user-controlled / W3S) wallet.
@@ -63,7 +65,6 @@ export function GoogleBridgePanel({
     "encoding" | "approving" | "burning" | null
   >(null);
   const [done, setDone] = useState(false);
-  const [burnTxHash, setBurnTxHash] = useState<string | null>(null);
 
   const submitting = phase !== null;
 
@@ -79,11 +80,20 @@ export function GoogleBridgePanel({
 
   const canBridge = amountValid && !insufficient && !submitting && !done;
 
-  // Best-effort explorer link for the burn (source) tx on Arc.
-  const burnExplorerUrl = useMemo(
-    () => (burnTxHash ? explorerTxUrl("Arc_Testnet", burnTxHash) : null),
-    [burnTxHash],
-  );
+  // The burn is a W3S contractExecution challenge, which returns no txHash, so
+  // resolve the real hash from Circle's transactions list in the background
+  // once the bridge is started. Until it lands (or if it never does), the
+  // success screen links the wallet's explorer address page on Arc — always
+  // correct and needs no hash.
+  const burnTxHash = useLatestTxHash({
+    userToken: auth.userToken,
+    walletId,
+    trigger: done,
+  });
+  const explorerUrl = burnTxHash
+    ? explorerTxUrl("Arc_Testnet", burnTxHash)
+    : explorerAddressUrl("Arc_Testnet", walletAddress);
+  const explorerIsTx = burnTxHash != null;
 
   /**
    * Run one contractExecution challenge (approve or burn) to completion.
@@ -134,7 +144,6 @@ export function GoogleBridgePanel({
   async function handleBridge() {
     if (!canBridge) return;
     setError(null);
-    setBurnTxHash(null);
 
     let plan: BridgePlan;
     try {
@@ -162,18 +171,7 @@ export function GoogleBridgePanel({
 
       // Phase 3 — burn on Arc; Circle's relayer mints on the destination. PIN #2.
       setPhase("burning");
-      const burnOutcome = await runContractCall(plan.burn);
-
-      // Best-effort: surface the burn tx hash if Circle returned one.
-      const raw =
-        burnOutcome && typeof burnOutcome.raw === "object"
-          ? (burnOutcome.raw as Record<string, unknown>)
-          : null;
-      const txHash =
-        raw && typeof raw.txHash === "string" && raw.txHash.length > 0
-          ? raw.txHash
-          : null;
-      if (txHash) setBurnTxHash(txHash);
+      await runContractCall(plan.burn);
 
       setPhase(null);
       setDone(true);
@@ -220,14 +218,16 @@ export function GoogleBridgePanel({
               {amount} USDC was burned on Arc. Circle&apos;s relayer will mint it
               to your wallet on {destLabel} shortly — this can take a few minutes.
             </p>
-            {burnExplorerUrl && (
+            {explorerUrl && (
               <a
-                href={burnExplorerUrl}
+                href={explorerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block mb-6 text-[12px] text-[var(--vector-pink)] font-mono hover:opacity-80 transition-opacity"
               >
-                View burn on Arc explorer ↗
+                {explorerIsTx
+                  ? "View burn on Arc explorer ↗"
+                  : "View wallet on Arc explorer ↗"}
               </a>
             )}
             <button
@@ -274,6 +274,12 @@ export function GoogleBridgePanel({
                 </div>
               </div>
             </div>
+
+            <p className="text-[11px] leading-relaxed text-[var(--vector-text-dim)] mb-4 px-1">
+              Your Google wallet lives on Arc, so bridges start from Arc. To
+              bridge from Base or Ethereum Sepolia, connect an external wallet
+              instead.
+            </p>
 
             {/* Amount */}
             <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">

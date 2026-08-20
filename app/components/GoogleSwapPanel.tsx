@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 import { runChallenge, type W3sAuth } from "../lib/w3s-tx";
 import {
@@ -8,7 +8,8 @@ import {
   type SwapPlan,
   type SwapSymbol,
 } from "../lib/google-swap";
-import { explorerTxUrl } from "../lib/bridge-chains";
+import { explorerAddressUrl, explorerTxUrl } from "../lib/bridge-chains";
+import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
  * Swap panel for the Google-login (Circle user-controlled / W3S) wallet.
@@ -62,7 +63,6 @@ export function GoogleSwapPanel({
   >(null);
   const [plan, setPlan] = useState<SwapPlan | null>(null);
   const [done, setDone] = useState(false);
-  const [execTxHash, setExecTxHash] = useState<string | null>(null);
 
   const submitting = phase !== null;
   const sameToken = fromSymbol === toSymbol;
@@ -85,10 +85,19 @@ export function GoogleSwapPanel({
     amountValid && !sameToken && !insufficient && !submitting && !done;
   const canConfirm = plan !== null && !submitting && !done;
 
-  const execExplorerUrl = useMemo(
-    () => (execTxHash ? explorerTxUrl("Arc_Testnet", execTxHash) : null),
-    [execTxHash],
-  );
+  // A W3S contractExecution challenge returns no txHash, so resolve the real
+  // hash from Circle's transactions list in the background once the swap is
+  // done. Until it lands, the success screen links the wallet's explorer
+  // address page (always correct, needs no hash).
+  const execTxHash = useLatestTxHash({
+    userToken: auth.userToken,
+    walletId,
+    trigger: done,
+  });
+  const explorerUrl = execTxHash
+    ? explorerTxUrl("Arc_Testnet", execTxHash)
+    : explorerAddressUrl("Arc_Testnet", walletAddress);
+  const explorerIsTx = execTxHash != null;
 
   /** Any input change invalidates a previously fetched quote/plan. */
   function invalidatePlan() {
@@ -146,7 +155,6 @@ export function GoogleSwapPanel({
   async function handleReview() {
     if (!canReview) return;
     setError(null);
-    setExecTxHash(null);
     try {
       setPhase("encoding");
       const built = await buildSwapPlan({
@@ -160,10 +168,16 @@ export function GoogleSwapPanel({
     } catch (err) {
       setPhase(null);
       setPlan(null);
-      setError(
+      const msg =
         err instanceof Error && err.message
           ? err.message
-          : "Couldn't get a swap quote. No funds moved.",
+          : "Couldn't get a swap quote. No funds moved.";
+      // "No route" means Circle has no swap route/liquidity for this pair on
+      // Arc Testnet yet — explain it honestly rather than as a generic failure.
+      setError(
+        /no route|route.*(available|found)|no.*liquidity/i.test(msg)
+          ? "No swap route for this pair on Arc Testnet yet. Swap routes depend on Circle-provided liquidity, which isn't available for this pair right now — try again later."
+          : msg,
       );
     }
   }
@@ -177,17 +191,7 @@ export function GoogleSwapPanel({
       await runContractCall(plan.approve);
 
       setPhase("executing");
-      const execOutcome = await runContractCall(plan.execute);
-
-      const raw =
-        execOutcome && typeof execOutcome.raw === "object"
-          ? (execOutcome.raw as Record<string, unknown>)
-          : null;
-      const txHash =
-        raw && typeof raw.txHash === "string" && raw.txHash.length > 0
-          ? raw.txHash
-          : null;
-      if (txHash) setExecTxHash(txHash);
+      await runContractCall(plan.execute);
 
       setPhase(null);
       setDone(true);
@@ -242,14 +246,16 @@ export function GoogleSwapPanel({
             <p className="text-[13px] text-[var(--vector-text-dim)] leading-relaxed mb-6">
               Swapped {amount} {fromSymbol} to {toSymbol} on Arc Testnet.
             </p>
-            {execExplorerUrl && (
+            {explorerUrl && (
               <a
-                href={execExplorerUrl}
+                href={explorerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block mb-6 text-[12px] text-[var(--vector-pink)] font-mono hover:opacity-80 transition-opacity"
               >
-                View swap on Arc explorer ↗
+                {explorerIsTx
+                  ? "View swap on Arc explorer ↗"
+                  : "View wallet on Arc explorer ↗"}
               </a>
             )}
             <button
