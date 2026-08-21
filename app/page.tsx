@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { setCookie, getCookie, deleteCookie } from "cookies-next";
 import { SocialLoginProvider } from "@circle-fin/w3s-pw-web-sdk/dist/src/types";
 import type { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
@@ -752,6 +752,24 @@ export default function HomePage() {
         </div>
       </section>
 
+      <footer className="flex items-center justify-center gap-5 px-6 py-6">
+        <SocialLink
+          href="https://github.com/Isaaco3349/Vector"
+          label="Vector on GitHub"
+        >
+          <GitHubMark />
+        </SocialLink>
+        <SocialLink href="https://x.com/Vector_protocol" label="Vector on X">
+          <XMark />
+        </SocialLink>
+        <SocialLink
+          href="mailto:vectorprotocol7@gmail.com"
+          label="Email Vector"
+        >
+          <MailMark />
+        </SocialLink>
+      </footer>
+
       {showSwap && connected?.source === "wallet" && (
         <SwapPanel onClose={() => setShowSwap(false)} />
       )}
@@ -1146,6 +1164,81 @@ function GoogleMark() {
       <path
         fill="#EA4335"
         d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"
+      />
+    </svg>
+  );
+}
+
+function SocialLink({
+  href,
+  label,
+  children,
+}: {
+  href: string;
+  label: string;
+  children: ReactNode;
+}) {
+  // Only http(s) links open in a new tab; mailto: opens the mail client in place.
+  const isExternal = href.startsWith("http");
+  return (
+    <a
+      href={href}
+      aria-label={label}
+      title={label}
+      {...(isExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      className="text-[var(--vector-text-dim)] hover:text-[var(--vector-pink)] transition-colors"
+    >
+      {children}
+    </a>
+  );
+}
+
+function GitHubMark() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.92.43.37.81 1.1.81 2.22 0 1.6-.01 2.9-.01 3.29 0 .32.22.7.83.58C20.56 22.29 24 17.8 24 12.5 24 5.87 18.63.5 12 .5z" />
+    </svg>
+  );
+}
+
+function XMark() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+function MailMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect
+        x="2"
+        y="4"
+        width="14"
+        height="10"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M2.5 5.5L9 9.5L15.5 5.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
