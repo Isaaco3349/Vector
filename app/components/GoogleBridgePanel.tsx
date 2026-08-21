@@ -8,6 +8,7 @@ import {
   type BridgePlan,
 } from "../lib/google-bridge";
 import {
+  BRIDGE_CHAINS,
   bridgeChainById,
   explorerAddressUrl,
   explorerTxUrl,
@@ -37,8 +38,17 @@ import { useLatestTxHash } from "../lib/use-latest-tx-hash";
  * chains — which it couldn't do anyway, being Arc-scoped.
  */
 
-/** Destinations a Google (Arc-scoped) wallet can bridge TO. Source is fixed to Arc. */
-const DEST_CHAINS: BridgeChainId[] = ["Base_Sepolia", "Ethereum_Sepolia"];
+/**
+ * Destinations a Google (Arc-scoped) wallet can bridge TO. Source is fixed to
+ * Arc, so it's every verified CCTP chain in the registry EXCEPT Arc itself.
+ * Derived from BRIDGE_CHAINS (not hardcoded) so it stays in sync automatically
+ * when chains are added there — and filtered to forwarderDestination === true,
+ * which every W3S bridge requires (the relayer mints on the destination, so the
+ * Arc-scoped wallet never has to switch chains).
+ */
+const DEST_CHAINS: BridgeChainId[] = BRIDGE_CHAINS.filter(
+  (c) => c.appKitChain !== "Arc_Testnet" && c.forwarderDestination,
+).map((c) => c.appKitChain);
 
 export function GoogleBridgePanel({
   sdk,
@@ -251,34 +261,31 @@ export function GoogleBridgePanel({
                 <span className="text-[12px] text-[var(--vector-text-dim)]">
                   To
                 </span>
-                <div className="flex gap-1.5">
+                <select
+                  value={toChain}
+                  onChange={(e) => setToChain(e.target.value as BridgeChainId)}
+                  disabled={submitting}
+                  className="bg-[var(--vector-surface)] border border-[var(--vector-line)] rounded-full px-3 py-1.5 text-[13px] font-mono font-semibold text-[var(--vector-text)] outline-none hover:border-[var(--vector-pink)] transition-colors cursor-pointer disabled:opacity-40"
+                >
                   {DEST_CHAINS.map((id) => {
                     const c = bridgeChainById(id);
-                    const active = id === toChain;
                     return (
-                      <button
+                      <option
                         key={id}
-                        onClick={() => setToChain(id)}
-                        disabled={submitting}
-                        className={
-                          "px-3 h-[32px] rounded-full text-[12px] font-mono transition-colors disabled:opacity-40 " +
-                          (active
-                            ? "bg-[var(--vector-pink)] text-[#0b0b0e]"
-                            : "border border-[var(--vector-line)] text-[var(--vector-text)] hover:border-[var(--vector-pink)]")
-                        }
+                        value={id}
+                        className="bg-[var(--vector-surface)]"
                       >
                         {c?.label ?? id}
-                      </button>
+                      </option>
                     );
                   })}
-                </div>
+                </select>
               </div>
             </div>
 
             <p className="text-[11px] leading-relaxed text-[var(--vector-text-dim)] mb-4 px-1">
               Your Google wallet lives on Arc, so bridges start from Arc. To
-              bridge from Base or Ethereum Sepolia, connect an external wallet
-              instead.
+              bridge from another chain, connect an external wallet instead.
             </p>
 
             {/* Amount */}

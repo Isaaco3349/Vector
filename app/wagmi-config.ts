@@ -1,5 +1,15 @@
 import { http, createConfig } from "wagmi";
-import { arcTestnet, baseSepolia, sepolia } from "viem/chains";
+import {
+  arcTestnet,
+  baseSepolia,
+  sepolia,
+  arbitrumSepolia,
+  avalancheFuji,
+  optimismSepolia,
+  polygonAmoy,
+  unichainSepolia,
+  lineaSepolia,
+} from "viem/chains";
 import { injected } from "wagmi/connectors";
 
 // Arc Testnet — Circle's stablecoin-native L1.
@@ -12,14 +22,25 @@ import { injected } from "wagmi/connectors";
 // http() with no URL makes wagmi use that canonical, multi-endpoint default —
 // more robust than a single hardcoded host, and no stale domain to rot.
 //
-// Base Sepolia (84532) and Ethereum Sepolia (11155111) are registered ONLY to
-// support the CCTP Bridge feature: Circle's App Kit handles the actual burn/mint
-// routing itself, but wagmi needs each chain registered so we can read the
-// wallet's USDC balance ON the source chain (per-call `chainId` reads) and so
-// the injected connector can switch to it for the burn. Swap remains
-// Arc-only — adding these chains doesn't change any swap code path.
+// The non-Arc chains are registered ONLY to support the CCTP Bridge feature:
+// Circle's App Kit handles the actual burn/mint routing itself, but wagmi needs
+// each chain registered so we can read the wallet's USDC balance ON the source
+// chain (per-call `chainId` reads) and so the injected connector can switch to
+// it for the burn. Each id here MUST stay in sync with BridgeChainNumericId in
+// app/lib/bridge-chains.ts (all verified against the SDK's cctp chain table).
+// Swap remains Arc-only — adding these chains doesn't change any swap code path.
 export const wagmiConfig = createConfig({
-  chains: [arcTestnet, baseSepolia, sepolia],
+  chains: [
+    arcTestnet,
+    baseSepolia,
+    sepolia,
+    arbitrumSepolia,
+    avalancheFuji,
+    optimismSepolia,
+    polygonAmoy,
+    unichainSepolia,
+    lineaSepolia,
+  ],
   connectors: [
     injected(), // Picks up MetaMask, Rabby, Coinbase Wallet, Rainbow, etc.
   ],
@@ -27,6 +48,12 @@ export const wagmiConfig = createConfig({
     [arcTestnet.id]: http(),
     [baseSepolia.id]: http(),
     [sepolia.id]: http(),
+    [arbitrumSepolia.id]: http(),
+    [avalancheFuji.id]: http(),
+    [optimismSepolia.id]: http(),
+    [polygonAmoy.id]: http(),
+    [unichainSepolia.id]: http(),
+    [lineaSepolia.id]: http(),
   },
   ssr: true,
 });

@@ -8,10 +8,11 @@ import { tokenBySymbol } from "../lib/swap-tokens";
  * Read the connected wallet's balance for a swap token on Arc Testnet.
  *
  * - USDC is Arc's native gas asset → wagmi `useBalance` (no contract).
- * - EURC is an ERC-20 → read `balanceOf` + `decimals` on-chain (decimals are
- *   read, never hardcoded, so a wrong constant can't misreport).
- * - cirBTC has no verified address yet → returns null (nothing shown), rather
- *   than a guessed or fake number.
+ * - cirBTC is an ERC-20 → read `balanceOf` + `decimals` on-chain (decimals are
+ *   read, never hardcoded, so cirBTC's 8 decimals can't be misreported by a
+ *   stray constant).
+ * - Any token with kind "unknown" (no verified address) → returns null (nothing
+ *   shown), rather than a guessed or fake number.
  *
  * Returns a display string like "12.5000" or null when unavailable/loading.
  */
@@ -31,7 +32,7 @@ export function useTokenBalance(symbol: string): {
     query: { enabled: isConnected && !!address && isNative },
   });
 
-  // ERC-20 balance + decimals (EURC).
+  // ERC-20 balance + decimals (cirBTC).
   const erc20Query = useReadContracts({
     query: { enabled: isConnected && !!address && isErc20 },
     contracts: isErc20
@@ -69,7 +70,7 @@ export function useTokenBalance(symbol: string): {
     return { formatted: trim(formatUnits(rawBalance, decimals)), isLoading: false };
   }
 
-  // kind === "unknown" (e.g. cirBTC) — no verified address, show nothing.
+  // kind === "unknown" — no verified address, show nothing.
   return { formatted: null, isLoading: false };
 }
 

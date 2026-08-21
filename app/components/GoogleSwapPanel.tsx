@@ -33,7 +33,7 @@ import { useLatestTxHash } from "../lib/use-latest-tx-hash";
  * never the thing that gets confirmed.
  */
 
-const SWAP_SYMBOLS: SwapSymbol[] = ["USDC", "EURC"];
+const SWAP_SYMBOLS: SwapSymbol[] = ["USDC", "cirBTC", "EURC"];
 
 export function GoogleSwapPanel({
   sdk,
@@ -54,7 +54,7 @@ export function GoogleSwapPanel({
   onSuccess: () => void;
 }) {
   const [fromSymbol, setFromSymbol] = useState<SwapSymbol>("USDC");
-  const [toSymbol, setToSymbol] = useState<SwapSymbol>("EURC");
+  const [toSymbol, setToSymbol] = useState<SwapSymbol>("cirBTC");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   // phase drives the button label through the review → approve → execute flow.
@@ -72,7 +72,8 @@ export function GoogleSwapPanel({
     amount.trim() !== "" && Number.isFinite(amountNum) && amountNum > 0;
 
   // We only know the USDC balance here, so the insufficient check applies only
-  // when the user is paying USDC. (EURC balance isn't fetched in this panel.)
+  // when the user is paying USDC. (The non-USDC token's balance isn't fetched
+  // in this panel.)
   const payingUsdc = fromSymbol === "USDC";
   const balanceNum =
     payingUsdc && usdcBalance !== null && usdcBalance !== ""

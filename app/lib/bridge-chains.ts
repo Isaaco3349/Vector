@@ -9,20 +9,38 @@
  * deployed.
  *
  * Every value below (chainId, USDC address, explorer URL, forwarder support)
- * is copied verbatim from the installed SDK's first-party chain definitions:
- *   node_modules/@circle-fin/app-kit/chains.d.mts
- * (ArcTestnet @112, BaseSepolia @484, EthereumSepolia @696). Nothing is
- * hardcoded from memory — a wrong bridge address could burn real test funds
- * into a dead contract.
+ * is copied verbatim from the installed SDK's first-party chain definitions
+ * (node_modules/@circle-fin/app-kit/chains.d.mts, each chain's `cctp` block) and
+ * cross-checked against viem's chain ids + block explorers. Nothing is hardcoded
+ * from memory — a wrong bridge address could burn real test funds into a dead
+ * contract. Every destination below has `cctp.forwarderSupported.destination =
+ * true`, so Circle's relayer mints on the destination and the wallet never has
+ * to switch chains mid-flow.
  *
  * NOT included, on purpose:
+ *  - Sonic Testnet: Circle's chainId (14601) does NOT match viem's `sonicTestnet`
+ *    (64165) or `sonicBlazeTestnet` (57054). Registering it in wagmi under the
+ *    wrong id would misroute balance reads / chain switches, so it's excluded
+ *    until a manual viem chain def with id 14601 is verified.
+ *  - Solana Devnet: non-EVM — incompatible with the wagmi / injected path.
  *  - BNB / BSC: absent from App Kit's BridgeChain enum (Circle hasn't deployed
  *    CCTP there). Adding it would be a guess that fails — or worse, misroutes.
+ *  - USDT: Circle's SDK has no Arc_Testnet USDT locator, so USDT can't be a swap
+ *    token on Arc (see swap-tokens.ts); bridging is USDC-only regardless.
  *  - Mainnets: this app is testnet-only for now.
  */
 
 /** The exact string literals App Kit's `from.chain` / `to.chain` accept for bridging. */
-export type BridgeChainId = "Arc_Testnet" | "Base_Sepolia" | "Ethereum_Sepolia";
+export type BridgeChainId =
+  | "Arc_Testnet"
+  | "Base_Sepolia"
+  | "Ethereum_Sepolia"
+  | "Arbitrum_Sepolia"
+  | "Avalanche_Fuji"
+  | "Optimism_Sepolia"
+  | "Polygon_Amoy_Testnet"
+  | "Unichain_Sepolia"
+  | "Linea_Sepolia";
 
 /**
  * The numeric chain ids, as a literal union. These MUST match the chains
@@ -30,7 +48,16 @@ export type BridgeChainId = "Arc_Testnet" | "Base_Sepolia" | "Ethereum_Sepolia";
  * the registered set, so keeping this a literal union means a chain that isn't
  * actually registered can't slip into a balance read.
  */
-export type BridgeChainNumericId = 5042002 | 84532 | 11155111;
+export type BridgeChainNumericId =
+  | 5042002
+  | 84532
+  | 11155111
+  | 421614
+  | 43113
+  | 11155420
+  | 80002
+  | 1301
+  | 59141;
 
 export type BridgeChain = {
   /** App Kit chain identifier string (a BridgeChain enum literal). */
@@ -61,7 +88,7 @@ export type BridgeChain = {
   explorerAddress: string;
   /**
    * Whether Circle's Forwarder supports this chain as a bridge DESTINATION.
-   * Verified `true` for all three in chains.d.mts (`cctp.forwarderSupported`).
+   * Verified `true` for every chain here in chains.d.mts (`cctp.forwarderSupported`).
    * When true, we can pass `useForwarder: true` so the relayer mints on the
    * destination and the wallet never has to switch chains mid-flow.
    */
@@ -99,6 +126,66 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     explorerTx: "https://sepolia.etherscan.io/tx/{hash}",
     explorerAddress: "https://sepolia.etherscan.io/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Arbitrum_Sepolia",
+    chainId: 421614,
+    label: "Arbitrum Sepolia",
+    usdcKind: "erc20",
+    usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+    explorerTx: "https://sepolia.arbiscan.io/tx/{hash}",
+    explorerAddress: "https://sepolia.arbiscan.io/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Avalanche_Fuji",
+    chainId: 43113,
+    label: "Avalanche Fuji",
+    usdcKind: "erc20",
+    usdcAddress: "0x5425890298aed601595a70ab815c96711a31bc65",
+    explorerTx: "https://testnet.snowtrace.io/tx/{hash}",
+    explorerAddress: "https://testnet.snowtrace.io/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Optimism_Sepolia",
+    chainId: 11155420,
+    label: "Optimism Sepolia",
+    usdcKind: "erc20",
+    usdcAddress: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+    explorerTx: "https://optimism-sepolia.blockscout.com/tx/{hash}",
+    explorerAddress: "https://optimism-sepolia.blockscout.com/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Polygon_Amoy_Testnet",
+    chainId: 80002,
+    label: "Polygon Amoy",
+    usdcKind: "erc20",
+    usdcAddress: "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582",
+    explorerTx: "https://amoy.polygonscan.com/tx/{hash}",
+    explorerAddress: "https://amoy.polygonscan.com/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Unichain_Sepolia",
+    chainId: 1301,
+    label: "Unichain Sepolia",
+    usdcKind: "erc20",
+    usdcAddress: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
+    explorerTx: "https://sepolia.uniscan.xyz/tx/{hash}",
+    explorerAddress: "https://sepolia.uniscan.xyz/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Linea_Sepolia",
+    chainId: 59141,
+    label: "Linea Sepolia",
+    usdcKind: "erc20",
+    usdcAddress: "0xfece4462d57bd51a6a552365a011b95f0e16d9b7",
+    explorerTx: "https://sepolia.lineascan.build/tx/{hash}",
+    explorerAddress: "https://sepolia.lineascan.build/address/{address}",
     forwarderDestination: true,
   },
 ];

@@ -21,7 +21,9 @@ import { ReceivePanel } from "./components/ReceivePanel";
 import { EarnPanel } from "./components/EarnPanel";
 import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
+import { useTokenBalance } from "./components/useTokenBalance";
 import { bridgeChainByNumericId } from "./lib/bridge-chains";
+import { ARC_FAUCET_URL } from "./lib/faucet";
 
 const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID as string;
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID as string;
@@ -75,6 +77,12 @@ export default function HomePage() {
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  // cirBTC holdings for the Google (Circle) wallet, parsed from the SAME
+  // balances endpoint as USDC (Circle returns human-readable amounts, so no
+  // decimal math here). Display-only — it never gates Send/Swap. The external
+  // wallet reads cirBTC on-chain via useTokenBalance instead, so this stays null
+  // for that path.
+  const [cirBtcBalance, setCirBtcBalance] = useState<string | null>(null);
   // Circle's own token UUID for this wallet's USDC — required as `tokenId` when
   // creating a transfer challenge. Captured from the balances endpoint so we
   // never hardcode a USDC address for the Google-wallet Send path.
@@ -253,6 +261,15 @@ export default function HomePage() {
       setUsdcTokenId(
         typeof usdcEntry?.token?.id === "string" ? usdcEntry.token.id : null,
       );
+      // cirBTC holdings, from the same list — display-only, so no tokenId or
+      // gating. If the wallet holds none, it simply won't appear → show "0".
+      const cirBtcEntry =
+        balances.find((t) => {
+          const symbol = (t.token?.symbol || "").toLowerCase();
+          const name = (t.token?.name || "").toLowerCase();
+          return symbol === "cirbtc" || name.includes("cirbtc");
+        }) ?? null;
+      setCirBtcBalance(cirBtcEntry?.amount ?? "0");
       return amount;
     } catch (err) {
       console.error("Failed to load USDC balance:", err);
@@ -717,6 +734,7 @@ export default function HomePage() {
               address={connected.address}
               blockchain={connected.blockchain}
               balance={connected.balance}
+              cirBtcBalance={cirBtcBalance}
               source={connected.source}
               onSend={() => setShowSend(true)}
               onReceive={() => setShowReceive(true)}
@@ -875,6 +893,7 @@ function WalletCard({
   address,
   blockchain,
   balance,
+  cirBtcBalance,
   source,
   onSend,
   onReceive,
@@ -887,6 +906,7 @@ function WalletCard({
   address: string;
   blockchain: string;
   balance: string | null;
+  cirBtcBalance?: string | null;
   source: "circle" | "wallet";
   onSend?: () => void;
   onReceive?: () => void;
@@ -898,6 +918,23 @@ function WalletCard({
 }) {
   const [copied, setCopied] = useState(false);
   const short = `${address.slice(0, 6)}…${address.slice(-4)}`;
+
+  // Multi-asset portfolio: show cirBTC alongside USDC.
+  // - External wallet: read it on-chain (decimals read on-chain, never guessed).
+  //   The hook self-disables when wagmi isn't connected, so it's inert for the
+  //   Google path.
+  // - Google (Circle) wallet: comes in via the cirBtcBalance prop, parsed from
+  //   Circle's balances endpoint upstream.
+  const cirBtcOnChain = useTokenBalance("cirBTC");
+  const cirBtc =
+    source === "wallet" ? cirBtcOnChain.formatted : cirBtcBalance ?? null;
+  const cirBtcNum = cirBtc !== null && cirBtc !== "" ? Number(cirBtc) : null;
+  const hasCirBtc = cirBtcNum !== null && Number.isFinite(cirBtcNum) && cirBtcNum > 0;
+
+  // Arc's gas token IS USDC, so a 0-balance wallet is stuck until funded — show
+  // a faucet nudge in that case.
+  const balanceNum = balance !== null && balance !== "" ? Number(balance) : null;
+  const needsFunds = balanceNum !== null && Number.isFinite(balanceNum) && balanceNum === 0;
 
   return (
     <div className="rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-7">
@@ -920,6 +957,51 @@ function WalletCard({
           USDC
         </span>
       </p>
+
+      {/* Multi-asset portfolio — when the wallet also holds cirBTC, break the
+          holdings out so Vector reads as a portfolio, not a single-balance
+          wallet. Hidden for USDC-only wallets to keep the card clean. Built to
+          take more rows as new verified assets are added. */}
+      {hasCirBtc && (
+        <div className="mb-6 rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] overflow-hidden">
+          <div className="px-4 pt-3 pb-2 text-[11px] uppercase tracking-wide text-[var(--vector-text-dim)]">
+            Assets
+          </div>
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--vector-line)]">
+            <span className="flex items-center gap-2 text-[14px] font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--vector-pink)]" />
+              USDC
+            </span>
+            <span className="text-[14px] font-mono">{balance ?? "0.00"}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--vector-line)]">
+            <span className="flex items-center gap-2 text-[14px] font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--vector-text-dim)]" />
+              cirBTC
+            </span>
+            <span className="text-[14px] font-mono">{cirBtc}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Arc gas is paid in USDC, so a 0-balance wallet can't do anything until
+          it's funded. Nudge new users straight to the faucet. */}
+      {needsFunds && (
+        <a
+          href={ARC_FAUCET_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block mb-6 rounded-2xl border border-[var(--vector-pink)] bg-[var(--vector-surface-raised)] px-4 py-3 hover:opacity-90 transition-opacity"
+        >
+          <p className="text-[13px] font-semibold text-[var(--vector-text)] mb-0.5">
+            Get test USDC to get started ↗
+          </p>
+          <p className="text-[12px] leading-relaxed text-[var(--vector-text-dim)]">
+            Arc pays gas in USDC, so your wallet needs a little before you can
+            send, swap, or bridge. Claim free test USDC from the faucet.
+          </p>
+        </a>
+      )}
 
       {/* Wallet actions — Send / Receive / Swap / Bridge / Earn are all live for
           both external and Google (Circle) wallets. */}
@@ -966,6 +1048,18 @@ function WalletCard({
       >
         {copied ? "Copied" : short}
       </button>
+
+      {/* Faucet — always available so users can top up test USDC anytime, not
+          just when empty. Link-out (user chose the official Arc faucet); no
+          funds move through Vector. URL is env-overridable (see lib/faucet.ts). */}
+      <a
+        href={ARC_FAUCET_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 flex items-center justify-center h-[44px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[13px] text-[var(--vector-text-dim)] hover:border-[var(--vector-pink)] hover:text-[var(--vector-text)] transition-colors"
+      >
+        Get test USDC (Faucet) ↗
+      </a>
 
       {onHistory && (
         <button

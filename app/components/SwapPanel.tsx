@@ -23,7 +23,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const { address, isConnected, connector } = useAccount();
 
   const [tokenIn, setTokenIn] = useState("USDC");
-  const [tokenOut, setTokenOut] = useState("EURC");
+  const [tokenOut, setTokenOut] = useState("cirBTC");
   const [amountIn, setAmountIn] = useState("");
 
   const [quote, setQuote] = useState<SwapQuote | null>(null);

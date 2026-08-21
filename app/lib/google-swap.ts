@@ -53,28 +53,32 @@
  *      on tokenAddress; REQUIRES amount to be a bigint (throws otherwise).
  *   • 'swap.execute' (@17251) → adapter contract chain.kitContracts.adapter,
  *      execute(executeParams, tokenInputs, signature); value = Σ instruction.value
- *      (0 for non-native USDC↔EURC — NATIVE_TOKEN 0xEeee… ≠ Arc USDC 0x3600).
+ *      (0 for non-native USDC↔cirBTC — NATIVE_TOKEN 0xEeee… ≠ Arc USDC 0x3600).
  *   • Arc def (@2389): usdcAddress 0x3600…, eurcAddress 0x89B5…D72a,
  *      kitContracts.adapter 0xBBD70b01… (@2331), chainId 5042002,
  *      rpcEndpoints[0] "https://rpc.testnet.arc.network/". ALL read from the def,
  *      nothing hardcoded here.
  *
  * ── DECIMALS ──────────────────────────────────────────────────────────────────
- * Arc USDC and EURC are BOTH 6-decimal ERC-20s (Arc's native 18 is gas-only). We
- * use viem parseUnits/formatUnits with 6 for both amounts and the estimate.
+ * Arc USDC is a 6-decimal ERC-20; EURC is 6-decimal; cirBTC is 8-decimal (Arc's
+ * native 18 is gas-only). Amounts are therefore scaled PER TOKEN — parseUnits by
+ * the INPUT token's decimals, formatUnits the estimate by the OUTPUT token's
+ * decimals — never a single shared constant. Values are copied verbatim from
+ * Circle's SDK token registry (its docs state CIRBTC.decimals = 8, EURC.decimals = 6).
  *
  * ── ON-CHAIN RISK ─────────────────────────────────────────────────────────────
  * The approve step is already live-proven (the bridge used usdc.increaseAllowance
  * on Arc's 0x3600 predeploy 2026-08-20). The one new unproven piece is
  * swap.execute against Arc adapter 0xBBD7… + whether Circle's swap SERVICE
- * actually routes Arc-Testnet USDC↔EURC — the same risk the external Swap carries.
- * Confirm with a small live swap on the deployed app.
+ * actually routes Arc-Testnet USDC↔cirBTC — the same risk the external Swap
+ * carries. A missing route returns "no route" (no funds move); confirm the happy
+ * path with a small live swap on the deployed app.
  */
 
 import { formatUnits, parseUnits } from "viem";
 
-/** The two Arc-Testnet swap tokens. USDC and EURC are both 6-decimal ERC-20s. */
-export type SwapSymbol = "USDC" | "EURC";
+/** The Arc-Testnet swap tokens: USDC (6d), cirBTC (8d), EURC (6d). */
+export type SwapSymbol = "USDC" | "cirBTC" | "EURC";
 
 /** A single contract call for the W3S contractExecution challenge. */
 export type SwapCall = {
@@ -82,7 +86,7 @@ export type SwapCall = {
   to: string;
   /** ABI-encoded calldata hex. From Circle's getCallData().data. */
   data: string;
-  /** Native msg.value as a decimal string. "0" for USDC↔EURC (non-native). */
+  /** Native msg.value as a decimal string. "0" for USDC↔cirBTC (no native value sent). */
   value: string;
 };
 
@@ -93,10 +97,10 @@ export type SwapCall = {
 export type SwapPlan = {
   approve: SwapCall;
   execute: SwapCall;
-  /** Human amount in echoed back for display, and its 6-decimal minor-unit form. */
+  /** Human input amount echoed for display, and its minor-unit form (input token decimals). */
   amount: string;
   amountMinor: string;
-  /** Best-effort human estimated output (6 decimals), or null if not returned. */
+  /** Best-effort human estimated output (scaled by the output token's decimals), or null. */
   estimatedAmount: string | null;
   fromSymbol: SwapSymbol;
   toSymbol: SwapSymbol;
@@ -109,7 +113,7 @@ export type BuildSwapPlanArgs = {
   fromSymbol: SwapSymbol;
   /** Output token symbol. Must differ from fromSymbol. */
   toSymbol: SwapSymbol;
-  /** Human-readable input amount, e.g. "1.5". Converted to 6-decimal minor units. */
+  /** Human-readable input amount, e.g. "1.5". Converted to the input token's minor units. */
   amount: string;
   /** Optional slippage in basis points; omitted → Circle's service default. */
   slippageBps?: number;
@@ -118,8 +122,23 @@ export type BuildSwapPlanArgs = {
 /** The Google wallet only ever swaps on Arc. Blockchain enum value (underscore). */
 const ARC_CHAIN_ENUM = "Arc_Testnet";
 
-/** Arc USDC and EURC are both 6-decimal ERC-20s (native 18 is gas-only). */
-const TOKEN_DECIMALS = 6;
+/**
+ * Per-symbol decimals on Arc Testnet, copied verbatim from Circle's SDK token
+ * registry (USDC = 6; cirBTC = 8; EURC = 6 — the SDK's token defs state
+ * CIRBTC.decimals = 8 and EURC.decimals = 6). Amounts are scaled by the RELEVANT
+ * token's decimals (input for the amount, output for the estimate); this is
+ * deliberately NOT one shared constant, since a wrong scale would mis-size a
+ * real transfer.
+ */
+const TOKEN_DECIMALS: Record<SwapSymbol, number> = { USDC: 6, cirBTC: 8, EURC: 6 };
+
+/**
+ * cirBTC's Arc address. It lives ONLY in the SDK token registry (the Arc chain
+ * def has no cirBTC field), so it's pinned here from the SDK's documented value —
+ * CIRBTC.locators[Blockchain.Arc_Testnet] — verified in both the swap-kit and
+ * app-kit bundles. USDC's address is still read from the resolved chain def.
+ */
+const CIRBTC_ARC_ADDRESS = "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF";
 
 /**
  * Minimal read-only EIP-1193 provider for the W3S wallet — identical intent to
@@ -296,7 +315,7 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
   }
 
   const amountTrimmed = args.amount.trim();
-  const amountMinorBig = parseUnits(amountTrimmed, TOKEN_DECIMALS);
+  const amountMinorBig = parseUnits(amountTrimmed, TOKEN_DECIMALS[fromSymbol]);
   if (amountMinorBig <= BigInt(0)) {
     throw new Error("Enter an amount greater than zero.");
   }
@@ -325,7 +344,6 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
   >;
 
   const usdcAddress = requireString(sourceDef, "usdcAddress", "USDC address");
-  const eurcAddress = requireString(sourceDef, "eurcAddress", "EURC address");
   const kitContracts =
     sourceDef.kitContracts && typeof sourceDef.kitContracts === "object"
       ? (sourceDef.kitContracts as Record<string, unknown>)
@@ -336,9 +354,30 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
     "swap adapter contract",
   );
 
+  // EURC's address rides on the SAME resolved chain def as USDC (verified: the
+  // Arc def carries `eurcAddress` in swap-kit + adapter-viem-v2). Read it
+  // defensively so a USDC↔cirBTC swap never depends on it — it's only required
+  // when EURC is actually one of the legs.
+  const eurcAddress =
+    typeof sourceDef.eurcAddress === "string" && sourceDef.eurcAddress
+      ? (sourceDef.eurcAddress as string)
+      : null;
+
   // Symbol → resolved token ADDRESS (the service takes addresses, not aliases).
-  const symbolToAddress = (s: SwapSymbol): string =>
-    s === "USDC" ? usdcAddress : eurcAddress;
+  // USDC + EURC come from the resolved chain def; cirBTC from the SDK registry
+  // (pinned above, since the chain def carries no cirBTC address).
+  const symbolToAddress = (s: SwapSymbol): string => {
+    if (s === "USDC") return usdcAddress;
+    if (s === "cirBTC") return CIRBTC_ARC_ADDRESS;
+    // EURC
+    if (!eurcAddress) {
+      throw new Error(
+        "EURC isn't available on Arc right now (no address on the chain " +
+          "definition). No funds moved — please try another pair.",
+      );
+    }
+    return eurcAddress;
+  };
   const tokenInAddressReq = symbolToAddress(fromSymbol);
   const tokenOutAddressReq = symbolToAddress(toSymbol);
 
@@ -479,7 +518,7 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
   const ctx = { chain: sourceDef };
 
   // APPROVE — let the Adapter Contract pull the input token. USDC uses
-  // increaseAllowance (its canonical predeploy method); EURC uses the standard
+  // increaseAllowance (its canonical predeploy method); cirBTC uses the standard
   // ERC-20 approve. Both target the input token; delegate = adapter contract.
   // amount is a bigint (token.approve REQUIRES bigint; increaseAllowance accepts it).
   const isUsdcIn = tokenInAddress.toLowerCase() === usdcAddress.toLowerCase();
@@ -510,11 +549,11 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
   );
   const execute = readCallData(executePrepared, "execute");
 
-  // Best-effort human estimate for display (output token is also 6 decimals).
+  // Best-effort human estimate for display, scaled by the OUTPUT token's decimals.
   const rawEstimate = swapData?.estimatedAmount;
   const estimatedAmount =
     typeof rawEstimate === "string" && /^\d+$/.test(rawEstimate)
-      ? formatUnits(BigInt(rawEstimate), TOKEN_DECIMALS)
+      ? formatUnits(BigInt(rawEstimate), TOKEN_DECIMALS[toSymbol])
       : null;
 
   return {
