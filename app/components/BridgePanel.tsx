@@ -8,7 +8,11 @@ import {
   type BridgeQuote,
   type Eip1193Provider,
 } from "../lib/bridge";
-import { BRIDGE_CHAINS, type BridgeChainId } from "../lib/bridge-chains";
+import {
+  BRIDGE_CHAINS,
+  explorerAddressUrl,
+  type BridgeChainId,
+} from "../lib/bridge-chains";
 import { useBridgeBalance } from "./useBridgeBalance";
 
 /**
@@ -37,6 +41,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [txUrl, setTxUrl] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState<string | null>(null);
+  const [activityUrl, setActivityUrl] = useState<string | null>(null);
 
   const balanceFrom = useBridgeBalance(fromChain);
 
@@ -90,6 +95,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     setTxHash(null);
     setTxUrl(null);
     setPendingNote(null);
+    setActivityUrl(null);
     if (sameChain) {
       setQuote(null);
       setError("Choose two different chains.");
@@ -147,6 +153,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     setTxHash(null);
     setTxUrl(null);
     setPendingNote(null);
+    setActivityUrl(null);
     try {
       const result = await executeBridge({
         provider,
@@ -156,10 +163,20 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       });
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
-      if (!result.txHash) {
+      if (result.state === "error") {
+        // Circle explicitly reported failure — this is a real error.
         setError(
-          "Bridge submitted, but no source transaction hash was returned. Check your wallet activity to confirm.",
+          "Circle reported the bridge didn't go through. No funds were moved — please try again.",
         );
+      } else if (!result.txHash) {
+        // bridge() resolved without error, so the burn was submitted — the SDK
+        // just hasn't handed back a source hash yet. That is NOT a failure, so
+        // show a calm note (not an alarming red error) and point at the wallet's
+        // activity on the source chain, matching the Google wallet's UX.
+        setPendingNote(
+          "Bridge submitted. Circle is still finalizing the source transaction — it'll show in your wallet activity shortly, and the destination mint follows within a few minutes.",
+        );
+        if (address) setActivityUrl(explorerAddressUrl(fromChain, address));
       } else if (result.state !== "success") {
         // Burn is on-chain; the destination mint (via the relayer) can still be
         // in flight. Say so honestly rather than implying instant completion.
@@ -291,6 +308,17 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
           <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed">
             {pendingNote}
           </p>
+        )}
+
+        {activityUrl && (
+          <a
+            href={activityUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-[13px] text-[var(--vector-pink)] font-mono mb-4 underline break-all"
+          >
+            View your wallet on the {chainLabel(fromChain)} explorer ↗
+          </a>
         )}
 
         {txHash && txUrl && (
