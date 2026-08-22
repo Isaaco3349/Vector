@@ -1,30 +1,52 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { isAddress } from "viem";
+import { isAddress, parseUnits } from "viem";
 import type { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 import { runChallenge, type W3sAuth } from "../lib/w3s-tx";
 import { explorerAddressUrl, explorerTxUrl } from "../lib/bridge-chains";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
+import {
+  ARC_NATIVE_DECIMALS,
+  encodeVectorSend,
+  vectorRouterAddress,
+} from "../lib/vector-router";
 
 /**
  * Send USDC panel for the Google-login (Circle user-controlled / W3S) wallet.
  *
  * This is a different path from SendPanel (which drives an external wagmi
  * wallet). A user-controlled send is a two-step handshake, and NOTHING about
- * the money-moving call is guessed:
- *   1. (server) POST /api/endpoints action "createTransferChallenge" →
- *      Circle's verified /v1/w3s/user/transactions/transfer builds the transfer
- *      from structured inputs (walletId, tokenId, destinationAddress, amount)
- *      and returns a `challengeId`. Circle constructs the transfer itself — we
- *      hand-encode no calldata.
- *   2. (browser) runChallenge(sdk, auth, challengeId) → Circle's own PIN /
- *      confirmation UI opens over this modal; on approval Circle signs and
- *      broadcasts.
+ * the money-moving call is guessed.
  *
- * The USDC token is identified by Circle's `tokenId` (read from the balances
- * endpoint), so no USDC address is hardcoded. Amounts are passed as the same
- * human-readable decimal string the balances endpoint reports.
+ * ── TWO ROUTES, PICKED BY CONFIG ──────────────────────────────────────────────
+ * A) ROUTER (when NEXT_PUBLIC_VECTOR_ROUTER_ARC is set) — the send becomes a real
+ *    on-chain CONTRACT CALL to Vector's own router, emitting an indexable
+ *    `VectorSend` event instead of being an anonymous value transfer:
+ *      1. (server) action "createContractExecutionChallenge" → Circle's verified
+ *         POST /v1/w3s/user/transactions/contractExecution with
+ *         contractAddress = the router, callData = `send(to, amount)` encoded by
+ *         viem from OUR OWN contract's ABI (contracts/VectorRouter.sol in this
+ *         repo — a first-party ABI, so there is nothing third-party to guess),
+ *         and `amount` = the NATIVE msg.value. Returns a `challengeId`.
+ *      2. (browser) runChallenge → Circle's PIN UI → Circle signs + broadcasts.
+ *    The router's fee is deployed at ZERO, so the recipient still receives 100%.
+ *    The amount is sent BOTH as calldata and as the native value; the router
+ *    reverts unless they match exactly, so if Circle ever interpreted the value
+ *    string in different units than we encoded, the transaction fails loudly
+ *    instead of moving an unintended amount.
+ *
+ * B) PLAIN TRANSFER (router not configured) — today's shipped behaviour, kept as
+ *    the fallback so a missing env var degrades to something that works rather
+ *    than a Send button that can only fail:
+ *      1. (server) action "createTransferChallenge" → Circle's verified
+ *         /v1/w3s/user/transactions/transfer builds the transfer from structured
+ *         inputs (walletId, tokenId, destinationAddress, amount) and returns a
+ *         `challengeId`. Circle constructs the transfer itself — no hand-encoding.
+ *      2. (browser) runChallenge, as above.
+ *    The USDC token is identified by Circle's `tokenId` (read from the balances
+ *    endpoint), so no USDC address is hardcoded. Amounts are passed as the same
+ *    human-readable decimal string the balances endpoint reports.
  */
 export function GoogleSendPanel({
   sdk,
@@ -71,12 +93,24 @@ export function GoogleSendPanel({
   const insufficient =
     amountValid && balanceNum !== null && amountNum > balanceNum;
 
+  // Vector's Arc router, if configured. null = fall back to Circle's plain
+  // transfer; never an error state, so Send works either way.
+  const routerAddress = useMemo(() => vectorRouterAddress(), []);
+  const routedThroughVector = routerAddress !== null;
+
+  // The router moves NATIVE value, so it needs a positive balance rather than a
+  // Circle `tokenId`. The transfer path needs the tokenId to name the asset.
+  const hasSpendableBalance = balanceNum !== null && balanceNum > 0;
+  const hasWhatThisPathNeeds = routedThroughVector
+    ? hasSpendableBalance
+    : !!tokenId;
+
   const canSend =
     recipientValid &&
     !isSelfSend &&
     amountValid &&
     !insufficient &&
-    !!tokenId &&
+    hasWhatThisPathNeeds &&
     !submitting &&
     !done;
 
@@ -95,22 +129,45 @@ export function GoogleSendPanel({
   const explorerIsTx = sendTxHash != null;
 
   async function handleSend() {
-    if (!canSend || !tokenId) return;
+    if (!canSend) return;
+    if (!routedThroughVector && !tokenId) return;
     setError(null);
     setPhase("creating");
     try {
-      // Step 1 — server creates the transfer challenge over Circle's REST API.
+      // Step 1 — server creates the challenge over Circle's REST API. WHICH
+      // challenge depends on whether Vector's router is configured: a contract
+      // execution against the router (a real, attributable on-chain call), or
+      // Circle's plain transfer as the fallback.
+      const amountTrimmed = amount.trim();
+      const body = routerAddress
+        ? {
+            action: "createContractExecutionChallenge",
+            userToken: auth.userToken,
+            walletId,
+            contractAddress: routerAddress,
+            callData: encodeVectorSend(
+              recipientTrimmed as `0x${string}`,
+              parseUnits(amountTrimmed, ARC_NATIVE_DECIMALS),
+            ),
+            // The NATIVE msg.value, as the same human-readable decimal string
+            // every other Circle W3S amount field takes. The router requires
+            // this to equal the amount in the calldata above, so a units
+            // disagreement reverts instead of sending the wrong amount.
+            amount: amountTrimmed,
+          }
+        : {
+            action: "createTransferChallenge",
+            userToken: auth.userToken,
+            walletId,
+            tokenId,
+            destinationAddress: recipientTrimmed,
+            amount: amountTrimmed,
+          };
+
       const response = await fetch("/api/endpoints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "createTransferChallenge",
-          userToken: auth.userToken,
-          walletId,
-          tokenId,
-          destinationAddress: recipientTrimmed,
-          amount: amount.trim(),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
 
@@ -291,7 +348,7 @@ export function GoogleSendPanel({
               </p>
             )}
 
-            {!tokenId && !error && (
+            {!hasWhatThisPathNeeds && !error && (
               <p className="text-[13px] text-[var(--vector-text-dim)] font-mono mb-4">
                 This wallet has no USDC to send yet.
               </p>
@@ -312,6 +369,9 @@ export function GoogleSendPanel({
             <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
               On Arc, gas is paid in USDC — leave a little for the network fee.
               You&apos;ll confirm with your Circle PIN.
+              {routedThroughVector
+                ? " Routed on-chain through Vector — no fee, you send 100%."
+                : ""}
             </p>
           </>
         )}
