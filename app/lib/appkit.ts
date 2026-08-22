@@ -66,7 +66,22 @@ export type SwapArgs = {
    * hatch when a wallet or token can't produce a permit signature.
    */
   allowanceStrategy?: "permit" | "approve";
+  /**
+   * Maximum acceptable slippage, in basis points.
+   *
+   * Copied from the installed SDK's `SwapConfig.slippageBps`, documented there
+   * as "1 BPS = 0.01%, so 300 BPS = 3% slippage. Defaults to 300 BPS (3%)."
+   *
+   * Left undefined we get Circle's 3% default. It is raised only when the user
+   * explicitly asks for a looser tolerance after the SDK has told us the
+   * slippage constraint is what blocked the swap — a wider tolerance means
+   * accepting a worse price, so it is never widened on the user's behalf.
+   */
+  slippageBps?: number;
 };
+
+/** Circle's documented default slippage tolerance (SwapConfig.slippageBps). */
+export const DEFAULT_SLIPPAGE_BPS = 300;
 
 export type SwapQuote = {
   /** Best-effort estimated output amount, or null if the field name isn't recognised. */
@@ -151,15 +166,22 @@ async function buildKitAndParams(args: SwapArgs) {
 
   const kitKey = resolveKitKey(args.kitKey);
 
-  // Both of these are fields of the SDK's `SwapConfig` (verified in app-kit's
-  // swap.d.mts: `kitKey?: string` and `allowanceStrategy?: 'permit' |
-  // 'approve'`), so they belong inside one `config` object rather than at the
-  // top level. Only keys we actually have are set — passing an explicit
-  // `undefined` would override the SDK's own default instead of deferring to it.
-  const config: { kitKey?: string; allowanceStrategy?: "permit" | "approve" } =
-    {};
+  // These are all fields of the SDK's `SwapConfig` (verified in app-kit's
+  // swap.d.mts: `kitKey?: string`, `allowanceStrategy?: 'permit' | 'approve'`,
+  // `slippageBps?: number`), so they belong inside one `config` object rather
+  // than at the top level. Only keys we actually have are set — passing an
+  // explicit `undefined` would override the SDK's own default instead of
+  // deferring to it.
+  const config: {
+    kitKey?: string;
+    allowanceStrategy?: "permit" | "approve";
+    slippageBps?: number;
+  } = {};
   if (kitKey) config.kitKey = kitKey;
   if (args.allowanceStrategy) config.allowanceStrategy = args.allowanceStrategy;
+  if (typeof args.slippageBps === "number" && Number.isFinite(args.slippageBps)) {
+    config.slippageBps = args.slippageBps;
+  }
   const hasConfig = Object.keys(config).length > 0;
 
   const swapParams = {
@@ -238,7 +260,179 @@ export function isPermitGenerationFailure(err: unknown): boolean {
   return /permit generation (failed|returned null)/i.test(message);
 }
 
-/** SwapEstimate.estimatedOutput / TokenAmount — { token, amount } both strings. */
+/**
+ * What actually went wrong with a swap, as Circle itself classified it.
+ *
+ * Distinguishing these matters because the advice differs completely:
+ * "unsupported-route" is permanent (the SDK marks it FATAL), while
+ * "slippage" and "insufficient-liquidity" are both retryable but need
+ * *different* remedies — a looser tolerance versus a smaller size or more
+ * time. Collapsing them into one "no liquidity, try later" message tells
+ * users to wait for something that may never arrive, and hides the one knob
+ * that would have worked.
+ */
+export type SwapErrorKind =
+  | "user-cancelled"
+  | "chain-mismatch"
+  | "permit-generation"
+  | "unsupported-route"
+  | "unsupported-token"
+  | "slippage"
+  | "insufficient-liquidity"
+  | "amount-out-of-range"
+  | "rate-limited"
+  | "network"
+  | "service"
+  | "unknown";
+
+export type SwapErrorInfo = {
+  kind: SwapErrorKind;
+  /** The SDK's own error name, e.g. "INPUT_UNSUPPORTED_ROUTE". */
+  name: string | null;
+  /** The SDK's own numeric code, e.g. 1003. */
+  code: number | null;
+  /** "FATAL" | "RETRYABLE" as the SDK reported it — never inferred by us. */
+  recoverability: string | null;
+  /** The SDK's message, kept verbatim so nothing is hidden from the user. */
+  detail: string | null;
+  /** Amount bounds, when Circle attached them (amount-range errors). */
+  minAmount: string | null;
+  maxAmount: string | null;
+  amountToken: string | null;
+};
+
+/**
+ * Circle's `KitError` carries `name`, `code`, `type` and `recoverability` as
+ * enumerable readonly properties (verified in app-kit's KitError constructor),
+ * and App Kit rethrows provider errors unchanged — `withErrorTelemetry` logs and
+ * then `throw error`s the original — so these fields survive all the way out to
+ * a caller. That makes them a far better signal than the message prose.
+ *
+ * Both tables are transcribed from the SDK's own error registries (InputError,
+ * LiquidityError, ServiceError, NetworkError, RateLimitError). Name is checked
+ * first because a string is the more stable identifier; the code table is a
+ * cross-check for anything that renames.
+ *
+ * `INPUT_VALIDATION_FAILED` (1098) is deliberately absent: it is the SDK's
+ * generic bucket, and the permit-generation guard throws it, so it has to fall
+ * through to the message checks below to be told apart from real validation
+ * problems.
+ */
+const KIND_BY_ERROR_NAME: Record<string, SwapErrorKind> = {
+  INPUT_USER_CANCELLED: "user-cancelled",
+  INPUT_NETWORK_MISMATCH: "chain-mismatch",
+  INPUT_CHAIN_MISMATCH: "chain-mismatch",
+  INPUT_CHAIN_SWITCH_REJECTED: "chain-mismatch",
+  INPUT_UNRECOGNIZED_CHAIN: "chain-mismatch",
+  INPUT_UNSUPPORTED_ROUTE: "unsupported-route",
+  INPUT_UNSUPPORTED_TOKEN: "unsupported-token",
+  INPUT_SLIPPAGE_CONSTRAINT_NOT_MET: "slippage",
+  INPUT_INSUFFICIENT_SWAP_AMOUNT: "amount-out-of-range",
+  INPUT_AMOUNT_OUT_OF_RANGE: "amount-out-of-range",
+  INPUT_INVALID_AMOUNT: "amount-out-of-range",
+  LIQUIDITY_INSUFFICIENT: "insufficient-liquidity",
+  RATE_LIMIT_EXCEEDED: "rate-limited",
+  NETWORK_CONNECTION_FAILED: "network",
+  NETWORK_TIMEOUT: "network",
+  SERVICE_INTERNAL_ERROR: "service",
+  SERVICE_UNKNOWN_ERROR: "service",
+};
+
+const KIND_BY_ERROR_CODE: Record<number, SwapErrorKind> = {
+  1001: "chain-mismatch",
+  1002: "amount-out-of-range",
+  1003: "unsupported-route",
+  1006: "unsupported-token",
+  1007: "amount-out-of-range",
+  1009: "slippage",
+  1010: "chain-mismatch",
+  1011: "chain-mismatch",
+  1012: "chain-mismatch",
+  1013: "amount-out-of-range",
+  1099: "user-cancelled",
+  3001: "network",
+  3002: "network",
+  6001: "insufficient-liquidity",
+  7001: "rate-limited",
+  8001: "service",
+  8002: "service",
+};
+
+/**
+ * Circle attaches amount bounds at `cause.trace.{minAmount,maxAmount,token}`
+ * when the service rejects a size (verified in the SDK's 400/503 handlers,
+ * which build that trace from `extractAmountError`). Read defensively — every
+ * field is optional and this is only ever used to make a message more specific.
+ */
+function readAmountBounds(cause: unknown): {
+  minAmount: string | null;
+  maxAmount: string | null;
+  amountToken: string | null;
+} {
+  const empty = { minAmount: null, maxAmount: null, amountToken: null };
+  if (!cause || typeof cause !== "object") return empty;
+  const trace = (cause as Record<string, unknown>).trace;
+  if (!trace || typeof trace !== "object") return empty;
+  const rec = trace as Record<string, unknown>;
+  const str = (v: unknown): string | null => {
+    if (typeof v === "string" && v.length > 0) return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    return null;
+  };
+  return {
+    minAmount: str(rec.minAmount),
+    maxAmount: str(rec.maxAmount),
+    amountToken: str(rec.token),
+  };
+}
+
+/**
+ * Classify a swap failure using Circle's structured error fields, falling back
+ * to message inspection only for errors that aren't Circle's — a wallet
+ * rejection, or the chain mismatch that arrives nested inside the SDK's generic
+ * permit-generation error.
+ */
+export function classifySwapError(err: unknown): SwapErrorInfo {
+  const message =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const rec =
+    err && typeof err === "object" ? (err as Record<string, unknown>) : null;
+
+  const name = typeof rec?.name === "string" ? rec.name : null;
+  const code = typeof rec?.code === "number" ? rec.code : null;
+  const recoverability =
+    typeof rec?.recoverability === "string" ? rec.recoverability : null;
+
+  let kind: SwapErrorKind =
+    (name ? KIND_BY_ERROR_NAME[name] : undefined) ??
+    (code !== null ? KIND_BY_ERROR_CODE[code] : undefined) ??
+    "unknown";
+
+  if (kind === "unknown" && message) {
+    if (/reject|denied|user cancel/i.test(message)) {
+      kind = "user-cancelled";
+    } else if (
+      // Checked before the permit case on purpose: this text arrives *inside*
+      // the permit-generation message, and it is the actionable half.
+      /must match the active chain|does not match the target chain|chain mismatch/i.test(
+        message,
+      )
+    ) {
+      kind = "chain-mismatch";
+    } else if (/permit generation (failed|returned null)/i.test(message)) {
+      kind = "permit-generation";
+    }
+  }
+
+  return {
+    kind,
+    name,
+    code,
+    recoverability,
+    detail: message.length > 0 ? message : null,
+    ...readAmountBounds(rec?.cause),
+  };
+}
 function readTokenAmount(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
   const rec = value as Record<string, unknown>;
