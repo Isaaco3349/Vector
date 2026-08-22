@@ -33,7 +33,15 @@ import { useLatestTxHash } from "../lib/use-latest-tx-hash";
  * never the thing that gets confirmed.
  */
 
-const SWAP_SYMBOLS: SwapSymbol[] = ["USDC", "cirBTC", "EURC"];
+/**
+ * Tokens offered here. cirBTC is deliberately absent: Circle reported
+ * USDC → cirBTC on Arc Testnet as INPUT_UNSUPPORTED_ROUTE (1003), which its SDK
+ * marks FATAL, so offering it would be a button that can only fail. The symbol
+ * stays fully supported in `google-swap.ts` (verified address + decimals), so
+ * restoring it here is a one-word change if Circle enables the route. cirBTC
+ * balances still show in the portfolio.
+ */
+const SWAP_SYMBOLS: SwapSymbol[] = ["USDC", "EURC"];
 
 export function GoogleSwapPanel({
   sdk,
@@ -54,7 +62,7 @@ export function GoogleSwapPanel({
   onSuccess: () => void;
 }) {
   const [fromSymbol, setFromSymbol] = useState<SwapSymbol>("USDC");
-  const [toSymbol, setToSymbol] = useState<SwapSymbol>("cirBTC");
+  const [toSymbol, setToSymbol] = useState<SwapSymbol>("EURC");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   // phase drives the button label through the review → approve → execute flow.

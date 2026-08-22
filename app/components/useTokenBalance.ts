@@ -5,7 +5,10 @@ import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { tokenBySymbol } from "../lib/swap-tokens";
 
 /**
- * Read the connected wallet's balance for a swap token on Arc Testnet.
+ * Read the connected wallet's balance for any Arc Testnet token Vector knows
+ * about — `tokenBySymbol` spans every holdable asset, not just the swappable
+ * ones, so a token withheld from the Swap selector (cirBTC) still shows a live
+ * balance in the portfolio.
  *
  * - USDC is Arc's native gas asset → wagmi `useBalance` (no contract).
  * - cirBTC is an ERC-20 → read `balanceOf` + `decimals` on-chain (decimals are

@@ -1,5 +1,14 @@
 /**
- * Swap tokens available on Arc Testnet via Circle's App Kit.
+ * First-party tokens on Arc Testnet.
+ *
+ * Two lists come out of this file, and the distinction matters:
+ *  - `ARC_TOKENS` — everything the wallet can HOLD and Vector can display.
+ *  - `ARC_SWAP_TOKENS` — the subset Circle's swap service will actually route.
+ *
+ * They are not the same set. A token can be a real, faucet-funded Arc asset with
+ * a verified address and still have no swap route, which is exactly the case for
+ * cirBTC (see below). Conflating the two is what previously put a token in the
+ * Swap selector that could only ever produce an error.
  *
  * The `symbol` is what App Kit's `tokenIn`/`tokenOut` expect (symbolic
  * identifiers — the SDK resolves routing itself). The `address` is only used
@@ -30,10 +39,6 @@
  *
  * Decimals are intentionally NOT hardcoded here — the balance hook reads
  * decimals() on-chain so a wrong constant can't misreport a balance.
- *
- * If a pair has no liquidity/route yet, App Kit surfaces that at estimate time
- * — we show that error rather than pretending a quote exists. So listing a token
- * that lacks a route can't move funds; the swap simply reports "no route".
  */
 export type SwapToken = {
   symbol: string;
@@ -47,10 +52,29 @@ export type SwapToken = {
   kind: "native" | "erc20" | "unknown";
   /** ERC-20 contract address (only for kind === "erc20"). */
   address?: `0x${string}`;
+  /**
+   * Whether Circle's swap service routes this token on Arc Testnet.
+   *
+   * This is an OBSERVED fact, not an assumption: it may only be set false on
+   * the strength of Circle's own FATAL verdict for the pair (KitError
+   * `INPUT_UNSUPPORTED_ROUTE` / 1003), never because a swap merely failed or
+   * looked unlikely. Slippage failures, thin liquidity and timeouts all clear
+   * on their own and must NOT flip this flag.
+   *
+   * Tokens with `swappable: false` still appear in the portfolio with a live
+   * balance — they just aren't offered in the Swap selector, because a token
+   * that cannot route is a button that can only ever return an error.
+   */
+  swappable: boolean;
 };
 
-export const ARC_SWAP_TOKENS: SwapToken[] = [
-  { symbol: "USDC", name: "USD Coin", kind: "native" },
+/**
+ * Every Arc Testnet asset Vector can hold and display. This is the list the
+ * balance lookup uses, so a token stays visible in the portfolio whether or not
+ * it can be swapped.
+ */
+export const ARC_TOKENS: SwapToken[] = [
+  { symbol: "USDC", name: "USD Coin", kind: "native", swappable: true },
   {
     symbol: "cirBTC",
     name: "Circle Bitcoin",
@@ -58,6 +82,13 @@ export const ARC_SWAP_TOKENS: SwapToken[] = [
     // Verified from Circle SDK token registry: CIRBTC.locators[Arc_Testnet].
     // cirBTC is 8-decimal; useTokenBalance reads decimals() on-chain regardless.
     address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
+    // Confirmed unroutable 2026-08-22, from Circle's own structured error on the
+    // deployed app: USDC → cirBTC returns INPUT_UNSUPPORTED_ROUTE (1003), which
+    // the SDK marks FATAL — not a liquidity dip, not a slippage constraint, but
+    // "this pair does not route". cirBTC remains a genuine Arc asset that
+    // Circle's faucet funds, so it keeps its place in the portfolio; it is only
+    // withheld from Swap. Flip this back to true if Circle enables the route.
+    swappable: false,
   },
   {
     symbol: "EURC",
@@ -67,9 +98,20 @@ export const ARC_SWAP_TOKENS: SwapToken[] = [
     // (swap-kit + adapter-viem-v2). EURC is 6-decimal; useTokenBalance reads
     // decimals() on-chain regardless.
     address: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+    swappable: true,
   },
 ];
 
+/**
+ * The tokens offered in the Swap selector — derived from `ARC_TOKENS` rather
+ * than written out again, so there is one place to change a token's status and
+ * no chance of the two lists disagreeing.
+ */
+export const ARC_SWAP_TOKENS: SwapToken[] = ARC_TOKENS.filter(
+  (t) => t.swappable,
+);
+
+/** Look up any holdable Arc token — swappable or not — by symbol. */
 export function tokenBySymbol(symbol: string): SwapToken | undefined {
-  return ARC_SWAP_TOKENS.find((t) => t.symbol === symbol);
+  return ARC_TOKENS.find((t) => t.symbol === symbol);
 }

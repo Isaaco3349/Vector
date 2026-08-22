@@ -70,9 +70,17 @@
  * The approve step is already live-proven (the bridge used usdc.increaseAllowance
  * on Arc's 0x3600 predeploy 2026-08-20). The one new unproven piece is
  * swap.execute against Arc adapter 0xBBD7… + whether Circle's swap SERVICE
- * actually routes Arc-Testnet USDC↔cirBTC — the same risk the external Swap
- * carries. A missing route returns "no route" (no funds move); confirm the happy
- * path with a small live swap on the deployed app.
+ * actually routes the pair — the same risk the external Swap carries. A missing
+ * route returns "no route" (no funds move); confirm the happy path with a small
+ * live swap on the deployed app.
+ *
+ * ROUTE STATUS 2026-08-22: Circle answered for one pair. USDC → cirBTC returns
+ * INPUT_UNSUPPORTED_ROUTE (1003), marked FATAL by its own SDK — that pair does
+ * not route on Arc Testnet, so cirBTC is no longer offered in either Swap
+ * selector. Everything below still supports the symbol (address and decimals are
+ * verified and correct) so it can be re-offered without new research. Only the
+ * USDC → cirBTC direction was tested; cirBTC → USDC and cirBTC ↔ EURC are
+ * unknown, and USDC ↔ EURC has not yet been seen to quote either.
  */
 
 import { formatUnits, parseUnits } from "viem";
