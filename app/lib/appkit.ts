@@ -24,6 +24,17 @@
  * which only exists in the browser. Swap `config.kitKey` is optional (the SDK
  * runs in permissionless mode without it) but recommended for production rate
  * limits — wire via `NEXT_PUBLIC_KIT_KEY` or a server proxy, never hardcode.
+ *
+ * Chain requirement, learned from the adapter's own source: Circle's viem
+ * adapter deliberately defers `wallet_switchEthereumChain` until execution
+ * ("Chain switching is deferred to execute() via sendTransaction() to avoid
+ * triggering wallet_switchEthereumChain during preparation" —
+ * adapter-viem-v2). But a swap asks the wallet for an EIP-2612 permit
+ * signature *before* it sends any transaction, and a wallet sitting on another
+ * chain rejects a signature whose domain names a chain it isn't on. So the
+ * caller must already be on Arc before `executeSwap` — never assume the SDK
+ * will move the wallet there. `getProviderChainId` below is how a caller
+ * checks, and it asks the wallet rather than trusting local state.
  */
 
 export type Eip1193Provider = {
@@ -41,6 +52,20 @@ export type SwapArgs = {
   amountIn: string;
   /** Optional kit key. Omitted on the public testnet tier; wire in server-side for production. */
   kitKey?: string;
+  /**
+   * How the swap contract is granted its allowance.
+   *
+   * Copied verbatim from the installed SDK rather than invented: App Kit's
+   * `SwapConfig.allowanceStrategy?: 'permit' | 'approve'`, documented there as
+   * "Defaults to 'permit' with fallback to 'approve'".
+   *
+   * Left undefined we get the default, gasless EIP-2612 permit — one wallet
+   * confirmation, no approval transaction. Passing "approve" forces a real
+   * on-chain approval instead: an extra transaction and extra gas, but it only
+   * needs a plain signature from the wallet. That is the documented escape
+   * hatch when a wallet or token can't produce a permit signature.
+   */
+  allowanceStrategy?: "permit" | "approve";
 };
 
 export type SwapQuote = {
@@ -126,6 +151,17 @@ async function buildKitAndParams(args: SwapArgs) {
 
   const kitKey = resolveKitKey(args.kitKey);
 
+  // Both of these are fields of the SDK's `SwapConfig` (verified in app-kit's
+  // swap.d.mts: `kitKey?: string` and `allowanceStrategy?: 'permit' |
+  // 'approve'`), so they belong inside one `config` object rather than at the
+  // top level. Only keys we actually have are set — passing an explicit
+  // `undefined` would override the SDK's own default instead of deferring to it.
+  const config: { kitKey?: string; allowanceStrategy?: "permit" | "approve" } =
+    {};
+  if (kitKey) config.kitKey = kitKey;
+  if (args.allowanceStrategy) config.allowanceStrategy = args.allowanceStrategy;
+  const hasConfig = Object.keys(config).length > 0;
+
   const swapParams = {
     from: {
       adapter,
@@ -136,10 +172,70 @@ async function buildKitAndParams(args: SwapArgs) {
     tokenIn: args.tokenIn,
     tokenOut: args.tokenOut,
     amountIn: args.amountIn,
-    ...(kitKey ? { config: { kitKey } } : {}),
+    ...(hasConfig ? { config } : {}),
   };
 
   return { kit, swapParams };
+}
+
+/**
+ * The chain the wallet is ACTUALLY on, asked of the wallet itself via the
+ * EIP-1193 `eth_chainId` method (a hex quantity, e.g. "0x4cef52").
+ *
+ * Why not wagmi's `useAccount().chainId`? Because that is wagmi's view of its
+ * own connection, while Swap hands the raw provider to Circle's adapter. The
+ * two can disagree — a second wallet extension owning `window.ethereum`, or a
+ * `chainChanged` event that never reached wagmi — and it is the wallet, not
+ * wagmi, that rejects a signature meant for a different chain. Asking the
+ * provider directly is the one answer that cannot drift.
+ *
+ * Returns null rather than throwing when the wallet won't say: callers treat
+ * "unknown" as "don't sign anything", which is the safe direction.
+ */
+export async function getProviderChainId(
+  provider: Eip1193Provider,
+): Promise<number | null> {
+  try {
+    const raw = await provider.request({ method: "eth_chainId" });
+    if (typeof raw === "string") {
+      // parseInt handles the "0x" prefix; base 16 is explicit for clarity.
+      const parsed = Number.parseInt(raw, 16);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    // Some providers answer with a number instead of a hex string.
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+    return null;
+  } catch (err) {
+    console.error("[Vector] eth_chainId request failed:", err);
+    return null;
+  }
+}
+
+/**
+ * True when a swap failed while producing the gasless permit signature, rather
+ * than while moving money.
+ *
+ * Matched against the installed SDK's own wording, which is either
+ * "Permit generation failed: <cause>. No on-chain approval was sent because the
+ * permit flow was expected to succeed. Retry or use allowanceStrategy:
+ * \"approve\" to force on-chain approval." or "Permit generation returned null
+ * despite adapter passing capability checks." — both thrown from the same guard
+ * in app-kit's swap module.
+ *
+ * The reason this is worth detecting: that guard exists precisely because the
+ * SDK skipped the on-chain approval in expectation of a permit, so it can state
+ * that nothing was approved and nothing was spent. Retrying the same swap with
+ * `allowanceStrategy: "approve"` is therefore safe — it is a first attempt at
+ * moving funds, not a second.
+ */
+export function isPermitGenerationFailure(err: unknown): boolean {
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : "";
+  return /permit generation (failed|returned null)/i.test(message);
 }
 
 /** SwapEstimate.estimatedOutput / TokenAmount — { token, amount } both strings. */
@@ -190,7 +286,12 @@ export async function estimateSwap(args: SwapArgs): Promise<SwapQuote> {
     console.log("[Vector] estimateSwap params:", {
       ...swapParams,
       from: { chain: ARC_TESTNET_CHAIN, adapter: "[ViemAdapter]" },
-      config: swapParams.config ? { kitKey: "[redacted]" } : undefined,
+      config: swapParams.config
+        ? {
+            ...swapParams.config,
+            ...(swapParams.config.kitKey ? { kitKey: "[redacted]" } : {}),
+          }
+        : undefined,
     });
   }
   let estimate: unknown;
