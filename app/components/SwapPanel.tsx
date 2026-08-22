@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { arcTestnet } from "viem/chains";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
+  classifySwapError,
   estimateSwap,
   executeSwap,
   getProviderChainId,
   isPermitGenerationFailure,
+  DEFAULT_SLIPPAGE_BPS,
   type Eip1193Provider,
+  type SwapErrorInfo,
   type SwapQuote,
   type SwapResult,
 } from "../lib/appkit";
@@ -21,6 +24,28 @@ import { useTokenBalance } from "./useTokenBalance";
  * second hand-typed copy of a money-critical number to drift out of sync.
  */
 const ARC_CHAIN_ID = arcTestnet.id;
+
+/**
+ * Looser slippage tolerances offered — only ever after Circle has said the
+ * slippage constraint is what blocked the swap, and only on an explicit tap.
+ * A wider tolerance means accepting a worse price, so it is the user's call.
+ */
+const SLIPPAGE_STEPS_BPS = [500, 1000] as const;
+
+/**
+ * Pairs Circle has reported as *fatally* unroutable during this page session.
+ *
+ * Module-level rather than component state so it survives closing and reopening
+ * the panel. It only ever records what the SDK itself marked FATAL — never a
+ * guess, never a timeout or a liquidity dip, both of which can clear on their
+ * own. A page reload forgets it, which is the right default: if Circle enables
+ * a route tomorrow, nothing here keeps it hidden.
+ */
+const sessionUnroutablePairs = new Set<string>();
+
+const pairKey = (tokenIn: string, tokenOut: string) => `${tokenIn}->${tokenOut}`;
+
+const formatBps = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}%`;
 
 /**
  * Swap panel for external (injected) wallets on Arc Testnet.
@@ -40,6 +65,14 @@ const ARC_CHAIN_ID = arcTestnet.id;
  * and the swap button is replaced by a switch prompt until it matches. Quoting
  * is read-only and keeps working throughout, so the rate stays visible while
  * the user switches.
+ *
+ * Failures are reported from Circle's own structured error codes rather than by
+ * pattern-matching its prose. That distinction is not cosmetic: an unsupported
+ * route is permanent, a slippage constraint is fixable with a looser tolerance,
+ * and thin liquidity is fixable with a smaller size or more time — yet all
+ * three can arrive carrying the words "no route". Guessing between them meant
+ * telling people to "try again later" for a pair that will never route, and
+ * hiding the one setting that would have worked.
  */
 export function SwapPanel({ onClose }: { onClose: () => void }) {
   const {
@@ -51,23 +84,50 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const { switchChainAsync, isPending: switching } = useSwitchChain();
 
   const [tokenIn, setTokenIn] = useState("USDC");
-  // EURC rather than cirBTC. Circle has no swap route for cirBTC on Arc today,
-  // so defaulting to it meant the panel answered the very first amount anyone
-  // typed with a red "no route" error — the app looked broken when it wasn't.
-  // USDC↔EURC is the pair that actually quotes. cirBTC stays selectable, since
-  // it is a real Arc asset and routes may appear later; it just isn't the first
-  // thing a new user runs into.
+  // EURC rather than cirBTC. USDC↔cirBTC is the pair that has never quoted in
+  // testing, so defaulting to it meant the panel answered the very first amount
+  // anyone typed with a red error — the app looked broken when it wasn't ours.
+  // USDC↔EURC is the pair known to quote. cirBTC stays selectable: it is a real
+  // Arc asset that Circle's own faucet funds, and the panel now reports exactly
+  // which Circle-side condition blocks it rather than assuming liquidity.
   const [tokenOut, setTokenOut] = useState("EURC");
   const [amountIn, setAmountIn] = useState("");
 
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [swapping, setSwapping] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /**
+   * Message and Circle's own classification, held together in one piece of
+   * state so the UI can show the reason, the SDK's verbatim detail, and the
+   * right remedy without them ever disagreeing with each other.
+   */
+  const [errorState, setErrorState] = useState<{
+    text: string;
+    info: SwapErrorInfo | null;
+  } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   /** Whatever chain the wallet itself reports; null until it has answered. */
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
+  /**
+   * Slippage tolerance in basis points. null means "don't send one" — Circle's
+   * documented 3% default applies. Only ever raised by an explicit tap, and
+   * reset whenever the pair changes so a looser tolerance can't quietly carry
+   * over to a different trade.
+   */
+  const [slippageBps, setSlippageBps] = useState<number | null>(null);
+  /** Snapshot of the session's fatally-unroutable pairs, for rendering. */
+  const [unroutable, setUnroutable] = useState<ReadonlySet<string>>(
+    () => new Set(sessionUnroutablePairs),
+  );
+
+  const error = errorState?.text ?? null;
+  const errorInfo = errorState?.info ?? null;
+  const effectiveSlippageBps = slippageBps ?? DEFAULT_SLIPPAGE_BPS;
+  /** The next looser tolerance on offer, or null once the ladder runs out. */
+  const nextSlippageBps =
+    SLIPPAGE_STEPS_BPS.find((bps) => bps > effectiveSlippageBps) ?? null;
+  const pairIsUnroutable = unroutable.has(pairKey(tokenIn, tokenOut));
 
   const balanceIn = useTokenBalance(tokenIn);
   const balanceOut = useTokenBalance(tokenOut);
@@ -138,6 +198,31 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   const sameToken = tokenIn === tokenOut;
 
+  /**
+   * Changing either side of the pair resets the slippage tolerance. A tolerance
+   * the user accepted for one trade is not consent for the next one, and
+   * carrying it over silently would widen the price they accept without asking.
+   */
+  function changeTokenIn(next: string) {
+    setTokenIn(next);
+    setSlippageBps(null);
+  }
+
+  function changeTokenOut(next: string) {
+    setTokenOut(next);
+    setSlippageBps(null);
+  }
+
+  /**
+   * Remember a pair Circle marked FATAL, so nobody types into it twice.
+   * Stable identity (no deps) so the quoting effect can depend on it without
+   * re-running on every render.
+   */
+  const recordUnroutablePair = useCallback((from: string, to: string) => {
+    sessionUnroutablePairs.add(pairKey(from, to));
+    setUnroutable(new Set(sessionUnroutablePairs));
+  }, []);
+
   // Only claim the wallet is on the wrong chain once it has actually told us.
   // A null answer means "unknown", which is not the same as "wrong" — the
   // pre-flight check in handleSwap refuses to sign on an unknown chain anyway,
@@ -150,18 +235,23 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     setTxHash(null);
     if (!parsedAmount || sameToken) {
       setQuote(null);
-      setError(sameToken ? "Choose two different tokens." : null);
+      setErrorState(
+        sameToken ? { text: "Choose two different tokens.", info: null } : null,
+      );
       return;
     }
     const provider = providerRef.current;
     if (!provider) {
-      setError("No wallet provider available. Reconnect your wallet and try again.");
+      setErrorState({
+        text: "No wallet provider available. Reconnect your wallet and try again.",
+        info: null,
+      });
       return;
     }
 
     let cancelled = false;
     setQuoting(true);
-    setError(null);
+    setErrorState(null);
     const handle = setTimeout(async () => {
       try {
         const q = await estimateSwap({
@@ -169,12 +259,25 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           tokenIn,
           tokenOut,
           amountIn: String(parsedAmount),
+          ...(slippageBps !== null ? { slippageBps } : {}),
         });
         if (!cancelled) setQuote(q);
       } catch (err) {
         if (!cancelled) {
           setQuote(null);
-          setError(readableError(err, "Couldn't get a quote for this pair."));
+          const described = describeSwapError(err, "Couldn't get a quote for this pair.", {
+            tokenIn,
+            tokenOut,
+            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+          });
+          setErrorState(described);
+          // Only a FATAL unsupported route is remembered. Everything else —
+          // slippage, thin liquidity, a timeout — can clear on its own, and
+          // marking the pair for those would be us inventing a verdict Circle
+          // didn't give.
+          if (described.info?.kind === "unsupported-route") {
+            recordUnroutablePair(tokenIn, tokenOut);
+          }
         }
       } finally {
         if (!cancelled) setQuoting(false);
@@ -185,10 +288,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [parsedAmount, tokenIn, tokenOut, sameToken]);
+  }, [parsedAmount, tokenIn, tokenOut, sameToken, slippageBps, recordUnroutablePair]);
 
   async function handleSwitch() {
-    setError(null);
+    setErrorState(null);
     let switchError: unknown = null;
     try {
       // wagmi's injected connector asks the wallet to switch and, if the wallet
@@ -203,24 +306,26 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     const id = await refreshWalletChain();
     if (id === ARC_CHAIN_ID) return;
     if (switchError) {
-      setError(
-        readableError(
+      setErrorState(
+        describeSwapError(
           switchError,
           "Couldn't switch networks. Switch to Arc Testnet in your wallet, then try again.",
+          { tokenIn, tokenOut, slippageBps: effectiveSlippageBps },
         ),
       );
       return;
     }
-    setError(
-      "Your wallet still reports a different network. If you have more than one wallet extension enabled, switch networks in the one Vector is connected to.",
-    );
+    setErrorState({
+      text: "Your wallet still reports a different network. If you have more than one wallet extension enabled, switch networks in the one Vector is connected to.",
+      info: null,
+    });
   }
 
   async function handleSwap() {
     const provider = providerRef.current;
     if (!provider || !parsedAmount || sameToken) return;
     setSwapping(true);
-    setError(null);
+    setErrorState(null);
     setNotice(null);
     setTxHash(null);
     try {
@@ -231,11 +336,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       const liveChainId = await getProviderChainId(provider);
       setWalletChainId(liveChainId);
       if (liveChainId !== ARC_CHAIN_ID) {
-        setError(
-          liveChainId === null
-            ? "Couldn't confirm which network your wallet is on, so nothing was sent. Reconnect the wallet and try again."
-            : `Your wallet is on chain ${liveChainId}, but swaps run on Arc Testnet (${ARC_CHAIN_ID}). Switch networks and try again — nothing was sent.`,
-        );
+        setErrorState({
+          text:
+            liveChainId === null
+              ? "Couldn't confirm which network your wallet is on, so nothing was sent. Reconnect the wallet and try again."
+              : `Your wallet is on chain ${liveChainId}, but swaps run on Arc Testnet (${ARC_CHAIN_ID}). Switch networks and try again — nothing was sent.`,
+          info: null,
+        });
         return;
       }
 
@@ -244,6 +351,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         tokenIn,
         tokenOut,
         amountIn: String(parsedAmount),
+        // Only sent when the user has explicitly accepted a looser tolerance;
+        // otherwise Circle's own 3% default applies. The quote above was fetched
+        // with the same value, so what was shown is what gets executed.
+        ...(slippageBps !== null ? { slippageBps } : {}),
       };
 
       let result: SwapResult;
@@ -273,12 +384,21 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       if (!result.txHash) {
         // Swap returned but no recognisable hash — surface honestly rather
         // than claim success.
-        setError(
-          "Swap submitted, but no transaction hash was returned. Check your wallet activity to confirm.",
-        );
+        setErrorState({
+          text: "Swap submitted, but no transaction hash was returned. Check your wallet activity to confirm.",
+          info: null,
+        });
       }
     } catch (err) {
-      setError(readableError(err, "Swap failed. No funds were moved if it was rejected."));
+      const described = describeSwapError(
+        err,
+        "Swap failed. No funds were moved if it was rejected.",
+        { tokenIn, tokenOut, slippageBps: effectiveSlippageBps },
+      );
+      setErrorState(described);
+      if (described.info?.kind === "unsupported-route") {
+        recordUnroutablePair(tokenIn, tokenOut);
+      }
     } finally {
       setSwapping(false);
     }
@@ -288,6 +408,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     setTokenIn(tokenOut);
     setTokenOut(tokenIn);
     setQuote(null);
+    setSlippageBps(null);
   }
 
   if (!isConnected || !address) {
@@ -317,7 +438,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-1">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] text-[var(--vector-text-dim)]">You pay</span>
-            <TokenSelect value={tokenIn} onChange={setTokenIn} />
+            <TokenSelect
+              value={tokenIn}
+              onChange={changeTokenIn}
+              noteFor={(symbol) =>
+                unroutable.has(pairKey(symbol, tokenOut)) ? "no route" : null
+              }
+            />
           </div>
           <input
             inputMode="decimal"
@@ -364,7 +491,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             <span className="text-[12px] text-[var(--vector-text-dim)]">
               You receive (estimated)
             </span>
-            <TokenSelect value={tokenOut} onChange={setTokenOut} />
+            <TokenSelect
+              value={tokenOut}
+              onChange={changeTokenOut}
+              noteFor={(symbol) =>
+                unroutable.has(pairKey(tokenIn, symbol)) ? "no route" : null
+              }
+            />
           </div>
           <div className="text-[28px] font-semibold text-[var(--vector-text)]">
             {quoting ? (
@@ -388,11 +521,51 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
             {quote.rate && <div>Rate: {quote.rate}</div>}
             {quote.feeText && <div>Fee: {quote.feeText}</div>}
+            {slippageBps !== null && (
+              <div>Slippage tolerance: {formatBps(slippageBps)} (you raised this)</div>
+            )}
           </div>
         )}
 
         {error && (
-          <p className="text-[13px] text-[var(--vector-pink)] font-mono mb-4">{error}</p>
+          <div className="mb-4">
+            <p className="text-[13px] text-[var(--vector-pink)] font-mono">{error}</p>
+            {/* Circle's own words and error code, kept visible. Paraphrasing
+                alone is how a wrong diagnosis goes unnoticed for weeks; with the
+                code on screen, the next report is one line instead of a guess. */}
+            {errorInfo?.detail && errorInfo.kind !== "user-cancelled" && (
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)] font-mono break-words">
+                Circle reported: {errorInfo.detail}
+                {errorInfo.name && (
+                  <>
+                    {" ["}
+                    {errorInfo.name}
+                    {errorInfo.code !== null ? ` ${errorInfo.code}` : ""}
+                    {errorInfo.recoverability ? `, ${errorInfo.recoverability}` : ""}
+                    {"]"}
+                  </>
+                )}
+              </p>
+            )}
+            {/* The one case with a real remedy: Circle could price the trade but
+                not inside the tolerance. Offered, never applied automatically —
+                a looser tolerance is a worse price, so it needs a deliberate tap. */}
+            {errorInfo?.kind === "slippage" && nextSlippageBps !== null && (
+              <button
+                onClick={() => setSlippageBps(nextSlippageBps)}
+                disabled={quoting || swapping}
+                className="mt-3 w-full h-[44px] rounded-full border border-[var(--vector-line)] text-[13px] font-semibold text-[var(--vector-text)] transition-colors hover:border-[var(--vector-pink)] disabled:opacity-40"
+              >
+                Retry with {formatBps(nextSlippageBps)} slippage tolerance
+              </button>
+            )}
+            {errorInfo?.kind === "slippage" && nextSlippageBps === null && (
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
+                Already at {formatBps(effectiveSlippageBps)} — Vector won&apos;t
+                widen it further. Try a smaller amount instead.
+              </p>
+            )}
+          </div>
         )}
 
         {/* Tied to the attempt it describes: once a new quote clears the tx
@@ -413,6 +586,17 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           >
             Swap sent — view on ArcScan ↗
           </a>
+        )}
+
+        {/* Said up front, before an amount is typed, once Circle has told us
+            this pair is fatally unroutable. Cheaper than letting someone
+            discover it a third time. */}
+        {pairIsUnroutable && !error && (
+          <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed">
+            Circle has no route for {tokenIn} → {tokenOut} on Arc Testnet — it
+            reported this as permanent, not a temporary shortage. Pick a
+            different pair.
+          </p>
         )}
 
         {needsChainSwitch ? (
@@ -490,9 +674,12 @@ function BalanceRow({
 function TokenSelect({
   value,
   onChange,
+  noteFor,
 }: {
   value: string;
   onChange: (v: string) => void;
+  /** Optional short suffix per symbol, e.g. "no route". */
+  noteFor?: (symbol: string) => string | null;
 }) {
   return (
     <select
@@ -500,44 +687,93 @@ function TokenSelect({
       onChange={(e) => onChange(e.target.value)}
       className="bg-[var(--vector-surface)] border border-[var(--vector-line)] rounded-full px-3 py-1.5 text-[13px] font-semibold text-[var(--vector-text)] outline-none hover:border-[var(--vector-pink)] transition-colors cursor-pointer"
     >
-      {ARC_SWAP_TOKENS.map((t) => (
-        <option key={t.symbol} value={t.symbol} className="bg-[var(--vector-surface)]">
-          {t.symbol}
-        </option>
-      ))}
+      {ARC_SWAP_TOKENS.map((t) => {
+        const note = noteFor?.(t.symbol) ?? null;
+        return (
+          <option
+            key={t.symbol}
+            value={t.symbol}
+            className="bg-[var(--vector-surface)]"
+          >
+            {note ? `${t.symbol} — ${note}` : t.symbol}
+          </option>
+        );
+      })}
     </select>
   );
 }
 
-function readableError(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) {
-    // User-rejected wallet actions come back as noisy provider errors — soften.
-    if (/reject|denied|user cancel/i.test(err.message)) {
-      return "You cancelled the request in your wallet.";
+/**
+ * Turn a failure into something a person can act on, using Circle's own
+ * classification rather than a guess at what its prose meant.
+ *
+ * Returns the classification alongside the text so the caller can react to it —
+ * offer the slippage remedy, or remember a fatally unroutable pair — without
+ * re-deriving the same conclusion from the string it just produced.
+ */
+function describeSwapError(
+  err: unknown,
+  fallback: string,
+  ctx: { tokenIn: string; tokenOut: string; slippageBps: number },
+): { text: string; info: SwapErrorInfo } {
+  const info = classifySwapError(err);
+  const pair = `${ctx.tokenIn} → ${ctx.tokenOut}`;
+
+  const text = ((): string => {
+    switch (info.kind) {
+      case "user-cancelled":
+        return "You cancelled the request in your wallet.";
+
+      case "chain-mismatch":
+        return "Your wallet is on a different network than Arc Testnet, so it wouldn't sign. Switch to Arc Testnet and try again — nothing was sent.";
+
+      case "permit-generation":
+        return "Your wallet couldn't approve this swap, so nothing was sent. Reconnect the wallet and try again.";
+
+      case "unsupported-route":
+        // The SDK marks this FATAL, so "try again later" would be false
+        // comfort — this pair does not route, full stop.
+        return `Circle doesn't route ${pair} on Arc Testnet. It reported this as permanent rather than a temporary shortage, so retrying won't help — swap through a pair it does support, such as USDC ↔ EURC.`;
+
+      case "unsupported-token":
+        return `Circle's swap service doesn't support one of these tokens on Arc Testnet yet, so ${pair} can't be quoted. Nothing was sent.`;
+
+      case "slippage":
+        // Circle *could* price this trade — it just couldn't hit the minimum
+        // output implied by the tolerance. That is the one failure here with a
+        // real remedy, so name it precisely instead of blaming liquidity.
+        return `Circle could price ${pair} but not within the ${formatBps(ctx.slippageBps)} slippage tolerance. Nothing was sent. A looser tolerance or a smaller amount would likely go through.`;
+
+      case "insufficient-liquidity":
+        return `Circle's liquidity for ${pair} is too thin for this amount right now. Nothing was sent — a smaller amount may work, and this one can clear on its own later.`;
+
+      case "amount-out-of-range": {
+        const bounds: string[] = [];
+        if (info.minAmount) {
+          bounds.push(`minimum ${info.minAmount}${info.amountToken ? ` ${info.amountToken}` : ""}`);
+        }
+        if (info.maxAmount) {
+          bounds.push(`maximum ${info.maxAmount}${info.amountToken ? ` ${info.amountToken}` : ""}`);
+        }
+        return bounds.length > 0
+          ? `That amount is outside Circle's accepted range for ${pair} (${bounds.join(", ")}). Nothing was sent.`
+          : `That amount is outside Circle's accepted range for ${pair}. Nothing was sent — try a different size.`;
+      }
+
+      case "rate-limited":
+        return "Too many requests to Circle's swap service. Wait a moment and try again — nothing was sent.";
+
+      case "network":
+        return "Couldn't reach Circle's swap service. Check your connection and try again — nothing was sent.";
+
+      case "service":
+        return "Circle's swap service hit an internal error. Nothing was sent — try again shortly.";
+
+      case "unknown":
+      default:
+        return info.detail ?? fallback;
     }
-    // The wallet refused to sign because it is sitting on a different chain
-    // than the swap. This arrives wrapped inside a permit-generation error, so
-    // it has to be matched before the permit branch below — otherwise the one
-    // actionable detail gets buried under a vaguer message.
-    if (
-      /must match the active chain|does not match the target chain|chain mismatch/i.test(
-        err.message,
-      )
-    ) {
-      return "Your wallet is on a different network than Arc Testnet, so it wouldn't sign. Switch to Arc Testnet and try again — nothing was sent.";
-    }
-    // A permit failure that survived the automatic on-chain-approval retry.
-    if (/permit generation/i.test(err.message)) {
-      return "Your wallet couldn't approve this swap, so nothing was sent. Reconnect the wallet and try again.";
-    }
-    // "No route available" is App Kit's own string when Circle has no swap
-    // route/liquidity for the pair on this chain. Explain it honestly rather
-    // than leaking the raw SDK string — it's not a bug in the wallet or app.
-    if (/no route|route.*(available|found)|no.*liquidity/i.test(err.message)) {
-      return "No swap route for this pair on Arc Testnet yet. Swap routes depend on Circle-provided liquidity, which isn't available for this pair right now — try again later.";
-    }
-    return err.message;
-  }
-  if (typeof err === "string") return err;
-  return fallback;
+  })();
+
+  return { text, info };
 }
