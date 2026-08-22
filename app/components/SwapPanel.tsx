@@ -43,7 +43,32 @@ const SLIPPAGE_STEPS_BPS = [500, 1000] as const;
  */
 const sessionUnroutablePairs = new Set<string>();
 
+/**
+ * Pairs Circle has actually returned a quote for during this page session.
+ *
+ * This exists so the panel can only ever recommend a route it has personally
+ * watched work. The earlier copy named "USDC ↔ EURC" as a pair Circle supports,
+ * which was an assumption — nobody had seen it quote. If EURC turned out to be
+ * unroutable too, that message would have walked people from one dead pair
+ * straight into another while sounding authoritative about it.
+ */
+const sessionQuotedPairs = new Set<string>();
+
 const pairKey = (tokenIn: string, tokenOut: string) => `${tokenIn}->${tokenOut}`;
+
+/**
+ * A pair that has quoted this session, other than the one that just failed,
+ * formatted for display. Returns null when there isn't one — in which case the
+ * honest thing is to say so rather than to invent a suggestion.
+ */
+function provenPairOtherThan(failedKey: string): string | null {
+  for (const key of sessionQuotedPairs) {
+    if (key === failedKey) continue;
+    const [from, to] = key.split("->");
+    if (from && to) return `${from} → ${to}`;
+  }
+  return null;
+}
 
 const formatBps = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}%`;
 
@@ -84,12 +109,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const { switchChainAsync, isPending: switching } = useSwitchChain();
 
   const [tokenIn, setTokenIn] = useState("USDC");
-  // EURC rather than cirBTC. USDC↔cirBTC is the pair that has never quoted in
-  // testing, so defaulting to it meant the panel answered the very first amount
-  // anyone typed with a red error — the app looked broken when it wasn't ours.
-  // USDC↔EURC is the pair known to quote. cirBTC stays selectable: it is a real
-  // Arc asset that Circle's own faucet funds, and the panel now reports exactly
-  // which Circle-side condition blocks it rather than assuming liquidity.
+  // USDC → EURC. cirBTC used to be the default and used to be selectable, but
+  // Circle has since answered for it: USDC → cirBTC is INPUT_UNSUPPORTED_ROUTE
+  // (1003), FATAL, so it is no longer offered at all (see swap-tokens.ts). EURC
+  // is the remaining first-party Arc asset — note that its route has not been
+  // observed to quote either, so this default is the best available option
+  // rather than a proven one.
   const [tokenOut, setTokenOut] = useState("EURC");
   const [amountIn, setAmountIn] = useState("");
 
@@ -261,7 +286,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           amountIn: String(parsedAmount),
           ...(slippageBps !== null ? { slippageBps } : {}),
         });
-        if (!cancelled) setQuote(q);
+        if (!cancelled) {
+          setQuote(q);
+          // Circle priced this pair, which is the only evidence that counts as
+          // "this route works". Recorded so a later failure can point at it by
+          // name instead of guessing which pair to recommend.
+          sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
+        }
       } catch (err) {
         if (!cancelled) {
           setQuote(null);
@@ -590,12 +621,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
         {/* Said up front, before an amount is typed, once Circle has told us
             this pair is fatally unroutable. Cheaper than letting someone
-            discover it a third time. */}
+            discover it a third time. No "pick another pair" instruction: with a
+            short token list there may not be another one, and telling someone to
+            do something impossible is worse than telling them nothing. */}
         {pairIsUnroutable && !error && (
           <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed">
             Circle has no route for {tokenIn} → {tokenOut} on Arc Testnet — it
-            reported this as permanent, not a temporary shortage. Pick a
-            different pair.
+            reported this as permanent, not a temporary shortage.
           </p>
         )}
 
@@ -730,10 +762,17 @@ function describeSwapError(
       case "permit-generation":
         return "Your wallet couldn't approve this swap, so nothing was sent. Reconnect the wallet and try again.";
 
-      case "unsupported-route":
+      case "unsupported-route": {
         // The SDK marks this FATAL, so "try again later" would be false
-        // comfort — this pair does not route, full stop.
-        return `Circle doesn't route ${pair} on Arc Testnet. It reported this as permanent rather than a temporary shortage, so retrying won't help — swap through a pair it does support, such as USDC ↔ EURC.`;
+        // comfort — this pair does not route, full stop. What we must not do is
+        // replace one guess with another: only a pair Circle has actually quoted
+        // in this session gets named as an alternative.
+        const base = `Circle doesn't route ${pair} on Arc Testnet. It reported this as permanent rather than a temporary shortage, so retrying won't help.`;
+        const proven = provenPairOtherThan(pairKey(ctx.tokenIn, ctx.tokenOut));
+        return proven
+          ? `${base} ${proven} quoted successfully earlier in this session — try that instead.`
+          : `${base} No pair has quoted successfully here yet either, so there isn't one Vector can honestly point you to.`;
+      }
 
       case "unsupported-token":
         return `Circle's swap service doesn't support one of these tokens on Arc Testnet yet, so ${pair} can't be quoted. Nothing was sent.`;
