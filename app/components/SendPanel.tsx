@@ -10,6 +10,10 @@ import {
   useWriteContract,
 } from "wagmi";
 import { bridgeChainByNumericId } from "../lib/bridge-chains";
+import {
+  VECTOR_ROUTER_ABI,
+  vectorRouterAddress,
+} from "../lib/vector-router";
 import { useSendBalance } from "./useSendBalance";
 
 const ARC_TESTNET_ID = 5042002;
@@ -18,8 +22,15 @@ const ARC_TESTNET_ID = 5042002;
  * Send USDC panel for external (injected) wallets.
  *
  * Sends USDC on whatever chain the wallet is currently connected to:
- *  - Arc Testnet: USDC is the native gas asset → a native value transfer.
- *  - Base / Ethereum Sepolia: USDC is an ERC-20 → a `transfer(to, amount)` call.
+ *  - Arc Testnet: USDC is the native gas asset. When Vector's router is
+ *    configured (NEXT_PUBLIC_VECTOR_ROUTER_ARC) the send goes through
+ *    `VectorRouter.send(to, amount)` — a real contract call that emits an
+ *    indexable `VectorSend` event, with the router's fee deployed at ZERO so the
+ *    recipient still receives 100%. Without the router configured it falls back
+ *    to a plain native value transfer (today's shipped behaviour), so a missing
+ *    env var can never produce a Send button that only fails.
+ *  - Base / Ethereum Sepolia: USDC is an ERC-20 → a `transfer(to, amount)` call
+ *    (already a contract call; the router is Arc-only and not used there).
  *
  * The chain, USDC address, decimals, and explorer URL all come from the same
  * verified registry the Bridge uses (app/lib/bridge-chains.ts) — nothing about
@@ -34,6 +45,12 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
   const chain = bridgeChainByNumericId(chainId);
   const balance = useSendBalance(chain);
   const { switchChain, isPending: switching } = useSwitchChain();
+
+  // Vector's Arc router, if configured. null = fall back to a plain transfer;
+  // it is never an error state, so Send always works either way.
+  const routerAddress = useMemo(() => vectorRouterAddress(), []);
+  const routedThroughVector =
+    !!routerAddress && chain?.chainId === ARC_TESTNET_ID;
 
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
@@ -97,12 +114,27 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
     try {
       let hash: `0x${string}`;
       if (chain.usdcKind === "native") {
-        // Arc: USDC is native → plain value transfer.
-        hash = await sendTransactionAsync({
-          to: recipient,
-          value: parsed,
-          chainId: chain.chainId,
-        });
+        const router = chain.chainId === ARC_TESTNET_ID ? routerAddress : null;
+        if (router) {
+          // Arc + router configured: a real contract call. `parsed` is passed
+          // BOTH as the argument and as msg.value — the router reverts unless
+          // they match, so a units bug can't move an unintended amount.
+          hash = await writeContractAsync({
+            address: router,
+            abi: VECTOR_ROUTER_ABI,
+            functionName: "send",
+            args: [recipient, parsed],
+            value: parsed,
+            chainId: chain.chainId,
+          });
+        } else {
+          // No router configured → plain native value transfer (shipped behaviour).
+          hash = await sendTransactionAsync({
+            to: recipient,
+            value: parsed,
+            chainId: chain.chainId,
+          });
+        }
       } else {
         // Base / Ethereum Sepolia: USDC is an ERC-20 → transfer().
         hash = await writeContractAsync({
@@ -273,6 +305,9 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
             {chain.usdcKind === "native" ? (
               <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
                 On Arc, gas is paid in USDC — leave a little for the network fee.
+                {routedThroughVector
+                  ? " Routed on-chain through Vector — no fee, you send 100%."
+                  : ""}
               </p>
             ) : (
               <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
@@ -296,6 +331,17 @@ function readableError(err: unknown, fallback: string): string {
     }
     if (/chain mismatch|does not match/i.test(err.message)) {
       return "Your wallet is on a different network. Switch and try again.";
+    }
+    // VectorRouter's own custom errors — translate them instead of leaking a
+    // raw revert string. ValueMismatch is the units guard firing: nothing moved.
+    if (/ValueMismatch/.test(err.message)) {
+      return "Amount check failed on Vector's router, so nothing was sent. Please try again.";
+    }
+    if (/PayoutFailed/.test(err.message)) {
+      return "The recipient rejected the transfer, so nothing was sent.";
+    }
+    if (/ZeroAmount|ZeroAddress/.test(err.message)) {
+      return "Check the recipient and amount — nothing was sent.";
     }
     // viem messages can be long; take the first line for the UI.
     return err.message.split("\n")[0];
