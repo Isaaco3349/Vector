@@ -15,6 +15,8 @@ import {
   type SwapQuote,
   type SwapResult,
 } from "../lib/appkit";
+import { executeSwapPlan } from "../lib/external-swap";
+import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import { useTokenBalance } from "./useTokenBalance";
 
@@ -33,13 +35,15 @@ const ARC_CHAIN_ID = arcTestnet.id;
 const SLIPPAGE_STEPS_BPS = [500, 1000] as const;
 
 /**
- * Pairs Circle has reported as *fatally* unroutable during this page session.
+ * Pairs Circle has declined to price during this page session.
  *
  * Module-level rather than component state so it survives closing and reopening
- * the panel. It only ever records what the SDK itself marked FATAL — never a
- * guess, never a timeout or a liquidity dip, both of which can clear on their
- * own. A page reload forgets it, which is the right default: if Circle enables
- * a route tomorrow, nothing here keeps it hidden.
+ * the panel. A pair only lands here once BOTH of the endpoints Vector can price
+ * with have returned "not found" for it (see `quoteViaSwapEndpoint`) — never on
+ * a timeout, a slippage constraint or a liquidity dip, all of which clear on
+ * their own. A page reload forgets it, which is the right default: if Circle
+ * enables a route tomorrow, nothing here keeps it hidden. Nor does membership
+ * block a retry — changing the amount re-prices the pair from scratch.
  */
 const sessionUnroutablePairs = new Set<string>();
 
@@ -73,6 +77,99 @@ function provenPairOtherThan(failedKey: string): string | null {
 const formatBps = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 2)}%`;
 
 /**
+ * ── WHY THERE IS A SECOND WAY TO PRICE A SWAP ─────────────────────────────────
+ *
+ * Circle's swap service is reachable through two endpoints, and they are not
+ * interchangeable:
+ *
+ *   GET  /v1/stablecoinKits/quote  ← App Kit's `estimateSwap`, all this panel
+ *                                    used to call
+ *   POST /v1/stablecoinKits/swap   ← `buildSwapPlan`, already live in
+ *                                    app/api/endpoints for the Google wallet
+ *
+ * `swap-kit` maps **every** HTTP 404 to `INPUT_UNSUPPORTED_ROUTE` (1003) and
+ * hardcodes `recoverability: 'FATAL'` at the mapping site; its own comment reads
+ * "404 - Not found - unsupported route OR …" and the message template says
+ * "Route **or resource** not found." So a 404 from `/quote` is indistinguishable
+ * from a pair that has no pool — the FATAL flag is a client-side constant, not
+ * Circle's verdict. Reading it as one is how cirBTC came to be pulled from Swap.
+ *
+ * So before believing a "not found", ask the other endpoint. `POST /swap`
+ * returns unsigned adapter calldata plus Circle's proxy EIP-712 signature: it
+ * moves no money, needs no wallet and holds no key, so attempting it costs one
+ * round trip and nothing else. If it answers, the route exists and we get both a
+ * price and an executable plan. If it declines too, two independent endpoints
+ * agree and the pair is worth remembering.
+ */
+type PlanAttempt =
+  | { outcome: "plan"; plan: SwapPlan }
+  | { outcome: "no-estimate" }
+  | { outcome: "unavailable"; error: unknown };
+
+/**
+ * The panel's token state is free-form strings; `buildSwapPlan` wants the union.
+ *
+ * Written as a `Record<SwapSymbol, true>` rather than a chain of `===` checks so
+ * that adding a symbol to `SwapSymbol` FAILS THE BUILD here until it is listed.
+ * The alternative drifts silently: a new token would still appear in the
+ * selector, still quote through App Kit, and just quietly never get the
+ * fallback — the sort of half-working state that is hard to notice and easy to
+ * misread as "that pair has no route".
+ */
+const SWAP_SYMBOLS: Record<SwapSymbol, true> = {
+  USDC: true,
+  cirBTC: true,
+  EURC: true,
+};
+
+function asSwapSymbol(symbol: string): SwapSymbol | null {
+  // The cast is sound: the keys of SWAP_SYMBOLS are exactly SwapSymbol, and the
+  // type above guarantees the table stays complete.
+  return Object.prototype.hasOwnProperty.call(SWAP_SYMBOLS, symbol)
+    ? (symbol as SwapSymbol)
+    : null;
+}
+
+async function quoteViaSwapEndpoint(args: {
+  walletAddress: string;
+  tokenIn: string;
+  tokenOut: string;
+  amount: string;
+  slippageBps: number | null;
+}): Promise<PlanAttempt> {
+  const fromSymbol = asSwapSymbol(args.tokenIn);
+  const toSymbol = asSwapSymbol(args.tokenOut);
+  if (!fromSymbol || !toSymbol) {
+    // Not a failure worth reporting to the user — it means the selector offers a
+    // token this path doesn't know how to scale, which is a bug for us to fix,
+    // not something they can act on.
+    return {
+      outcome: "unavailable",
+      error: new Error(
+        `No decimals known for ${args.tokenIn} → ${args.tokenOut}; refusing to size a swap.`,
+      ),
+    };
+  }
+  try {
+    const plan = await buildSwapPlan({
+      walletAddress: args.walletAddress,
+      fromSymbol,
+      toSymbol,
+      amount: args.amount,
+      ...(args.slippageBps !== null ? { slippageBps: args.slippageBps } : {}),
+    });
+    // A plan with no estimate cannot be presented as a quote. We will not put a
+    // number on screen that Circle didn't give us, and we will not ask anyone to
+    // confirm a trade whose output reads 0.00 — but the route plainly exists, so
+    // this must not be recorded as unroutable either.
+    if (!plan.estimatedAmount) return { outcome: "no-estimate" };
+    return { outcome: "plan", plan };
+  } catch (err) {
+    return { outcome: "unavailable", error: err };
+  }
+}
+
+/**
  * Swap panel for external (injected) wallets on Arc Testnet.
  *
  * Uses the connected wallet's EIP-1193 provider (via wagmi's connector) with
@@ -92,12 +189,16 @@ const formatBps = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 
  * the user switches.
  *
  * Failures are reported from Circle's own structured error codes rather than by
- * pattern-matching its prose. That distinction is not cosmetic: an unsupported
- * route is permanent, a slippage constraint is fixable with a looser tolerance,
- * and thin liquidity is fixable with a smaller size or more time — yet all
- * three can arrive carrying the words "no route". Guessing between them meant
- * telling people to "try again later" for a pair that will never route, and
- * hiding the one setting that would have worked.
+ * pattern-matching its prose. That distinction is not cosmetic: a slippage
+ * constraint is fixable with a looser tolerance and thin liquidity with a
+ * smaller size or more time, yet both can arrive carrying the words "no route".
+ * Guessing between them meant telling people to "try again later" for a pair
+ * that wouldn't route, and hiding the one setting that would have worked.
+ *
+ * What the codes DON'T settle is whether a route exists — see the note above
+ * `quoteViaSwapEndpoint`. `INPUT_UNSUPPORTED_ROUTE` is the SDK's blanket mapping
+ * for any 404, so this panel treats it as a reason to ask the other endpoint,
+ * not as an answer.
  */
 export function SwapPanel({ onClose }: { onClose: () => void }) {
   const {
@@ -109,12 +210,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const { switchChainAsync, isPending: switching } = useSwitchChain();
 
   const [tokenIn, setTokenIn] = useState("USDC");
-  // USDC → EURC. cirBTC used to be the default and used to be selectable, but
-  // Circle has since answered for it: USDC → cirBTC is INPUT_UNSUPPORTED_ROUTE
-  // (1003), FATAL, so it is no longer offered at all (see swap-tokens.ts). EURC
-  // is the remaining first-party Arc asset — note that its route has not been
-  // observed to quote either, so this default is the best available option
-  // rather than a proven one.
+  // USDC → EURC. cirBTC used to be the default and is currently withheld from
+  // the selector (see swap-tokens.ts) on the strength of an
+  // INPUT_UNSUPPORTED_ROUTE (1003) from GET /quote — which, as the note above
+  // `quoteViaSwapEndpoint` explains, was a blanket 404 mapping rather than a
+  // liquidity verdict. That removal is being revisited; EURC is the other
+  // first-party Arc asset, so it is the best available default meanwhile.
   const [tokenOut, setTokenOut] = useState("EURC");
   const [amountIn, setAmountIn] = useState("");
 
@@ -145,6 +246,28 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const [unroutable, setUnroutable] = useState<ReadonlySet<string>>(
     () => new Set(sessionUnroutablePairs),
   );
+  /**
+   * A swap priced and encoded through POST /swap after GET /quote returned
+   * "not found" for this pair.
+   *
+   * Kept separate from `quote` because the two carry different obligations. An
+   * App Kit quote is only ever a display value — `executeSwap` re-prices at send
+   * time. This plan is the transaction: Circle has already baked `minTokenOut`
+   * and a `deadline` into it for one specific pair and amount. That makes it
+   * PERISHABLE. It is cleared at the top of the quoting effect so any input
+   * change drops it, and re-checked against the live inputs in `handleSwap`
+   * before anything is signed — sending a plan built for a different amount
+   * would swap the wrong size.
+   */
+  const [fallbackPlan, setFallbackPlan] = useState<SwapPlan | null>(null);
+  /**
+   * Which of the fallback path's two confirmations is in flight. Purely for the
+   * button label, but it matters: two wallet prompts with one generic
+   * "Swapping…" is how people confirm the wrong thing or give up halfway.
+   */
+  const [planStage, setPlanStage] = useState<
+    "approving" | "awaiting-approval" | "executing" | "awaiting-execution" | null
+  >(null);
 
   const error = errorState?.text ?? null;
   const errorInfo = errorState?.info ?? null;
@@ -153,6 +276,24 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const nextSlippageBps =
     SLIPPAGE_STEPS_BPS.find((bps) => bps > effectiveSlippageBps) ?? null;
   const pairIsUnroutable = unroutable.has(pairKey(tokenIn, tokenOut));
+
+  /**
+   * The output figure on screen, from whichever endpoint priced this trade.
+   * Never synthesised — if neither returned a number, this stays null and the
+   * Swap button stays disabled.
+   */
+  const displayAmountOut = quote?.amountOut ?? fallbackPlan?.estimatedAmount ?? null;
+
+  const planStageLabel =
+    planStage === "approving"
+      ? "Confirm the approval…"
+      : planStage === "awaiting-approval"
+        ? "Waiting for the approval…"
+        : planStage === "executing"
+          ? "Confirm the swap…"
+          : planStage === "awaiting-execution"
+            ? "Waiting for the swap…"
+            : null;
 
   const balanceIn = useTokenBalance(tokenIn);
   const balanceOut = useTokenBalance(tokenOut);
@@ -231,15 +372,17 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   function changeTokenIn(next: string) {
     setTokenIn(next);
     setSlippageBps(null);
+    setFallbackPlan(null);
   }
 
   function changeTokenOut(next: string) {
     setTokenOut(next);
     setSlippageBps(null);
+    setFallbackPlan(null);
   }
 
   /**
-   * Remember a pair Circle marked FATAL, so nobody types into it twice.
+   * Remember a pair both endpoints declined, so nobody types into it twice.
    * Stable identity (no deps) so the quoting effect can depend on it without
    * re-running on every render.
    */
@@ -258,6 +401,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   // Debounced quoting whenever the inputs settle.
   useEffect(() => {
     setTxHash(null);
+    // Perishable: built for one exact pair and amount. Any input change has to
+    // drop it before a new price lands, or the panel could show one trade while
+    // holding the plan for another.
+    setFallbackPlan(null);
     if (!parsedAmount || sameToken) {
       setQuote(null);
       setErrorState(
@@ -302,12 +449,44 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
           });
           setErrorState(described);
-          // Only a FATAL unsupported route is remembered. Everything else —
-          // slippage, thin liquidity, a timeout — can clear on its own, and
-          // marking the pair for those would be us inventing a verdict Circle
-          // didn't give.
+          // "Not found" from /quote is not a liquidity verdict — it is the
+          // blanket mapping for any 404 (see `quoteViaSwapEndpoint`). So ask the
+          // other endpoint before believing it, and only remember the pair if
+          // that one declines as well. Everything else — slippage, thin
+          // liquidity, a timeout — can clear on its own and is never recorded.
           if (described.info?.kind === "unsupported-route") {
-            recordUnroutablePair(tokenIn, tokenOut);
+            const attempt: PlanAttempt = address
+              ? await quoteViaSwapEndpoint({
+                  walletAddress: address,
+                  tokenIn,
+                  tokenOut,
+                  amount: String(parsedAmount),
+                  slippageBps,
+                })
+              : {
+                  outcome: "unavailable",
+                  error: new Error("No connected address to price against."),
+                };
+            if (cancelled) return;
+
+            if (attempt.outcome === "plan") {
+              setFallbackPlan(attempt.plan);
+              // The route works, so the /quote error is now noise — clear it
+              // rather than show a price and a failure side by side.
+              setErrorState(null);
+              sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
+            } else if (attempt.outcome === "no-estimate") {
+              setErrorState({
+                text: `Circle can build a ${tokenIn} → ${tokenOut} swap on Arc Testnet but returned no estimated output, so Vector won't ask you to confirm a trade it can't price. Try a different amount.`,
+                info: null,
+              });
+            } else {
+              console.warn(
+                "[Vector] POST /swap also declined this pair:",
+                attempt.error,
+              );
+              recordUnroutablePair(tokenIn, tokenOut);
+            }
           }
         }
       } finally {
@@ -319,7 +498,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [parsedAmount, tokenIn, tokenOut, sameToken, slippageBps, recordUnroutablePair]);
+  }, [parsedAmount, tokenIn, tokenOut, sameToken, slippageBps, address, recordUnroutablePair]);
 
   async function handleSwitch() {
     setErrorState(null);
@@ -354,11 +533,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   async function handleSwap() {
     const provider = providerRef.current;
-    if (!provider || !parsedAmount || sameToken) return;
+    if (!provider || !address || !parsedAmount || sameToken) return;
     setSwapping(true);
     setErrorState(null);
     setNotice(null);
     setTxHash(null);
+    setPlanStage(null);
     try {
       // A swap's first move is a signature bound to Arc, and a wallet on
       // another chain rejects it. Ask the wallet where it is right now — not
@@ -374,6 +554,38 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               : `Your wallet is on chain ${liveChainId}, but swaps run on Arc Testnet (${ARC_CHAIN_ID}). Switch networks and try again — nothing was sent.`,
           info: null,
         });
+        return;
+      }
+
+      // ── The POST /swap path, taken when GET /quote returned "not found" ──
+      // Circle already priced and signed this plan for one exact pair and
+      // amount. The quoting effect clears it whenever an input changes, but this
+      // is the last point before real value moves, so confirm the match here
+      // rather than trusting that ordering to hold.
+      if (fallbackPlan) {
+        if (
+          fallbackPlan.fromSymbol !== tokenIn ||
+          fallbackPlan.toSymbol !== tokenOut ||
+          fallbackPlan.amount !== String(parsedAmount)
+        ) {
+          setFallbackPlan(null);
+          setErrorState({
+            text: "That price no longer matches what you've entered, so nothing was sent. Re-enter the amount to get a fresh one.",
+            info: null,
+          });
+          return;
+        }
+
+        // Two sequential confirmations: the approval has to be mined before the
+        // swap, because `execute` pulls the input token via allowance. See
+        // app/lib/external-swap.ts.
+        const planResult = await executeSwapPlan({
+          provider,
+          from: address,
+          plan: fallbackPlan,
+          onStage: (stage) => setPlanStage(stage),
+        });
+        setTxHash(planResult.executeTxHash);
         return;
       }
 
@@ -432,6 +644,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       }
     } finally {
       setSwapping(false);
+      setPlanStage(null);
     }
   }
 
@@ -440,6 +653,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     setTokenOut(tokenIn);
     setQuote(null);
     setSlippageBps(null);
+    // The plan is bound to the old direction. Clear it here as well as in the
+    // quoting effect so the output box can't show the previous pair's estimate
+    // for the split second before the effect re-runs.
+    setFallbackPlan(null);
   }
 
   if (!isConnected || !address) {
@@ -533,8 +750,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <div className="text-[28px] font-semibold text-[var(--vector-text)]">
             {quoting ? (
               <span className="text-[var(--vector-text-dim)] text-[20px]">Quoting…</span>
-            ) : quote?.amountOut ? (
-              quote.amountOut
+            ) : displayAmountOut ? (
+              displayAmountOut
             ) : (
               <span className="text-[var(--vector-line)]">0.00</span>
             )}
@@ -555,6 +772,25 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             {slippageBps !== null && (
               <div>Slippage tolerance: {formatBps(slippageBps)} (you raised this)</div>
             )}
+          </div>
+        )}
+
+        {/* Priced through POST /swap because GET /quote returned "not found"
+            for this pair. Said out loud, because it changes what the user is
+            about to do: two wallet confirmations instead of one, and no rate or
+            fee breakdown — that endpoint doesn't return one, and Vector won't
+            compute a rate itself and present it as Circle's. */}
+        {fallbackPlan && !swapping && !txHash && (
+          <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed space-y-1">
+            <div>
+              Priced through Circle&apos;s swap endpoint: {fallbackPlan.amount}{" "}
+              {fallbackPlan.fromSymbol} → ~{fallbackPlan.estimatedAmount}{" "}
+              {fallbackPlan.toSymbol}
+            </div>
+            <div>
+              This route takes two confirmations in your wallet — an approval,
+              then the swap. Nothing moves until you confirm the second one.
+            </div>
           </div>
         )}
 
@@ -619,15 +855,19 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           </a>
         )}
 
-        {/* Said up front, before an amount is typed, once Circle has told us
-            this pair is fatally unroutable. Cheaper than letting someone
-            discover it a third time. No "pick another pair" instruction: with a
-            short token list there may not be another one, and telling someone to
-            do something impossible is worse than telling them nothing. */}
+        {/* Said up front, before an amount is typed, once BOTH of Circle's
+            pricing endpoints have declined this pair. Cheaper than letting
+            someone discover it a third time — but deliberately not phrased as a
+            permanent verdict, because Circle never gave one: a 404 from that
+            service means "not found", and reading more into it than that is the
+            mistake that pulled cirBTC from this selector. No "pick another pair"
+            instruction either: with a short token list there may not be one, and
+            telling someone to do something impossible is worse than silence. */}
         {pairIsUnroutable && !error && (
           <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed">
-            Circle has no route for {tokenIn} → {tokenOut} on Arc Testnet — it
-            reported this as permanent, not a temporary shortage.
+            Circle returned &quot;not found&quot; for {tokenIn} → {tokenOut} on
+            Arc Testnet the last time Vector priced it, on both of the endpoints
+            it can ask. Changing the amount tries again.
           </p>
         )}
 
@@ -649,11 +889,14 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         ) : (
           <button
             onClick={handleSwap}
-            disabled={swapping || quoting || !quote?.amountOut || sameToken || !parsedAmount}
+            disabled={swapping || quoting || !displayAmountOut || sameToken || !parsedAmount}
             className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
           >
             {swapping
-              ? "Swapping…"
+              ? // On the two-confirmation path, name the step. "Swapping…" over
+                // two separate wallet prompts is how people confirm the wrong
+                // one or abandon it halfway through.
+                (planStageLabel ?? "Swapping…")
               : quoting
                 ? "Getting quote…"
                 : `Swap ${tokenIn} → ${tokenOut}`}
@@ -763,15 +1006,19 @@ function describeSwapError(
         return "Your wallet couldn't approve this swap, so nothing was sent. Reconnect the wallet and try again.";
 
       case "unsupported-route": {
-        // The SDK marks this FATAL, so "try again later" would be false
-        // comfort — this pair does not route, full stop. What we must not do is
-        // replace one guess with another: only a pair Circle has actually quoted
-        // in this session gets named as an alternative.
-        const base = `Circle doesn't route ${pair} on Arc Testnet. It reported this as permanent rather than a temporary shortage, so retrying won't help.`;
+        // Circle's SDK maps EVERY HTTP 404 to this code and hardcodes
+        // `recoverability: 'FATAL'` at the mapping site, so it does not
+        // establish that a route is absent — only that the service answered
+        // "not found". The previous wording here ("permanent, retrying won't
+        // help") stated a verdict Circle never gave, and that inference is what
+        // removed a working token from Swap. Report what happened, no more. What
+        // we must also not do is replace one guess with another: only a pair
+        // Circle has actually priced this session gets named as an alternative.
+        const base = `Circle wouldn't price ${pair} on Arc Testnet — its swap service returned "not found" for this pair.`;
         const proven = provenPairOtherThan(pairKey(ctx.tokenIn, ctx.tokenOut));
         return proven
-          ? `${base} ${proven} quoted successfully earlier in this session — try that instead.`
-          : `${base} No pair has quoted successfully here yet either, so there isn't one Vector can honestly point you to.`;
+          ? `${base} ${proven} priced successfully earlier in this session — try that instead.`
+          : `${base} No pair has priced successfully here yet either, so there isn't one Vector can honestly point you to.`;
       }
 
       case "unsupported-token":

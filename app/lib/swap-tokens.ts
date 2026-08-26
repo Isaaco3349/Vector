@@ -5,10 +5,15 @@
  *  - `ARC_TOKENS` — everything the wallet can HOLD and Vector can display.
  *  - `ARC_SWAP_TOKENS` — the subset Circle's swap service will actually route.
  *
- * They are not the same set. A token can be a real, faucet-funded Arc asset with
- * a verified address and still have no swap route, which is exactly the case for
- * cirBTC (see below). Conflating the two is what previously put a token in the
- * Swap selector that could only ever produce an error.
+ * They are not necessarily the same set — a token can be a real, faucet-funded
+ * Arc asset with a verified address and still have no swap route — so the split
+ * is worth keeping regardless of which tokens currently sit on either side of
+ * it. It exists so that a token which cannot route is never offered as a button
+ * that can only return an error.
+ *
+ * ⚠️ The one token currently marked unswappable (cirBTC) was marked so on
+ * REASONING SINCE FOUND TO BE UNSOUND — see the note on `swappable` below and
+ * the inline note on cirBTC. Treat that flag as unverified, not as evidence.
  *
  * The `symbol` is what App Kit's `tokenIn`/`tokenOut` expect (symbolic
  * identifiers — the SDK resolves routing itself). The `address` is only used
@@ -55,11 +60,23 @@ export type SwapToken = {
   /**
    * Whether Circle's swap service routes this token on Arc Testnet.
    *
-   * This is an OBSERVED fact, not an assumption: it may only be set false on
-   * the strength of Circle's own FATAL verdict for the pair (KitError
-   * `INPUT_UNSUPPORTED_ROUTE` / 1003), never because a swap merely failed or
-   * looked unlikely. Slippage failures, thin liquidity and timeouts all clear
-   * on their own and must NOT flip this flag.
+   * 🔴 READ THIS BEFORE SETTING IT FALSE. The bar is an OBSERVED fact, and one
+   * specific thing that looks like proof is NOT proof:
+   *
+   * A KitError of `INPUT_UNSUPPORTED_ROUTE` / 1003 with `recoverability:
+   * 'FATAL'` DOES NOT MEAN THE PAIR HAS NO ROUTE. Read from the installed SDK
+   * (`swap-kit/index.cjs`, `handleClientError`): 1003/FATAL is the blanket
+   * mapping applied to ANY HTTP 404 from the swap service that isn't a slippage
+   * failure, and the `FATAL` label is hardcoded client-side — it is the SDK's
+   * default for "404 and I don't know why", not a verdict from Circle about
+   * liquidity. An earlier version of this file cited exactly that error as
+   * confirmation and was wrong. Always read the `detail` string it carries.
+   *
+   * So do NOT flip this flag on a 1003, a slippage failure, thin liquidity, a
+   * timeout, or a single failed attempt — all of those clear on their own. Flip
+   * it only on evidence that survives BOTH of the endpoints Circle exposes
+   * (`GET /quote` and `POST /swap`, which SwapPanel now tries in turn), or on a
+   * first-party statement that the pair is unsupported.
    *
    * Tokens with `swappable: false` still appear in the portfolio with a live
    * balance — they just aren't offered in the Swap selector, because a token
@@ -82,12 +99,21 @@ export const ARC_TOKENS: SwapToken[] = [
     // Verified from Circle SDK token registry: CIRBTC.locators[Arc_Testnet].
     // cirBTC is 8-decimal; useTokenBalance reads decimals() on-chain regardless.
     address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
-    // Confirmed unroutable 2026-08-22, from Circle's own structured error on the
-    // deployed app: USDC → cirBTC returns INPUT_UNSUPPORTED_ROUTE (1003), which
-    // the SDK marks FATAL — not a liquidity dip, not a slippage constraint, but
-    // "this pair does not route". cirBTC remains a genuine Arc asset that
-    // Circle's faucet funds, so it keeps its place in the portfolio; it is only
-    // withheld from Swap. Flip this back to true if Circle enables the route.
+    // ⚠️ UNVERIFIED — this flag is on probation as of 2026-08-26.
+    //
+    // It was set false on 2026-08-22 because the deployed app returned
+    // INPUT_UNSUPPORTED_ROUTE (1003, FATAL) for USDC → cirBTC, which was read at
+    // the time as Circle stating the pair does not route. That reading was
+    // WRONG: 1003/FATAL is the SDK's blanket mapping for any unexplained 404
+    // (see the `swappable` doc above). The 1003 came from `GET /quote`; the
+    // separate `POST /swap` endpoint was never asked about this pair, and Circle
+    // does list a cirBTC locator for Arc Testnet.
+    //
+    // Left false for now only because it is the deployed state and flipping it
+    // back should follow a real observation, not a second guess. SwapPanel now
+    // tries both endpoints, so the way to settle this is to re-enable cirBTC and
+    // watch which endpoints decline it. Do that as a deliberate change, not as a
+    // drive-by.
     swappable: false,
   },
   {
