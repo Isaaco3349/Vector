@@ -74,13 +74,25 @@
  * route returns "no route" (no funds move); confirm the happy path with a small
  * live swap on the deployed app.
  *
- * ROUTE STATUS 2026-08-22: Circle answered for one pair. USDC → cirBTC returns
- * INPUT_UNSUPPORTED_ROUTE (1003), marked FATAL by its own SDK — that pair does
- * not route on Arc Testnet, so cirBTC is no longer offered in either Swap
- * selector. Everything below still supports the symbol (address and decimals are
- * verified and correct) so it can be re-offered without new research. Only the
- * USDC → cirBTC direction was tested; cirBTC → USDC and cirBTC ↔ EURC are
- * unknown, and USDC ↔ EURC has not yet been seen to quote either.
+ * ROUTE STATUS — CORRECTED 2026-08-26. The note that stood here claimed
+ * USDC → cirBTC "does not route on Arc Testnet" on the strength of an
+ * INPUT_UNSUPPORTED_ROUTE (1003) marked FATAL. That inference was wrong, and the
+ * reason is mechanical: `swap-kit`'s `handleClientError` maps EVERY HTTP 404 to
+ * UNSUPPORTED_ROUTE and hardcodes `recoverability: 'FATAL'` at the mapping site
+ * — its own comment reads "404 - Not found - unsupported route OR …" and the
+ * message says "Route **or resource** not found." So the code proves only that
+ * api.circle.com returned 404. A wrong chain string, an unknown token, a bad
+ * path and an absent pool are indistinguishable, and the FATAL flag is a
+ * client-side constant, never Circle's verdict.
+ *
+ * What is actually known: the 1003 came from App Kit's GET /v1/stablecoinKits/quote.
+ * `buildSwapPlan` below uses POST /v1/stablecoinKits/swap instead, which is the
+ * endpoint ezwallet.cash swaps Arc assets through. SwapPanel now falls back to
+ * this path whenever /quote reports "not found", so the two are cross-checked at
+ * runtime rather than one being trusted. Addresses and decimals for all three
+ * symbols are verified and correct, so nothing below needs new research.
+ * Still genuinely untested: cirBTC → USDC, cirBTC ↔ EURC, and whether any pair
+ * fills end-to-end on Arc Testnet.
  */
 
 import { formatUnits, parseUnits } from "viem";
