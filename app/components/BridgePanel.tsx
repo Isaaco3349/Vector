@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useAccount } from "wagmi";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAccount, useSwitchChain } from "wagmi";
 import {
   estimateBridge,
   executeBridge,
@@ -10,25 +10,49 @@ import {
 } from "../lib/bridge";
 import {
   BRIDGE_CHAINS,
+  bridgeChainById,
   explorerAddressUrl,
   type BridgeChainId,
 } from "../lib/bridge-chains";
+import { getProviderChainId } from "../lib/appkit";
 import { useBridgeBalance } from "./useBridgeBalance";
 
 /**
  * Bridge panel (CCTP v2) for external (injected) wallets.
  *
- * Moves USDC cross-chain between Arc Testnet, Base Sepolia, and Ethereum
- * Sepolia via Circle's App Kit. Uses `useForwarder: true`, so the wallet only
- * signs the burn on the source chain — Circle's relayer handles the mint, and
- * the wallet never has to switch networks mid-flow.
+ * Moves USDC cross-chain across the nine verified CCTP testnets in
+ * bridge-chains.ts via Circle's App Kit.
+ *
+ * ── THE CHAIN GUARD (do not remove) ───────────────────────────────────────────
+ * `useForwarder: true` means Circle's relayer performs the DESTINATION mint, so
+ * the wallet never has to switch to the destination. It does NOT excuse the
+ * source side: a CCTP bridge begins with a burn transaction on the source chain,
+ * and a wallet sitting on a different chain cannot sign it.
+ *
+ * This panel previously had no chain check at all, which produced a reproducible
+ * failure: bridge Arc → somewhere (wallet ends up on Arc), then select a
+ * non-Arc source and bridge again. `estimateBridge` still succeeded — it is
+ * read-only and builds its own public client per chain, so fees rendered
+ * normally — and only `kit.bridge()` failed, surfacing as "Circle reported the
+ * bridge didn't go through". Circle was not the problem; the wallet was on the
+ * wrong network.
+ *
+ * So the source chain is enforced twice, mirroring SwapPanel:
+ *   1. `needsChainSwitch` replaces the action button with a switch prompt, so a
+ *      bridge that cannot be signed is never offered.
+ *   2. `handleBridge` re-reads the chain from the provider immediately before
+ *      executing and refuses on a mismatch — the state could be stale, and
+ *      nothing should be sent on a guess.
+ * Both ask the PROVIDER (`getProviderChainId`) rather than wagmi, because the
+ * two disagree when several wallet extensions are installed.
  *
  * Mirrors SwapPanel: same modal shell, debounced quoting, honest error/tx
  * surfacing. Only renders when an external wallet is the active connection
- * (Google-login wallets take a different, server-side adapter — a later phase).
+ * (Google-login wallets take a different, server-side path — GoogleBridgePanel).
  */
 export function BridgePanel({ onClose }: { onClose: () => void }) {
-  const { address, isConnected, connector } = useAccount();
+  const { address, isConnected, connector, chainId: wagmiChainId } = useAccount();
+  const { switchChainAsync, isPending: switching } = useSwitchChain();
 
   const [fromChain, setFromChain] = useState<BridgeChainId>("Arc_Testnet");
   const [toChain, setToChain] = useState<BridgeChainId>("Base_Sepolia");
@@ -42,23 +66,50 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const [txUrl, setTxUrl] = useState<string | null>(null);
   const [pendingNote, setPendingNote] = useState<string | null>(null);
   const [activityUrl, setActivityUrl] = useState<string | null>(null);
+  /**
+   * The chain the WALLET reports being on. Null means "not yet known" — which is
+   * deliberately different from "wrong", so an unreadable provider can't produce
+   * a misleading switch prompt.
+   */
+  const [walletChainId, setWalletChainId] = useState<number | null>(null);
 
   const balanceFrom = useBridgeBalance(fromChain);
+
+  /**
+   * The numeric id of the chain the burn has to be signed on. Comes from the
+   * verified registry, so the switch prompt can't target a chain that isn't
+   * registered in wagmi-config (BridgeChainNumericId is a literal union of
+   * exactly the registered ids).
+   */
+  const sourceChainId = bridgeChainById(fromChain)?.chainId ?? null;
 
   // Same provider-resolution approach as SwapPanel: pull the raw EIP-1193
   // provider from the active wagmi connector (its documented getProvider()),
   // falling back to window.ethereum.
   const providerRef = useRef<Eip1193Provider | null>(null);
+
+  /**
+   * Re-ask the wallet which chain it is on. Returns the id as well as storing
+   * it, so a caller can act on the answer without waiting for a re-render.
+   */
+  const refreshWalletChain = useCallback(async () => {
+    const provider = providerRef.current;
+    if (!provider) return null;
+    const id = await getProviderChainId(provider);
+    setWalletChainId(id);
+    return id;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    async function resolveProvider() {
+    async function resolveProvider(): Promise<Eip1193Provider | null> {
       providerRef.current = null;
       try {
         if (connector?.getProvider) {
           const p = (await connector.getProvider()) as Eip1193Provider;
           if (!cancelled && p && typeof p.request === "function") {
             providerRef.current = p;
-            return;
+            return p;
           }
         }
         const injected =
@@ -67,16 +118,26 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             : undefined;
         if (!cancelled && injected && typeof injected.request === "function") {
           providerRef.current = injected;
+          return injected;
         }
       } catch (err) {
         console.error("[Vector] failed to resolve wallet provider for bridge:", err);
       }
+      return null;
     }
-    void resolveProvider();
+    void (async () => {
+      const provider = await resolveProvider();
+      if (cancelled || !provider) return;
+      // Ask the provider that will actually be signing. wagmiChainId is in the
+      // dependency list only as a signal that something moved — the answer
+      // itself always comes from the wallet.
+      const id = await getProviderChainId(provider);
+      if (!cancelled) setWalletChainId(id);
+    })();
     return () => {
       cancelled = true;
     };
-  }, [connector]);
+  }, [connector, wagmiChainId]);
 
   const parsedAmount = useMemo(() => {
     const n = Number(amount);
@@ -89,6 +150,15 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     if (!parsedAmount || balanceFrom.formatted === null) return false;
     return parsedAmount > Number(balanceFrom.formatted);
   }, [parsedAmount, balanceFrom.formatted]);
+
+  // Only claim the wallet is on the wrong chain once it has actually told us.
+  // A null answer means "unknown", which is not the same as "wrong" — the
+  // pre-flight check in handleBridge refuses to sign on an unknown chain
+  // anyway, so an unreadable provider can't turn into a misleading prompt here.
+  const needsChainSwitch =
+    walletChainId !== null &&
+    sourceChainId !== null &&
+    walletChainId !== sourceChainId;
 
   // Debounced quoting whenever inputs settle.
   useEffect(() => {
@@ -145,6 +215,41 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     };
   }, [parsedAmount, fromChain, toChain, sameChain, insufficient]);
 
+  /**
+   * Move the wallet to the SOURCE chain, so the burn can be signed. Unlike
+   * SwapPanel this target is dynamic — it's whichever chain is selected as the
+   * source, taken from the verified registry rather than hand-typed.
+   */
+  async function handleSwitch() {
+    if (sourceChainId === null) return;
+    setError(null);
+    let switchError: unknown = null;
+    try {
+      // wagmi's injected connector asks the wallet to switch and, if the wallet
+      // doesn't know the chain yet, offers to add it from viem's own chain
+      // definition — so no RPC URL or chain id is hand-written into this prompt.
+      await switchChainAsync({ chainId: sourceChainId });
+    } catch (err) {
+      switchError = err;
+    }
+    // Judge success by what the wallet now reports, not by whether the call
+    // resolved. Some wallets resolve the request and stay put.
+    const id = await refreshWalletChain();
+    if (id === sourceChainId) return;
+    if (switchError) {
+      setError(
+        readableError(
+          switchError,
+          `Couldn't switch networks. Switch to ${chainLabel(fromChain)} in your wallet, then try again.`,
+        ),
+      );
+      return;
+    }
+    setError(
+      "Your wallet still reports a different network. If you have more than one wallet extension enabled, switch networks in the one Vector is connected to.",
+    );
+  }
+
   async function handleBridge() {
     const provider = providerRef.current;
     if (!provider || !parsedAmount || sameChain || insufficient) return;
@@ -155,6 +260,21 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     setPendingNote(null);
     setActivityUrl(null);
     try {
+      // A bridge's first move is a burn on the SOURCE chain, and a wallet on
+      // another chain cannot sign it. Ask the wallet where it is right now —
+      // not when the panel opened — and refuse rather than raise a request that
+      // could only fail. This is the check whose absence made a non-Arc bridge
+      // fail with "Circle reported the bridge didn't go through".
+      const liveChainId = await getProviderChainId(provider);
+      setWalletChainId(liveChainId);
+      if (liveChainId !== sourceChainId) {
+        setError(
+          liveChainId === null
+            ? "Couldn't confirm which network your wallet is on, so nothing was sent. Reconnect the wallet and try again."
+            : `Your wallet is on chain ${liveChainId}, but this bridge burns on ${chainLabel(fromChain)} (${sourceChainId}). Switch networks and try again — nothing was sent.`,
+        );
+        return;
+      }
       const result = await executeBridge({
         provider,
         fromChain,
@@ -164,10 +284,25 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
       if (result.state === "error") {
-        // Circle explicitly reported failure — this is a real error.
-        setError(
-          "Circle reported the bridge didn't go through. No funds were moved — please try again.",
-        );
+        // Report what Circle actually said, and DON'T claim funds are safe
+        // unless that's knowable. If a burn hash came back, the source-chain
+        // burn happened — telling someone "no funds were moved" in that case
+        // would send them looking for money that is mid-flight, or stop them
+        // reporting a real loss. The tx link is rendered below either way.
+        const detail = result.failureDetail;
+        if (result.txHash) {
+          setError(
+            detail
+              ? `The burn was sent on ${chainLabel(fromChain)} but Circle reported the bridge as failed: ${detail} Check the transaction below before retrying — this amount may already have left your wallet.`
+              : `The burn was sent on ${chainLabel(fromChain)} but Circle reported the bridge as failed, without giving a reason. Check the transaction below before retrying — this amount may already have left your wallet.`,
+          );
+        } else {
+          setError(
+            detail
+              ? `Circle reported the bridge didn't go through: ${detail}`
+              : "Circle reported the bridge didn't go through, without giving a reason. No burn transaction was recorded, so your funds should be untouched — check your wallet before retrying.",
+          );
+        }
       } else if (!result.txHash) {
         // bridge() resolved without error, so the burn was submitted — the SDK
         // just hasn't handed back a source hash yet. That is NOT a failure, so
@@ -197,6 +332,10 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     setFromChain(toChain);
     setToChain(fromChain);
     setQuote(null);
+    // Drop any message from the previous direction — including a stale
+    // wrong-network error, which the switch prompt below now supersedes.
+    setError(null);
+    setPendingNote(null);
   }
 
   if (!isConnected || !address) {
@@ -332,29 +471,47 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
           </a>
         )}
 
-        <button
-          onClick={handleBridge}
-          disabled={
-            bridging ||
-            quoting ||
-            !quote?.amount ||
-            sameChain ||
-            !parsedAmount ||
-            insufficient
-          }
-          className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
-        >
-          {bridging
-            ? "Bridging…"
-            : quoting
-              ? "Estimating…"
-              : `Bridge to ${chainLabel(toChain)}`}
-        </button>
+        {needsChainSwitch ? (
+          <div>
+            <p className="text-[12px] text-[var(--vector-text-dim)] leading-relaxed mb-3 text-center">
+              This bridge burns on {chainLabel(fromChain)}, and your wallet is on{" "}
+              <span className="font-mono">chain {walletChainId}</span>. Switch
+              networks to continue — nothing has been sent.
+            </p>
+            <button
+              onClick={handleSwitch}
+              disabled={switching}
+              className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
+            >
+              {switching ? "Switching…" : `Switch to ${chainLabel(fromChain)}`}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleBridge}
+            disabled={
+              bridging ||
+              quoting ||
+              !quote?.amount ||
+              sameChain ||
+              !parsedAmount ||
+              insufficient
+            }
+            className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
+          >
+            {bridging
+              ? "Bridging…"
+              : quoting
+                ? "Estimating…"
+                : `Bridge to ${chainLabel(toChain)}`}
+          </button>
+        )}
 
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
           Bridges USDC across chains via Circle&apos;s CCTP. You sign the burn on
-          the source chain; Circle&apos;s relayer completes the mint on the
-          destination — no network switch needed.
+          the source chain, so your wallet needs to be on {chainLabel(fromChain)};
+          Circle&apos;s relayer completes the mint on {chainLabel(toChain)}, so no
+          switch is needed on the destination side.
         </p>
       </div>
     </div>

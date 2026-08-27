@@ -11,9 +11,12 @@
  * it. It exists so that a token which cannot route is never offered as a button
  * that can only return an error.
  *
- * ⚠️ The one token currently marked unswappable (cirBTC) was marked so on
- * REASONING SINCE FOUND TO BE UNSOUND — see the note on `swappable` below and
- * the inline note on cirBTC. Treat that flag as unverified, not as evidence.
+ * ⚠️ As of 2026-08-27 the two lists are IDENTICAL — all three Arc assets
+ * (USDC/EURC/cirBTC) are swappable. Keep the split anyway: it is what stops a
+ * token that cannot route from being offered as a button that can only ever
+ * return an error, and the last token to sit on the unswappable side (cirBTC)
+ * turned out to have been put there on unsound reasoning. Read the `swappable`
+ * doc below before ever setting it false again.
  *
  * The `symbol` is what App Kit's `tokenIn`/`tokenOut` expect (symbolic
  * identifiers — the SDK resolves routing itself). The `address` is only used
@@ -99,22 +102,27 @@ export const ARC_TOKENS: SwapToken[] = [
     // Verified from Circle SDK token registry: CIRBTC.locators[Arc_Testnet].
     // cirBTC is 8-decimal; useTokenBalance reads decimals() on-chain regardless.
     address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
-    // ⚠️ UNVERIFIED — this flag is on probation as of 2026-08-26.
+    // ✅ RE-ENABLED 2026-08-27 on third-party evidence.
     //
-    // It was set false on 2026-08-22 because the deployed app returned
-    // INPUT_UNSUPPORTED_ROUTE (1003, FATAL) for USDC → cirBTC, which was read at
-    // the time as Circle stating the pair does not route. That reading was
-    // WRONG: 1003/FATAL is the SDK's blanket mapping for any unexplained 404
-    // (see the `swappable` doc above). The 1003 came from `GET /quote`; the
-    // separate `POST /swap` endpoint was never asked about this pair, and Circle
-    // does list a cirBTC locator for Arc Testnet.
+    // History, so this isn't re-litigated: set false on 2026-08-22 because the
+    // deployed app returned INPUT_UNSUPPORTED_ROUTE (1003, FATAL) for
+    // USDC → cirBTC, which was read at the time as Circle stating the pair
+    // doesn't route. That reading was WRONG — 1003/FATAL is the SDK's blanket
+    // mapping for any unexplained 404 (see the `swappable` doc above), not a
+    // liquidity verdict. The comment left here said the way to settle it was a
+    // real observation rather than a second guess.
     //
-    // Left false for now only because it is the deployed state and flipping it
-    // back should follow a real observation, not a second guess. SwapPanel now
-    // tries both endpoints, so the way to settle this is to re-enable cirBTC and
-    // watch which endpoints decline it. Do that as a deliberate change, not as a
-    // drive-by.
-    swappable: false,
+    // That observation now exists and it is external to this codebase: cirBTC
+    // swaps work in a THIRD-PARTY app (ezwallet.cash) against the same Circle
+    // swap service on the same chain. A pair that routes for another caller
+    // routes for us; whatever produced our 404 was on our side of the call, not
+    // Circle's liquidity. Since 1003 was never evidence, there is nothing left
+    // holding this false.
+    //
+    // If cirBTC declines again, the thing to capture is the `detail` string from
+    // BOTH endpoints (SwapPanel tries GET /quote then POST /swap) — not the
+    // 1003 code, which carries no information.
+    swappable: true,
   },
   {
     symbol: "EURC",

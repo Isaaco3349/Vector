@@ -75,6 +75,17 @@ export type BridgeExecution = {
   explorerUrl: string | null;
   /** Reported terminal state of the bridge. */
   state: "pending" | "success" | "error" | null;
+  /**
+   * Whatever Circle actually said about the failure, dug out of the result's
+   * steps. Null when the SDK reported an error state but gave no reason.
+   *
+   * This exists because the panel used to answer every `state === "error"` with
+   * one fixed sentence claiming Circle had reported a failure AND that no funds
+   * moved. The first half discarded the only information that could explain the
+   * failure; the second half was an assertion we cannot make, since a bridge
+   * that fails after the burn has very much moved funds.
+   */
+  failureDetail: string | null;
   /** The raw BridgeResult — always kept. */
   raw: unknown;
 };
@@ -293,6 +304,49 @@ function extractSourceTx(
   return { txHash: null, explorerUrl: null };
 }
 
+/**
+ * Dig the human-readable reason out of a failed BridgeResult.
+ *
+ * The SDK does not document one canonical field, so this reads the candidates it
+ * is known to use, in order of specificity, across both the top-level result and
+ * each step. Anything unrecognised yields null rather than a guess — a wrong
+ * explanation is worse than an honest "no reason given".
+ */
+function extractFailureDetail(result: unknown): string | null {
+  const readFrom = (rec: Record<string, unknown>): string | null => {
+    for (const key of ["detail", "message", "reason", "error"]) {
+      const v = rec[key];
+      if (typeof v === "string" && v.trim().length > 0) return v.trim();
+      // `error` is sometimes an object/Error rather than a string.
+      if (v && typeof v === "object") {
+        const nested = v as Record<string, unknown>;
+        for (const nk of ["detail", "message", "reason"]) {
+          const nv = nested[nk];
+          if (typeof nv === "string" && nv.trim().length > 0) return nv.trim();
+        }
+      }
+    }
+    return null;
+  };
+
+  if (!result || typeof result !== "object") return null;
+  const top = result as Record<string, unknown>;
+
+  // Prefer a failing STEP's reason — it names the leg that broke — then fall
+  // back to anything on the result itself.
+  const steps = top.steps;
+  if (Array.isArray(steps)) {
+    for (const step of steps) {
+      if (!step || typeof step !== "object") continue;
+      const rec = step as Record<string, unknown>;
+      if (rec.state !== "error") continue;
+      const detail = readFrom(rec);
+      if (detail) return detail;
+    }
+  }
+  return readFrom(top);
+}
+
 /** Execute the bridge. Returns best-effort source tx + state, plus raw result. */
 export async function executeBridge(args: BridgeArgs): Promise<BridgeExecution> {
   const { kit, bridgeParams } = await buildKitAndParams(args);
@@ -308,5 +362,17 @@ export async function executeBridge(args: BridgeArgs): Promise<BridgeExecution> 
       ? rawState
       : null;
 
-  return { txHash, explorerUrl, state, raw: result };
+  if (state === "error") {
+    // Keep the whole object in the console: the extractor only knows the fields
+    // it knows, and this is the artifact worth having when it comes back null.
+    console.error("[Vector] bridge reported an error state. Raw result:", result);
+  }
+
+  return {
+    txHash,
+    explorerUrl,
+    state,
+    failureDetail: state === "error" ? extractFailureDetail(result) : null,
+    raw: result,
+  };
 }

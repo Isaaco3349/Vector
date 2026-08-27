@@ -210,12 +210,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const { switchChainAsync, isPending: switching } = useSwitchChain();
 
   const [tokenIn, setTokenIn] = useState("USDC");
-  // USDC → EURC. cirBTC used to be the default and is currently withheld from
-  // the selector (see swap-tokens.ts) on the strength of an
-  // INPUT_UNSUPPORTED_ROUTE (1003) from GET /quote — which, as the note above
-  // `quoteViaSwapEndpoint` explains, was a blanket 404 mapping rather than a
-  // liquidity verdict. That removal is being revisited; EURC is the other
-  // first-party Arc asset, so it is the best available default meanwhile.
+  // USDC → EURC. cirBTC was the original default, was pulled from the selector
+  // on a misread 1003, and is back in it as of 2026-08-27 (see swap-tokens.ts).
+  // The default stays EURC anyway: it is the pair Circle has actually been
+  // observed to quote for this app, and a panel should open on the route with
+  // the most evidence behind it. cirBTC is one selection away.
   const [tokenOut, setTokenOut] = useState("EURC");
   const [amountIn, setAmountIn] = useState("");
 
