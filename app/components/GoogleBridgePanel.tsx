@@ -33,6 +33,30 @@ import { useLatestTxHash } from "../lib/use-latest-tx-hash";
  *   3. (server→browser) burn: same handshake for the burn calldata.
  * Source is always Arc; the user picks the destination.
  *
+ * ── WHY THE SOURCE CHAIN CANNOT BE SWITCHED (verified, not a UI gap) ──────────
+ * This panel offers no direction flip, and that is a constraint of the wallet
+ * rather than a missing feature. Two first-party facts in this repo settle it:
+ *   1. app/api/endpoints/route.ts creates the wallet with
+ *      `accountType: "SCA"` and `blockchains: ["ARC-TESTNET"]` — a smart-contract
+ *      account provisioned on Arc alone.
+ *   2. The same file's `createContractExecutionChallenge` identifies the wallet by
+ *      `walletId` ALONE and accepts NO chain parameter. There is no way to ask
+ *      Circle to execute a call for this wallet on any other chain.
+ * So a burn on Base/Unichain/etc. cannot be signed by this wallet at all. Adding
+ * a flip control would be a button that can only ever fail, which is exactly what
+ * this codebase refuses to ship. To bridge INTO Arc, funds must be burned on the
+ * source chain by a wallet that lives there — an external wallet, via
+ * BridgePanel, with this wallet's Arc address as the recipient.
+ *
+ * ── THE RECIPIENT FIELD IS A SAFETY CONTROL, NOT A CONVENIENCE ────────────────
+ * The mint recipient defaults to this wallet's own address, which is the SCA's
+ * address ON ARC. Whether Circle controls that same address on the destination
+ * chain is NOT something this codebase can verify (it depends on Circle's
+ * cross-chain SCA deployment behaviour, and Circle's docs are not reachable from
+ * the build environment). Rather than quietly bet a user's balance on an
+ * unverified assumption, the recipient is shown, editable, and explained — so
+ * anyone who is unsure can send to an address they know they control.
+ *
  * Because the source burn is all the W3S wallet ever signs (useForwarder makes
  * Circle's relayer do the destination mint), the wallet never has to switch
  * chains — which it couldn't do anyway, being Arc-scoped.
@@ -70,6 +94,13 @@ export function GoogleBridgePanel({
   const [toChain, setToChain] = useState<BridgeChainId>("Base_Sepolia");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Where the destination mint lands. Defaults to this wallet's own address —
+   * unchanged behaviour from before this field existed — but editable, because
+   * this wallet is an Arc-only smart account and the same address may not be
+   * controllable on the destination chain. See the note at the top of this file.
+   */
+  const [recipient, setRecipient] = useState(walletAddress);
   // phase drives the button label through the three-step flow.
   const [phase, setPhase] = useState<
     "encoding" | "approving" | "burning" | null
@@ -81,6 +112,16 @@ export function GoogleBridgePanel({
   const destChain = bridgeChainById(toChain);
   const destLabel = destChain?.label ?? toChain;
 
+  const recipientTrimmed = recipient.trim();
+  /**
+   * Shape-check only. An address that is well-formed but wrong is not something
+   * any client can detect, which is precisely why the field is explained rather
+   * than merely validated.
+   */
+  const recipientValid = /^0x[a-fA-F0-9]{40}$/.test(recipientTrimmed);
+  const recipientIsSelf =
+    recipientTrimmed.toLowerCase() === walletAddress.trim().toLowerCase();
+
   const amountNum = Number(amount);
   const balanceNum = balance !== null && balance !== "" ? Number(balance) : null;
   const amountValid =
@@ -88,7 +129,8 @@ export function GoogleBridgePanel({
   const insufficient =
     amountValid && balanceNum !== null && amountNum > balanceNum;
 
-  const canBridge = amountValid && !insufficient && !submitting && !done;
+  const canBridge =
+    amountValid && !insufficient && recipientValid && !submitting && !done;
 
   // The burn is a W3S contractExecution challenge, which returns no txHash, so
   // resolve the real hash from Circle's transactions list in the background
@@ -163,6 +205,9 @@ export function GoogleBridgePanel({
         walletAddress,
         toChain,
         amount: amount.trim(),
+        // Explicit, so the mint lands where the user actually chose. Passing it
+        // always (rather than only when edited) keeps one code path.
+        recipientAddress: recipientTrimmed,
       });
     } catch (err) {
       setPhase(null);
@@ -226,7 +271,14 @@ export function GoogleBridgePanel({
             <p className="text-[15px] font-semibold mb-1.5">Bridge started</p>
             <p className="text-[13px] text-[var(--vector-text-dim)] leading-relaxed mb-6">
               {amount} USDC was burned on Arc. Circle&apos;s relayer will mint it
-              to your wallet on {destLabel} shortly — this can take a few minutes.
+              on {destLabel} shortly — this can take a few minutes.
+              {!recipientIsSelf && (
+                <>
+                  {" "}
+                  It will arrive at{" "}
+                  <span className="font-mono break-all">{recipientTrimmed}</span>.
+                </>
+              )}
             </p>
             {explorerUrl && (
               <a
@@ -284,8 +336,10 @@ export function GoogleBridgePanel({
             </div>
 
             <p className="text-[11px] leading-relaxed text-[var(--vector-text-dim)] mb-4 px-1">
-              Your Google wallet lives on Arc, so bridges start from Arc. To
-              bridge from another chain, connect an external wallet instead.
+              Your Google wallet is a Circle smart account that exists only on
+              Arc, so it can only sign the burn on Arc — the direction can&apos;t
+              be reversed here. To bridge <em>into</em> Arc, connect an external
+              wallet on the other chain and send to your Arc address below.
             </p>
 
             {/* Amount */}
@@ -322,6 +376,42 @@ export function GoogleBridgePanel({
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Recipient on the destination chain */}
+            <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[12px] text-[var(--vector-text-dim)]">
+                  Recipient on {destLabel}
+                </span>
+                {!recipientIsSelf && (
+                  <button
+                    onClick={() => setRecipient(walletAddress)}
+                    disabled={submitting}
+                    className="text-[11px] text-[var(--vector-pink)] hover:opacity-80 transition-opacity uppercase tracking-wide disabled:opacity-40"
+                  >
+                    Use mine
+                  </button>
+                )}
+              </div>
+              <input
+                spellCheck={false}
+                autoComplete="off"
+                placeholder="0x…"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                disabled={submitting}
+                className="w-full bg-transparent text-[13px] font-mono outline-none placeholder:text-[var(--vector-line)] disabled:opacity-60 break-all"
+              />
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
+                {recipientTrimmed === ""
+                  ? "Enter the address that should receive the USDC."
+                  : !recipientValid
+                    ? "That doesn't look like a wallet address (expected 0x followed by 40 characters)."
+                    : recipientIsSelf
+                      ? `This is your Arc smart-account address. If you're not certain you control it on ${destLabel}, paste an address you do control there — a wallet you hold the keys to.`
+                      : `The mint will go to this address on ${destLabel}. Double-check it: a bridge can't be recalled.`}
+              </p>
             </div>
 
             {error && (

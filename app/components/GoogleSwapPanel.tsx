@@ -34,14 +34,22 @@ import { useLatestTxHash } from "../lib/use-latest-tx-hash";
  */
 
 /**
- * Tokens offered here. cirBTC is deliberately absent: Circle reported
- * USDC → cirBTC on Arc Testnet as INPUT_UNSUPPORTED_ROUTE (1003), which its SDK
- * marks FATAL, so offering it would be a button that can only fail. The symbol
- * stays fully supported in `google-swap.ts` (verified address + decimals), so
- * restoring it here is a one-word change if Circle enables the route. cirBTC
- * balances still show in the portfolio.
+ * Tokens offered here — the three first-party Arc assets Circle's faucet funds.
+ *
+ * cirBTC was pulled from this list on 2026-08-22 because Circle returned
+ * INPUT_UNSUPPORTED_ROUTE (1003, FATAL) for USDC → cirBTC. That was a
+ * misreading: 1003/FATAL is the SDK's blanket mapping for ANY unexplained 404
+ * and the FATAL label is hardcoded client-side, so it never was a statement
+ * about liquidity. RESTORED 2026-08-27 on third-party evidence — cirBTC swaps
+ * work in another app (ezwallet.cash) against the same Circle swap service on
+ * the same chain, so the pair does route.
+ *
+ * Kept in sync with `ARC_SWAP_TOKENS` in lib/swap-tokens.ts (the external
+ * wallet's selector). These are two lists because the Google path takes the
+ * `SwapSymbol` union rather than the token registry; if you change one, change
+ * the other.
  */
-const SWAP_SYMBOLS: SwapSymbol[] = ["USDC", "EURC"];
+const SWAP_SYMBOLS: SwapSymbol[] = ["USDC", "cirBTC", "EURC"];
 
 export function GoogleSwapPanel({
   sdk,
