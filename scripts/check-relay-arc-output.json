@@ -1,5 +1,5 @@
 {
-  "probedAt": "2026-09-26T13:12:38.438Z",
+  "probedAt": "2026-09-26T13:21:05.101Z",
   "steps": {
     "chains includeChains=5042,8453": {
       "url": "https://api.relay.link/chains?includeChains=5042,8453",
@@ -7156,7 +7156,7 @@
       "status": 200,
       "ok": true,
       "body": {
-        "requestId": "0x1790428361b56e3a1d727d08b4f3f253eeb6f2e8cd31f070d5a7a1305605cae3",
+        "requestId": "0x17904288689220f38035ca5755c96eac6d3ea59bb58ebd139f063582020b04ca",
         "steps": [
           {
             "id": "approve",
@@ -7178,7 +7178,7 @@
                 }
               }
             ],
-            "requestId": "0x1790428361b56e3a1d727d08b4f3f253eeb6f2e8cd31f070d5a7a1305605cae3"
+            "requestId": "0x17904288689220f38035ca5755c96eac6d3ea59bb58ebd139f063582020b04ca"
           },
           {
             "id": "deposit",
@@ -7191,7 +7191,7 @@
                 "data": {
                   "from": "0x03508bb71268bba25ecacc8f620e01866650532c",
                   "to": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
-                  "data": "0xe801795200000000000000000000000003508bb71268bba25ecacc8f620e01866650532c000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b404e4820a9c29b808652e4715331ab0955466ac3a662d67305159363ef60967be8",
+                  "data": "0xe801795200000000000000000000000003508bb71268bba25ecacc8f620e01866650532c000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b400b8ef52891beb58dd23eb3905e32cf86bab136d7e2044d150aea8724b6a7f0a4",
                   "value": "0",
                   "chainId": 5042,
                   "gas": "78419",
@@ -7199,12 +7199,12 @@
                   "maxPriorityFeePerGas": "100000000"
                 },
                 "check": {
-                  "endpoint": "/intents/status/v3?requestId=0x1790428361b56e3a1d727d08b4f3f253eeb6f2e8cd31f070d5a7a1305605cae3",
+                  "endpoint": "/intents/status/v3?requestId=0x17904288689220f38035ca5755c96eac6d3ea59bb58ebd139f063582020b04ca",
                   "method": "GET"
                 }
               }
             ],
-            "requestId": "0x1790428361b56e3a1d727d08b4f3f253eeb6f2e8cd31f070d5a7a1305605cae3",
+            "requestId": "0x17904288689220f38035ca5755c96eac6d3ea59bb58ebd139f063582020b04ca",
             "depositAddress": ""
           }
         ],
@@ -7235,10 +7235,10 @@
                 "verified": true
               }
             },
-            "amount": "26632",
-            "amountFormatted": "0.026632",
-            "amountUsd": "0.026631",
-            "minimumAmount": "26632"
+            "amount": "24962",
+            "amountFormatted": "0.024962",
+            "amountUsd": "0.024960",
+            "minimumAmount": "24962"
           },
           "relayerGas": {
             "currency": {
@@ -7252,10 +7252,10 @@
                 "verified": true
               }
             },
-            "amount": "4132",
-            "amountFormatted": "0.004132",
-            "amountUsd": "0.004132",
-            "minimumAmount": "4132"
+            "amount": "2461",
+            "amountFormatted": "0.002461",
+            "amountUsd": "0.002461",
+            "minimumAmount": "2461"
           },
           "relayerService": {
             "currency": {
@@ -7269,10 +7269,10 @@
                 "verified": true
               }
             },
-            "amount": "22500",
-            "amountFormatted": "0.0225",
+            "amount": "22501",
+            "amountFormatted": "0.022501",
             "amountUsd": "0.022499",
-            "minimumAmount": "22500"
+            "minimumAmount": "22501"
           },
           "app": {
             "currency": {
@@ -7327,7 +7327,7 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "currencyOut": {
@@ -7342,10 +7342,10 @@
                 "verified": true
               }
             },
-            "amount": "4973368",
-            "amountFormatted": "4.973368",
-            "amountUsd": "4.973134",
-            "minimumAmount": "4873901"
+            "amount": "4975038",
+            "amountFormatted": "4.975038",
+            "amountUsd": "4.974585",
+            "minimumAmount": "4875538"
           },
           "refundCurrency": {
             "currency": {
@@ -7361,12 +7361,12 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "totalImpact": {
-            "usd": "-0.026631",
-            "percent": "-0.53"
+            "usd": "-0.024960",
+            "percent": "-0.50"
           },
           "swapImpact": {
             "usd": "0.000000",
@@ -7377,7 +7377,7 @@
               "usd": "-0.002500"
             },
             "execution": {
-              "usd": "-0.024131"
+              "usd": "-0.02246"
             },
             "relay": {
               "usd": "0"
@@ -7389,7 +7389,7 @@
               "usd": "0"
             }
           },
-          "rate": "0.9946735999999999",
+          "rate": "0.9950075999999999",
           "slippageTolerance": {
             "total": "200",
             "origin": {
@@ -7398,8 +7398,8 @@
               "percent": "0.00"
             },
             "destination": {
-              "usd": "0.098965",
-              "value": "99467",
+              "usd": "0.098994",
+              "value": "99500",
               "percent": "1.99"
             }
           },
@@ -7422,7 +7422,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "outputCurrency": {
@@ -7439,7 +7439,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "router": "relay"
@@ -7457,10 +7457,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4973368",
-                "amountFormatted": "4.973368",
-                "amountUsd": "4.973134",
-                "minimumAmount": "4873901"
+                "amount": "4975038",
+                "amountFormatted": "4.975038",
+                "amountUsd": "4.974585",
+                "minimumAmount": "4875538"
               },
               "outputCurrency": {
                 "currency": {
@@ -7474,10 +7474,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4973368",
-                "amountFormatted": "4.973368",
-                "amountUsd": "4.973134",
-                "minimumAmount": "4873901"
+                "amount": "4975038",
+                "amountFormatted": "4.975038",
+                "amountUsd": "4.974585",
+                "minimumAmount": "4875538"
               },
               "router": "relay"
             }
@@ -7485,13 +7485,13 @@
         },
         "protocol": {
           "v2": {
-            "orderId": "0x4e4820a9c29b808652e4715331ab0955466ac3a662d67305159363ef60967be8",
+            "orderId": "0x0b8ef52891beb58dd23eb3905e32cf86bab136d7e2044d150aea8724b6a7f0a4",
             "hubType": "onchain",
             "orderData": {
               "version": "v1",
               "solverChainId": "base",
               "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
-              "salt": "0xcb385bc258f208b5637f22262070aec3fc45ee7ec75bdba125a38d3d2ce9284f",
+              "salt": "0xca4253873b071f0901ef5d7aadd8d2fe280da4a27f95af20187a93b293f2b20f",
               "inputs": [
                 {
                   "payment": {
@@ -7506,7 +7506,7 @@
                       "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
                       "currency": "0x3600000000000000000000000000000000000000",
                       "minimumAmount": "0",
-                      "deadline": 1791033161,
+                      "deadline": 1791033668,
                       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
                     },
                     {
@@ -7514,7 +7514,7 @@
                       "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
                       "currency": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
                       "minimumAmount": "0",
-                      "deadline": 1791033161,
+                      "deadline": 1791033668,
                       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
                     }
                   ]
@@ -7526,12 +7526,12 @@
                   {
                     "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
                     "currency": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                    "minimumAmount": "4873901",
-                    "expectedAmount": "4973368"
+                    "minimumAmount": "4875538",
+                    "expectedAmount": "4975038"
                   }
                 ],
                 "calls": [],
-                "deadline": 1791033161,
+                "deadline": 1791033668,
                 "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
               },
               "fees": []
@@ -7576,10 +7576,10 @@
                 "verified": true
               }
             },
-            "amount": "26632",
-            "amountFormatted": "0.026632",
-            "amountUsd": "0.026631",
-            "minimumAmount": "26632"
+            "amount": "24962",
+            "amountFormatted": "0.024962",
+            "amountUsd": "0.024960",
+            "minimumAmount": "24962"
           },
           "relayerGas": {
             "currency": {
@@ -7593,10 +7593,10 @@
                 "verified": true
               }
             },
-            "amount": "4132",
-            "amountFormatted": "0.004132",
-            "amountUsd": "0.004132",
-            "minimumAmount": "4132"
+            "amount": "2461",
+            "amountFormatted": "0.002461",
+            "amountUsd": "0.002461",
+            "minimumAmount": "2461"
           },
           "relayerService": {
             "currency": {
@@ -7610,10 +7610,10 @@
                 "verified": true
               }
             },
-            "amount": "22500",
-            "amountFormatted": "0.0225",
+            "amount": "22501",
+            "amountFormatted": "0.022501",
             "amountUsd": "0.022499",
-            "minimumAmount": "22500"
+            "minimumAmount": "22501"
           },
           "app": {
             "currency": {
@@ -7668,7 +7668,7 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "currencyOut": {
@@ -7683,10 +7683,10 @@
                 "verified": true
               }
             },
-            "amount": "4973368",
-            "amountFormatted": "4.973368",
-            "amountUsd": "4.973134",
-            "minimumAmount": "4873901"
+            "amount": "4975038",
+            "amountFormatted": "4.975038",
+            "amountUsd": "4.974585",
+            "minimumAmount": "4875538"
           },
           "refundCurrency": {
             "currency": {
@@ -7702,12 +7702,12 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "totalImpact": {
-            "usd": "-0.026631",
-            "percent": "-0.53"
+            "usd": "-0.024960",
+            "percent": "-0.50"
           },
           "swapImpact": {
             "usd": "0.000000",
@@ -7718,7 +7718,7 @@
               "usd": "-0.002500"
             },
             "execution": {
-              "usd": "-0.024131"
+              "usd": "-0.02246"
             },
             "relay": {
               "usd": "0"
@@ -7730,7 +7730,7 @@
               "usd": "0"
             }
           },
-          "rate": "0.9946735999999999",
+          "rate": "0.9950075999999999",
           "slippageTolerance": {
             "total": "200",
             "origin": {
@@ -7739,8 +7739,8 @@
               "percent": "0.00"
             },
             "destination": {
-              "usd": "0.098965",
-              "value": "99467",
+              "usd": "0.098994",
+              "value": "99500",
               "percent": "1.99"
             }
           },
@@ -7763,7 +7763,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "outputCurrency": {
@@ -7780,7 +7780,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "router": "relay"
@@ -7798,10 +7798,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4973368",
-                "amountFormatted": "4.973368",
-                "amountUsd": "4.973134",
-                "minimumAmount": "4873901"
+                "amount": "4975038",
+                "amountFormatted": "4.975038",
+                "amountUsd": "4.974585",
+                "minimumAmount": "4875538"
               },
               "outputCurrency": {
                 "currency": {
@@ -7815,10 +7815,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4973368",
-                "amountFormatted": "4.973368",
-                "amountUsd": "4.973134",
-                "minimumAmount": "4873901"
+                "amount": "4975038",
+                "amountFormatted": "4.975038",
+                "amountUsd": "4.974585",
+                "minimumAmount": "4875538"
               },
               "router": "relay"
             }
@@ -7839,7 +7839,7 @@
           },
           "amount": "5000000",
           "amountFormatted": "5.0",
-          "amountUsd": "4.999765",
+          "amountUsd": "4.999545",
           "minimumAmount": "5000000"
         },
         "currencyOut": {
@@ -7854,10 +7854,10 @@
               "verified": true
             }
           },
-          "amount": "4973368",
-          "amountFormatted": "4.973368",
-          "amountUsd": "4.973134",
-          "minimumAmount": "4873901"
+          "amount": "4975038",
+          "amountFormatted": "4.975038",
+          "amountUsd": "4.974585",
+          "minimumAmount": "4875538"
         }
       }
     },
@@ -7876,7 +7876,7 @@
       "status": 200,
       "ok": true,
       "body": {
-        "requestId": "0x1790428361fd132ef123f6d703475f3a5fefff7463f85933777e1d7952d16218",
+        "requestId": "0x179042886901c9caa7a697729c5834aa249d6b4161df045c93ba9c230f93cd18",
         "steps": [
           {
             "id": "approve",
@@ -7893,12 +7893,12 @@
                   "value": "0",
                   "chainId": 8453,
                   "gas": "73112",
-                  "maxFeePerGas": "21472710",
-                  "maxPriorityFeePerGas": "15972710"
+                  "maxFeePerGas": "14762002",
+                  "maxPriorityFeePerGas": "9262002"
                 }
               }
             ],
-            "requestId": "0x1790428361fd132ef123f6d703475f3a5fefff7463f85933777e1d7952d16218"
+            "requestId": "0x179042886901c9caa7a697729c5834aa249d6b4161df045c93ba9c230f93cd18"
           },
           {
             "id": "deposit",
@@ -7911,20 +7911,20 @@
                 "data": {
                   "from": "0x03508bb71268bba25ecacc8f620e01866650532c",
                   "to": "0x4cd00e387622c35bddb9b4c962c136462338bc31",
-                  "data": "0xe801795200000000000000000000000003508bb71268bba25ecacc8f620e01866650532c000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda0291300000000000000000000000000000000000000000000000000000000004c4b4046956292bd8da8078ff79ee00c6cca58e6dce3bf59bb89ac97b33094396be003",
+                  "data": "0xe801795200000000000000000000000003508bb71268bba25ecacc8f620e01866650532c000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda0291300000000000000000000000000000000000000000000000000000000004c4b409a9c8537adcab7fe30ed3f2d9a934e8fc6ccbd60d537765ab1579b6d5b1bd4e9",
                   "value": "0",
                   "chainId": 8453,
                   "gas": "76194",
-                  "maxFeePerGas": "21472710",
-                  "maxPriorityFeePerGas": "15972710"
+                  "maxFeePerGas": "14762002",
+                  "maxPriorityFeePerGas": "9262002"
                 },
                 "check": {
-                  "endpoint": "/intents/status/v3?requestId=0x1790428361fd132ef123f6d703475f3a5fefff7463f85933777e1d7952d16218",
+                  "endpoint": "/intents/status/v3?requestId=0x179042886901c9caa7a697729c5834aa249d6b4161df045c93ba9c230f93cd18",
                   "method": "GET"
                 }
               }
             ],
-            "requestId": "0x1790428361fd132ef123f6d703475f3a5fefff7463f85933777e1d7952d16218",
+            "requestId": "0x179042886901c9caa7a697729c5834aa249d6b4161df045c93ba9c230f93cd18",
             "depositAddress": ""
           }
         ],
@@ -7941,10 +7941,10 @@
                 "verified": true
               }
             },
-            "amount": "1636863868148",
-            "amountFormatted": "0.000001636863868148",
-            "amountUsd": "0.004395",
-            "minimumAmount": "1636863868148"
+            "amount": "1125754695189",
+            "amountFormatted": "0.000001125754695189",
+            "amountUsd": "0.003023",
+            "minimumAmount": "1125754695189"
           },
           "relayer": {
             "currency": {
@@ -7958,10 +7958,10 @@
                 "verified": true
               }
             },
-            "amount": "21992",
-            "amountFormatted": "0.021992",
+            "amount": "21993",
+            "amountFormatted": "0.021993",
             "amountUsd": "0.021991",
-            "minimumAmount": "21992"
+            "minimumAmount": "21993"
           },
           "relayerGas": {
             "currency": {
@@ -7992,10 +7992,10 @@
                 "verified": true
               }
             },
-            "amount": "20500",
-            "amountFormatted": "0.0205",
+            "amount": "20501",
+            "amountFormatted": "0.020501",
             "amountUsd": "0.020499",
-            "minimumAmount": "20500"
+            "minimumAmount": "20501"
           },
           "app": {
             "currency": {
@@ -8050,7 +8050,7 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "currencyOut": {
@@ -8065,10 +8065,10 @@
                 "verified": true
               }
             },
-            "amount": "4978008",
-            "amountFormatted": "4.978008",
-            "amountUsd": "4.977774",
-            "minimumAmount": "4878448"
+            "amount": "4978007",
+            "amountFormatted": "4.978007",
+            "amountUsd": "4.977554",
+            "minimumAmount": "4878447"
           },
           "refundCurrency": {
             "currency": {
@@ -8084,7 +8084,7 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "totalImpact": {
@@ -8092,8 +8092,8 @@
             "percent": "-0.44"
           },
           "swapImpact": {
-            "usd": "0.000000",
-            "percent": "0.00"
+            "usd": "-0.000000",
+            "percent": "-0.00"
           },
           "expandedPriceImpact": {
             "swap": {
@@ -8112,7 +8112,7 @@
               "usd": "0"
             }
           },
-          "rate": "0.9956016",
+          "rate": "0.9956014",
           "slippageTolerance": {
             "total": "200",
             "origin": {
@@ -8121,7 +8121,7 @@
               "percent": "0.00"
             },
             "destination": {
-              "usd": "0.099058",
+              "usd": "0.099053",
               "value": "99560",
               "percent": "1.99"
             }
@@ -8145,7 +8145,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "outputCurrency": {
@@ -8162,7 +8162,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "router": "relay"
@@ -8180,10 +8180,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4978008",
-                "amountFormatted": "4.978008",
-                "amountUsd": "4.977774",
-                "minimumAmount": "4878448"
+                "amount": "4978007",
+                "amountFormatted": "4.978007",
+                "amountUsd": "4.977554",
+                "minimumAmount": "4878447"
               },
               "outputCurrency": {
                 "currency": {
@@ -8197,10 +8197,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4978008",
-                "amountFormatted": "4.978008",
-                "amountUsd": "4.977774",
-                "minimumAmount": "4878448"
+                "amount": "4978007",
+                "amountFormatted": "4.978007",
+                "amountUsd": "4.977554",
+                "minimumAmount": "4878447"
               },
               "router": "relay"
             }
@@ -8208,13 +8208,13 @@
         },
         "protocol": {
           "v2": {
-            "orderId": "0x46956292bd8da8078ff79ee00c6cca58e6dce3bf59bb89ac97b33094396be003",
+            "orderId": "0x9a9c8537adcab7fe30ed3f2d9a934e8fc6ccbd60d537765ab1579b6d5b1bd4e9",
             "hubType": "onchain",
             "orderData": {
               "version": "v1",
               "solverChainId": "base",
               "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
-              "salt": "0x4fea4355d3bb0153ebc61a47cee77042fa903ca90cfcbcb6ef74e18539f1d0e4",
+              "salt": "0x7358219d827aede573a7c3c758653a104593236dd741946d538c52ed0305b2a2",
               "inputs": [
                 {
                   "payment": {
@@ -8229,7 +8229,7 @@
                       "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
                       "currency": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
                       "minimumAmount": "0",
-                      "deadline": 1791033161,
+                      "deadline": 1791033669,
                       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
                     },
                     {
@@ -8237,7 +8237,7 @@
                       "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
                       "currency": "0x3600000000000000000000000000000000000000",
                       "minimumAmount": "0",
-                      "deadline": 1791033161,
+                      "deadline": 1791033669,
                       "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
                     }
                   ]
@@ -8249,12 +8249,12 @@
                   {
                     "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
                     "currency": "0x3600000000000000000000000000000000000000",
-                    "minimumAmount": "4878448",
-                    "expectedAmount": "4978008"
+                    "minimumAmount": "4878447",
+                    "expectedAmount": "4978007"
                   }
                 ],
                 "calls": [],
-                "deadline": 1791033161,
+                "deadline": 1791033669,
                 "extraData": "0x000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
               },
               "fees": []
@@ -8285,10 +8285,10 @@
                 "verified": true
               }
             },
-            "amount": "1636863868148",
-            "amountFormatted": "0.000001636863868148",
-            "amountUsd": "0.004395",
-            "minimumAmount": "1636863868148"
+            "amount": "1125754695189",
+            "amountFormatted": "0.000001125754695189",
+            "amountUsd": "0.003023",
+            "minimumAmount": "1125754695189"
           },
           "relayer": {
             "currency": {
@@ -8302,10 +8302,10 @@
                 "verified": true
               }
             },
-            "amount": "21992",
-            "amountFormatted": "0.021992",
+            "amount": "21993",
+            "amountFormatted": "0.021993",
             "amountUsd": "0.021991",
-            "minimumAmount": "21992"
+            "minimumAmount": "21993"
           },
           "relayerGas": {
             "currency": {
@@ -8336,10 +8336,10 @@
                 "verified": true
               }
             },
-            "amount": "20500",
-            "amountFormatted": "0.0205",
+            "amount": "20501",
+            "amountFormatted": "0.020501",
             "amountUsd": "0.020499",
-            "minimumAmount": "20500"
+            "minimumAmount": "20501"
           },
           "app": {
             "currency": {
@@ -8394,7 +8394,7 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "currencyOut": {
@@ -8409,10 +8409,10 @@
                 "verified": true
               }
             },
-            "amount": "4978008",
-            "amountFormatted": "4.978008",
-            "amountUsd": "4.977774",
-            "minimumAmount": "4878448"
+            "amount": "4978007",
+            "amountFormatted": "4.978007",
+            "amountUsd": "4.977554",
+            "minimumAmount": "4878447"
           },
           "refundCurrency": {
             "currency": {
@@ -8428,7 +8428,7 @@
             },
             "amount": "5000000",
             "amountFormatted": "5.0",
-            "amountUsd": "4.999765",
+            "amountUsd": "4.999545",
             "minimumAmount": "5000000"
           },
           "totalImpact": {
@@ -8436,8 +8436,8 @@
             "percent": "-0.44"
           },
           "swapImpact": {
-            "usd": "0.000000",
-            "percent": "0.00"
+            "usd": "-0.000000",
+            "percent": "-0.00"
           },
           "expandedPriceImpact": {
             "swap": {
@@ -8456,7 +8456,7 @@
               "usd": "0"
             }
           },
-          "rate": "0.9956016",
+          "rate": "0.9956014",
           "slippageTolerance": {
             "total": "200",
             "origin": {
@@ -8465,7 +8465,7 @@
               "percent": "0.00"
             },
             "destination": {
-              "usd": "0.099058",
+              "usd": "0.099053",
               "value": "99560",
               "percent": "1.99"
             }
@@ -8489,7 +8489,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "outputCurrency": {
@@ -8506,7 +8506,7 @@
                 },
                 "amount": "5000000",
                 "amountFormatted": "5.0",
-                "amountUsd": "4.999765",
+                "amountUsd": "4.999545",
                 "minimumAmount": "5000000"
               },
               "router": "relay"
@@ -8524,10 +8524,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4978008",
-                "amountFormatted": "4.978008",
-                "amountUsd": "4.977774",
-                "minimumAmount": "4878448"
+                "amount": "4978007",
+                "amountFormatted": "4.978007",
+                "amountUsd": "4.977554",
+                "minimumAmount": "4878447"
               },
               "outputCurrency": {
                 "currency": {
@@ -8541,10 +8541,10 @@
                     "verified": true
                   }
                 },
-                "amount": "4978008",
-                "amountFormatted": "4.978008",
-                "amountUsd": "4.977774",
-                "minimumAmount": "4878448"
+                "amount": "4978007",
+                "amountFormatted": "4.978007",
+                "amountUsd": "4.977554",
+                "minimumAmount": "4878447"
               },
               "router": "relay"
             }
@@ -8565,7 +8565,7 @@
           },
           "amount": "5000000",
           "amountFormatted": "5.0",
-          "amountUsd": "4.999765",
+          "amountUsd": "4.999545",
           "minimumAmount": "5000000"
         },
         "currencyOut": {
@@ -8580,10 +8580,600 @@
               "verified": true
             }
           },
-          "amount": "4978008",
-          "amountFormatted": "4.978008",
-          "amountUsd": "4.977774",
-          "minimumAmount": "4878448"
+          "amount": "4978007",
+          "amountFormatted": "4.978007",
+          "amountUsd": "4.977554",
+          "minimumAmount": "4878447"
+        }
+      }
+    },
+    "quote 5 USDC → EURC same-chain Arc (5042)": {
+      "url": "https://api.relay.link/quote/v2",
+      "requestBody": {
+        "user": "0x03508bb71268bba25ecacc8f620e01866650532c",
+        "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
+        "originChainId": 5042,
+        "destinationChainId": 5042,
+        "originCurrency": "0x3600000000000000000000000000000000000000",
+        "destinationCurrency": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+        "amount": "5000000",
+        "tradeType": "EXACT_INPUT"
+      },
+      "status": 200,
+      "ok": true,
+      "body": {
+        "requestId": "0x17904288695a9b0f6f2894b01bdcfe2769d709f3a0d5800b5403cb6377ccaefd",
+        "steps": [
+          {
+            "id": "approve",
+            "action": "Confirm transaction in your wallet",
+            "description": "Sign an approval for USDC",
+            "kind": "transaction",
+            "items": [
+              {
+                "status": "incomplete",
+                "data": {
+                  "from": "0x03508bb71268bba25ecacc8f620e01866650532c",
+                  "to": "0x3600000000000000000000000000000000000000",
+                  "data": "0x095ea7b3000000000000000000000000ccc88a9d1b4ed6b0eaba998850414b24f1c315be00000000000000000000000000000000000000000000000000000000004c4b40",
+                  "value": "0",
+                  "chainId": 5042,
+                  "gas": "73113",
+                  "maxFeePerGas": "22100000000",
+                  "maxPriorityFeePerGas": "100000000"
+                }
+              }
+            ],
+            "requestId": "0x17904288695a9b0f6f2894b01bdcfe2769d709f3a0d5800b5403cb6377ccaefd"
+          },
+          {
+            "id": "swap",
+            "action": "Confirm transaction in your wallet",
+            "description": "Swapping USDC for EURC",
+            "kind": "transaction",
+            "items": [
+              {
+                "status": "incomplete",
+                "data": {
+                  "from": "0x03508bb71268bba25ecacc8f620e01866650532c",
+                  "to": "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be",
+                  "data": "0xf9e4bab400000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000014000000000000000000000000003508bb71268bba25ecacc8f620e01866650532c00000000000000000000000003508bb71268bba25ecacc8f620e01866650532c0000000000000000000000000000000000000000000000000000000000000d4000000000000000000000000000000000000000000000000000000000000000010000000000000000000000003600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000004c4b4000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000003e0000000000000000000000000000000000000000000000000000000000000098000000000000000000000000036000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b30000000000000000000000000000000000001ff3684f28c67538d4d072c2273400000000000000000000000000000000000000000000000000000000004c4b4000000000000000000000000000000000000000000000000000000000000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001a49bb43718000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000000100000000000000000000000036000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000f70da97812cb96acdf810712aa562db8dfa3dbef00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000001d4c0000000000000000000000000000000000000000000000000000000000000021dfeacc7736bc3045b0085d0a3f907d9672efcdb10b4982f6f0b9a596882409710100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ff3684f28c67538d4d072c2273400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000004e42213bc0b000000000000000000000000b6a575ed3bb629a44b9ad24a4b0a2147f32c5424000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c2df4000000000000000000000000b6a575ed3bb629a44b9ad24a4b0a2147f32c542400000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000004041fff991f000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c1000000000000000000000000000000000000000000000000000000000042396f00000000000000000000000000000000000000000000000000000000000000a08d5567721fd63519b61a6d0f0af43c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000002800000000000000000000000000000000000000000000000000000000000000204931997d3000000000000000000000000b6a575ed3bb629a44b9ad24a4b0a2147f32c5424000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c2df40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006ab7c7f200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000ffffffffffffffc5000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000490f424000000000000000000000000000000001000276a401bef5f6d51cb62b58e6a8f77868681825c6fe21c10000b400000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008434ee90ca000000000000000000000000f5c4f3dc02c3fb9279495a8fef7b0741da956157000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c1000000000000000000000000000000000000000000000000000000000042e6e200000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b92fe925dc43a0ecde6c8b1a2709c170ec4fff4f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001a49bb43718000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c1000000000000000000000000000000000000000000000000000000000000000100000000000000000000000003508bb71268bba25ecacc8f620e01866650532c000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021dfeacc7736bc3045b0085d0a3f907d9672efcdb10b4982f6f0b9a596882409710000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000021dfeacc7736bc3045b0085d0a3f907d9672efcdb10b4982f6f0b9a59688240971000000000000000000000000000000000000000000000000000000000000000017904288695a9b0f6f2894b01bdcfe2769d709f3a0d5800b5403cb6377ccaefd",
+                  "value": "0",
+                  "chainId": 5042,
+                  "gas": "510329",
+                  "maxFeePerGas": "22100000000",
+                  "maxPriorityFeePerGas": "100000000"
+                },
+                "check": {
+                  "endpoint": "/intents/status/v3?requestId=0x17904288695a9b0f6f2894b01bdcfe2769d709f3a0d5800b5403cb6377ccaefd",
+                  "method": "GET"
+                }
+              }
+            ],
+            "requestId": "0x17904288695a9b0f6f2894b01bdcfe2769d709f3a0d5800b5403cb6377ccaefd"
+          }
+        ],
+        "fees": {
+          "gas": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x0000000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin (Gas Currency)",
+              "decimals": 18,
+              "metadata": {}
+            },
+            "amount": "11278270900000000",
+            "amountFormatted": "0.0112782709",
+            "amountUsd": "0.011277",
+            "minimumAmount": "11278270900000000"
+          },
+          "relayer": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "7499",
+            "amountFormatted": "0.007499",
+            "amountUsd": "0.007498",
+            "minimumAmount": "7499"
+          },
+          "relayerGas": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "0",
+            "amountFormatted": "0.0",
+            "amountUsd": "0",
+            "minimumAmount": "0"
+          },
+          "relayerService": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "7499",
+            "amountFormatted": "0.007499",
+            "amountUsd": "0.007498",
+            "minimumAmount": "7499"
+          },
+          "app": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "0",
+            "amountFormatted": "0.0",
+            "amountUsd": "0",
+            "minimumAmount": "0"
+          }
+        },
+        "details": {
+          "operation": "swap",
+          "sender": "0x03508bb71268bba25ecacc8f620e01866650532c",
+          "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
+          "currencyIn": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "5000000",
+            "amountFormatted": "5.0",
+            "amountUsd": "4.999545",
+            "minimumAmount": "5000000"
+          },
+          "currencyOut": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+              "symbol": "EURC",
+              "name": "EURC",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://coin-images.coingecko.com/coins/images/26045/large/EURC.png?1769615705",
+                "verified": false
+              }
+            },
+            "amount": "4383918",
+            "amountFormatted": "4.383918",
+            "amountUsd": "4.997667",
+            "minimumAmount": "4340079"
+          },
+          "totalImpact": {
+            "usd": "-0.001878",
+            "percent": "-0.04"
+          },
+          "swapImpact": {
+            "usd": "0.005620",
+            "percent": "0.11"
+          },
+          "expandedPriceImpact": {
+            "swap": {
+              "usd": "0"
+            },
+            "execution": {
+              "usd": "0"
+            },
+            "relay": {
+              "usd": "-0.007498"
+            },
+            "app": {
+              "usd": "0"
+            },
+            "sponsored": {
+              "usd": "0"
+            }
+          },
+          "rate": "0.8781007511266902",
+          "slippageTolerance": {
+            "total": "100",
+            "origin": {
+              "usd": "0.049477",
+              "value": "43839",
+              "percent": "0.99"
+            },
+            "destination": {
+              "usd": "0",
+              "value": "0",
+              "percent": "0"
+            }
+          },
+          "timeEstimate": 1,
+          "userBalance": "0",
+          "isFixedRate": false,
+          "route": {
+            "origin": {
+              "inputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0x3600000000000000000000000000000000000000",
+                  "symbol": "USDC",
+                  "name": "USD Coin",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                    "verified": true
+                  }
+                },
+                "amount": "5000000",
+                "amountFormatted": "5.0",
+                "amountUsd": "4.999545",
+                "minimumAmount": "5000000"
+              },
+              "outputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+                  "symbol": "EURC",
+                  "name": "EURC",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://coin-images.coingecko.com/coins/images/26045/large/EURC.png?1769615705",
+                    "verified": false
+                  }
+                },
+                "amount": "4383918",
+                "amountFormatted": "4.383918",
+                "amountUsd": "4.997667",
+                "minimumAmount": "4340079"
+              },
+              "router": "0x"
+            },
+            "destination": {
+              "inputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0x3600000000000000000000000000000000000000",
+                  "symbol": "USDC",
+                  "name": "USD Coin",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                    "verified": true
+                  }
+                },
+                "amount": "5000000",
+                "amountFormatted": "5.0",
+                "amountUsd": "4.999545",
+                "minimumAmount": "5000000"
+              },
+              "outputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+                  "symbol": "EURC",
+                  "name": "EURC",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://coin-images.coingecko.com/coins/images/26045/large/EURC.png?1769615705",
+                    "verified": false
+                  }
+                },
+                "amount": "4383918",
+                "amountFormatted": "4.383918",
+                "amountUsd": "4.997667",
+                "minimumAmount": "4340079"
+              },
+              "router": "0x"
+            }
+          }
+        }
+      },
+      "summary": {
+        "executable": true,
+        "status": 200,
+        "stepCount": 2,
+        "fees": {
+          "gas": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x0000000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin (Gas Currency)",
+              "decimals": 18,
+              "metadata": {}
+            },
+            "amount": "11278270900000000",
+            "amountFormatted": "0.0112782709",
+            "amountUsd": "0.011277",
+            "minimumAmount": "11278270900000000"
+          },
+          "relayer": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "7499",
+            "amountFormatted": "0.007499",
+            "amountUsd": "0.007498",
+            "minimumAmount": "7499"
+          },
+          "relayerGas": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "0",
+            "amountFormatted": "0.0",
+            "amountUsd": "0",
+            "minimumAmount": "0"
+          },
+          "relayerService": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "7499",
+            "amountFormatted": "0.007499",
+            "amountUsd": "0.007498",
+            "minimumAmount": "7499"
+          },
+          "app": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "0",
+            "amountFormatted": "0.0",
+            "amountUsd": "0",
+            "minimumAmount": "0"
+          }
+        },
+        "details": {
+          "operation": "swap",
+          "sender": "0x03508bb71268bba25ecacc8f620e01866650532c",
+          "recipient": "0x03508bb71268bba25ecacc8f620e01866650532c",
+          "currencyIn": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0x3600000000000000000000000000000000000000",
+              "symbol": "USDC",
+              "name": "USD Coin",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                "verified": true
+              }
+            },
+            "amount": "5000000",
+            "amountFormatted": "5.0",
+            "amountUsd": "4.999545",
+            "minimumAmount": "5000000"
+          },
+          "currencyOut": {
+            "currency": {
+              "chainId": 5042,
+              "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+              "symbol": "EURC",
+              "name": "EURC",
+              "decimals": 6,
+              "metadata": {
+                "logoURI": "https://coin-images.coingecko.com/coins/images/26045/large/EURC.png?1769615705",
+                "verified": false
+              }
+            },
+            "amount": "4383918",
+            "amountFormatted": "4.383918",
+            "amountUsd": "4.997667",
+            "minimumAmount": "4340079"
+          },
+          "totalImpact": {
+            "usd": "-0.001878",
+            "percent": "-0.04"
+          },
+          "swapImpact": {
+            "usd": "0.005620",
+            "percent": "0.11"
+          },
+          "expandedPriceImpact": {
+            "swap": {
+              "usd": "0"
+            },
+            "execution": {
+              "usd": "0"
+            },
+            "relay": {
+              "usd": "-0.007498"
+            },
+            "app": {
+              "usd": "0"
+            },
+            "sponsored": {
+              "usd": "0"
+            }
+          },
+          "rate": "0.8781007511266902",
+          "slippageTolerance": {
+            "total": "100",
+            "origin": {
+              "usd": "0.049477",
+              "value": "43839",
+              "percent": "0.99"
+            },
+            "destination": {
+              "usd": "0",
+              "value": "0",
+              "percent": "0"
+            }
+          },
+          "timeEstimate": 1,
+          "userBalance": "0",
+          "isFixedRate": false,
+          "route": {
+            "origin": {
+              "inputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0x3600000000000000000000000000000000000000",
+                  "symbol": "USDC",
+                  "name": "USD Coin",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                    "verified": true
+                  }
+                },
+                "amount": "5000000",
+                "amountFormatted": "5.0",
+                "amountUsd": "4.999545",
+                "minimumAmount": "5000000"
+              },
+              "outputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+                  "symbol": "EURC",
+                  "name": "EURC",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://coin-images.coingecko.com/coins/images/26045/large/EURC.png?1769615705",
+                    "verified": false
+                  }
+                },
+                "amount": "4383918",
+                "amountFormatted": "4.383918",
+                "amountUsd": "4.997667",
+                "minimumAmount": "4340079"
+              },
+              "router": "0x"
+            },
+            "destination": {
+              "inputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0x3600000000000000000000000000000000000000",
+                  "symbol": "USDC",
+                  "name": "USD Coin",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+                    "verified": true
+                  }
+                },
+                "amount": "5000000",
+                "amountFormatted": "5.0",
+                "amountUsd": "4.999545",
+                "minimumAmount": "5000000"
+              },
+              "outputCurrency": {
+                "currency": {
+                  "chainId": 5042,
+                  "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+                  "symbol": "EURC",
+                  "name": "EURC",
+                  "decimals": 6,
+                  "metadata": {
+                    "logoURI": "https://coin-images.coingecko.com/coins/images/26045/large/EURC.png?1769615705",
+                    "verified": false
+                  }
+                },
+                "amount": "4383918",
+                "amountFormatted": "4.383918",
+                "amountUsd": "4.997667",
+                "minimumAmount": "4340079"
+              },
+              "router": "0x"
+            }
+          }
+        },
+        "timeEstimate": 1,
+        "currencyIn": {
+          "currency": {
+            "chainId": 5042,
+            "address": "0x3600000000000000000000000000000000000000",
+            "symbol": "USDC",
+            "name": "USD Coin",
+            "decimals": 6,
+            "metadata": {
+              "logoURI": "https://assets.relay.link/icons/currencies/usdc.png",
+              "verified": true
+            }
+          },
+          "amount": "5000000",
+          "amountFormatted": "5.0",
+          "amountUsd": "4.999545",
+          "minimumAmount": "5000000"
+        },
+        "currencyOut": {
+          "currency": {
+            "chainId": 5042,
+            "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "symbol": "EURC",
+            "name": "EURC",
+            "decimals": 6,
+            "metadata": {
+              "logoURI": "https://coin-images.coingecko.com/coins/images/26045/large/EURC.png?1769615705",
+              "verified": false
+            }
+          },
+          "amount": "4383918",
+          "amountFormatted": "4.383918",
+          "amountUsd": "4.997667",
+          "minimumAmount": "4340079"
         }
       }
     }

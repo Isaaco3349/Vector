@@ -1,0 +1,153 @@
+{
+  "probedAt": "2026-09-26T13:22:45.391Z",
+  "chainId": 5042,
+  "steps": {
+    "v3_factory": {
+      "address": "0xf0db7b58379503491d857dB50AC9ece64c653918",
+      "deployed": true,
+      "bytecodeBytes": 24535
+    },
+    "v3_quoter_v2": {
+      "address": "0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468",
+      "deployed": true,
+      "bytecodeBytes": 8273
+    },
+    "v3_swap_router_02": {
+      "address": "0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77",
+      "deployed": true,
+      "bytecodeBytes": 24497
+    },
+    "v4_pool_manager": {
+      "address": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+      "deployed": true,
+      "bytecodeBytes": 24009
+    },
+    "v4_quoter": {
+      "address": "0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94",
+      "deployed": true,
+      "bytecodeBytes": 6118
+    },
+    "v4_universal_router": {
+      "address": "0x4fcA4a51Ab4F23A7447b3284fBd7D73289A89Fb1",
+      "deployed": true,
+      "bytecodeBytes": 24546
+    },
+    "v3_pools": [
+      {
+        "fee": 100,
+        "pool": "0x7578d9136940c4E0d2551Fb053aea5f7DE030CFd",
+        "exists": true,
+        "liquidity": "0",
+        "sqrtPriceX96": "73992753170117272506271321393",
+        "tick": -1368,
+        "token0": "0x3600000000000000000000000000000000000000",
+        "token1": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1"
+      },
+      {
+        "fee": 500,
+        "pool": "0x6fd5F2fb831940DcD61A98c5B3aCB7D8C6f3bFc1",
+        "exists": true,
+        "liquidity": "2051242316828",
+        "sqrtPriceX96": "74247231290015377907212001809",
+        "tick": -1299,
+        "token0": "0x3600000000000000000000000000000000000000",
+        "token1": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1"
+      },
+      {
+        "fee": 3000,
+        "pool": "0x88f97E21c423261244d6D661fBd569b2bd69539f",
+        "exists": true,
+        "liquidity": "11025237188",
+        "sqrtPriceX96": "74144053301016755091672183362",
+        "tick": -1327,
+        "token0": "0x3600000000000000000000000000000000000000",
+        "token1": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1"
+      },
+      {
+        "fee": 10000,
+        "pool": "0x1BD75d68F648eC9C82f297c45B8ab9Ae6bB0F3f0",
+        "exists": true,
+        "liquidity": "9796",
+        "sqrtPriceX96": "73931225999920816828766262508",
+        "tick": -1384,
+        "token0": "0x3600000000000000000000000000000000000000",
+        "token1": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1"
+      }
+    ],
+    "v3_quotes": [
+      {
+        "ok": true,
+        "quoterAddress": "0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468",
+        "fee": 500,
+        "pool": "0x6fd5F2fb831940DcD61A98c5B3aCB7D8C6f3bFc1",
+        "amountOut": "4388874",
+        "amountOutFormatted": "4.388874",
+        "gasEstimate": "89262",
+        "raw": [
+          "4388874",
+          "74247061772028335146023283495",
+          0,
+          "89262"
+        ]
+      },
+      {
+        "ok": true,
+        "quoterAddress": "0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468",
+        "fee": 3000,
+        "pool": "0x88f97E21c423261244d6D661fBd569b2bd69539f",
+        "amountOut": "4363901",
+        "amountOutFormatted": "4.363901",
+        "gasEstimate": "98878",
+        "raw": [
+          "4363901",
+          "74112693986416953635271634015",
+          0,
+          "98878"
+        ]
+      },
+      {
+        "ok": true,
+        "quoterAddress": "0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468",
+        "fee": 10000,
+        "pool": "0x1BD75d68F648eC9C82f297c45B8ab9Ae6bB0F3f0",
+        "amountOut": "9120",
+        "amountOutFormatted": "0.00912",
+        "gasEstimate": "128069",
+        "raw": [
+          "9120",
+          "156459983709488388443303332",
+          0,
+          "128069"
+        ]
+      }
+    ],
+    "v4_quotes": [
+      {
+        "ok": true,
+        "fee": 500,
+        "tickSpacing": 10,
+        "amountOut": "4388884",
+        "amountOutFormatted": "4.388884",
+        "gasEstimate": "36320"
+      },
+      {
+        "ok": false,
+        "fee": 3000,
+        "tickSpacing": 60,
+        "error": "The contract function \"quoteExactInputSingle\" reverted with the following signature:\n0x6190b2b0"
+      },
+      {
+        "ok": false,
+        "fee": 10000,
+        "tickSpacing": 200,
+        "error": "The contract function \"quoteExactInputSingle\" reverted with the following signature:\n0x6190b2b0"
+      },
+      {
+        "ok": false,
+        "fee": 100,
+        "tickSpacing": 1,
+        "error": "The contract function \"quoteExactInputSingle\" reverted with the following signature:\n0x6190b2b0"
+      }
+    ]
+  }
+}
