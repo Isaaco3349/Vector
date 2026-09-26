@@ -15,19 +15,17 @@ import {
   type EarnVault,
   type Eip1193Provider,
 } from "../lib/earn";
-import { bridgeChainById } from "../lib/bridge-chains";
+import { arcBridgeChainId, bridgeChainById } from "../lib/bridge-chains";
+import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useSendBalance } from "./useSendBalance";
 
-const ARC_TESTNET_ID = 5042002;
-
 /**
- * Earn panel for external (injected) wallets — deposit USDC into an Arc Testnet
- * yield vault and withdraw later.
+ * Earn panel for external (injected) wallets — deposit USDC into an Arc yield vault.
  *
  * Vaults are DISCOVERED from Circle's Earn service (never hardcoded), so the
  * list reflects what actually exists; if none are available the panel says so
  * rather than inventing one. Deposits/withdrawals run same-chain on Arc, so the
- * wallet must be connected to Arc Testnet — if it isn't, the panel offers to
+ * wallet must be connected to the configured Arc network — if it isn't, the panel offers to
  * switch instead of guessing.
  *
  * Like Swap/Bridge, Earn uses Circle's viem browser adapter, which only works
@@ -38,8 +36,8 @@ const ARC_TESTNET_ID = 5042002;
 export function EarnPanel({ onClose }: { onClose: () => void }) {
   const { address, isConnected, chainId, connector } = useAccount();
   const { switchChain, isPending: switching } = useSwitchChain();
-  const onArc = chainId === ARC_TESTNET_ID;
-  const arcChain = useMemo(() => bridgeChainById("Arc_Testnet"), []);
+  const onArc = chainId === ARC_CHAIN_ID;
+  const arcChain = useMemo(() => bridgeChainById(arcBridgeChainId()), []);
   const usdc = useSendBalance(arcChain);
 
   const [vaults, setVaults] = useState<EarnVault[] | null>(null);
@@ -287,7 +285,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
             )}
             {!vaultsLoading && !vaultsError && vaults && vaults.length === 0 && (
               <p className="text-[13px] text-[var(--vector-text-dim)] py-6 text-center leading-relaxed">
-                No USDC vaults are available on Arc Testnet right now. Check back
+                No USDC vaults are available on {ARC_DISPLAY_NAME} right now. Check back
                 later.
               </p>
             )}
@@ -375,15 +373,15 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
             {!onArc ? (
               <div className="text-center py-4">
                 <p className="text-[13px] text-[var(--vector-text-dim)] mb-5 leading-relaxed">
-                  Earn deposits and withdrawals run on Arc Testnet. Switch your
+                  Earn deposits and withdrawals run on {ARC_DISPLAY_NAME}. Switch your
                   wallet to Arc to continue.
                 </p>
                 <button
-                  onClick={() => switchChain({ chainId: ARC_TESTNET_ID })}
+                  onClick={() => switchChain({ chainId: ARC_CHAIN_ID })}
                   disabled={switching}
                   className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] disabled:opacity-40 hover:opacity-90 transition-opacity"
                 >
-                  {switching ? "Switching…" : "Switch to Arc Testnet"}
+                  {switching ? "Switching…" : `Switch to ${ARC_DISPLAY_NAME}`}
                 </button>
               </div>
             ) : (
@@ -476,7 +474,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
                 </button>
 
                 <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-                  Runs on Arc Testnet through Circle&apos;s Earn. Gas is paid in
+                  Runs on {ARC_DISPLAY_NAME} through Circle&apos;s Earn. Gas is paid in
                   USDC — leave a little for the network fee.
                 </p>
               </>

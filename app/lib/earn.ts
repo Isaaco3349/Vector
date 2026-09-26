@@ -49,12 +49,13 @@
  */
 
 import type { Eip1193Provider } from "./appkit";
-import { explorerTxUrl } from "./bridge-chains";
+import { arcBridgeChainId, explorerTxUrl } from "./bridge-chains";
+import { EarnChain } from "@circle-fin/app-kit";
+import { isMainnet } from "./network";
+
+const ARC_CHAIN = isMainnet ? EarnChain.Arc : EarnChain.Arc_Testnet;
 
 export type { Eip1193Provider };
-
-/** Arc Testnet identifier as expected by earn-kit's `chain` / `from.chain`. */
-const ARC_TESTNET_CHAIN = "Arc_Testnet";
 
 /** A yield vault on Arc, in the small shape the UI needs. `raw` is always kept. */
 export type EarnVault = {
@@ -260,7 +261,7 @@ function extractExecution(raw: unknown): EarnExecution {
   return {
     txHash,
     explorerUrl:
-      sdkUrl ?? (txHash ? explorerTxUrl("Arc_Testnet", txHash) : null),
+      sdkUrl ?? (txHash ? explorerTxUrl(arcBridgeChainId(), txHash) : null),
     raw,
   };
 }
@@ -278,7 +279,7 @@ export async function listArcVaults(kitKey?: string): Promise<EarnVault[]> {
   const kit = await loadEarnKit();
   const res = await kit.exploreVaults(
     withConfig(
-      { chain: ARC_TESTNET_CHAIN, asset: "USDC", sortBy: "apy" },
+      { chain: ARC_CHAIN, asset: "USDC", sortBy: "apy" },
       kitKey,
     ),
   );
@@ -312,7 +313,7 @@ export async function getEarnPosition(
   const res = await kit.getPosition(
     withConfig(
       {
-        from: { adapter, chain: ARC_TESTNET_CHAIN },
+        from: { adapter, chain: ARC_CHAIN },
         vaultAddress: args.vaultAddress,
       },
       args.kitKey,
@@ -334,7 +335,7 @@ export async function estimateDeposit(args: EarnAmountArgs): Promise<EarnQuote> 
   const res = await kit.getDepositQuote(
     withConfig(
       {
-        from: { adapter, chain: ARC_TESTNET_CHAIN },
+        from: { adapter, chain: ARC_CHAIN },
         vaultAddress: args.vaultAddress,
         amount: args.amount,
       },
@@ -359,7 +360,7 @@ export async function executeDeposit(
   const res = await kit.deposit(
     withConfig(
       {
-        from: { adapter, chain: ARC_TESTNET_CHAIN },
+        from: { adapter, chain: ARC_CHAIN },
         vaultAddress: args.vaultAddress,
         amount: args.amount,
       },
@@ -378,7 +379,7 @@ export async function estimateWithdraw(
   const res = await kit.getWithdrawalQuote(
     withConfig(
       {
-        from: { adapter, chain: ARC_TESTNET_CHAIN },
+        from: { adapter, chain: ARC_CHAIN },
         vaultAddress: args.vaultAddress,
         amount: args.amount,
       },
@@ -403,7 +404,7 @@ export async function executeWithdraw(
   const res = await kit.withdraw(
     withConfig(
       {
-        from: { adapter, chain: ARC_TESTNET_CHAIN },
+        from: { adapter, chain: ARC_CHAIN },
         vaultAddress: args.vaultAddress,
         amount: args.amount,
       },

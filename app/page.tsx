@@ -23,10 +23,17 @@ import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { useTokenBalance } from "./components/useTokenBalance";
 import { bridgeChainByNumericId } from "./lib/bridge-chains";
-import { ARC_FAUCET_URL } from "./lib/faucet";
-
-const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID as string;
-const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID as string;
+import {
+  arcFaucetUrl,
+  headerNetworkLabel,
+  isTestnet,
+  w3sBlockchainLabel,
+} from "./lib/network";
+import {
+  circleAppIdEnvName,
+  resolveCircleAppId,
+  resolveGoogleClientId,
+} from "./lib/w3s-public-config";
 
 type LoginResult = {
   userToken: string;
@@ -141,9 +148,23 @@ export default function HomePage() {
           setLoginError(null);
         };
 
-        const restoredAppId = (getCookie("appId") as string) || appId || "";
+        let activeAppId = "";
+        let activeGoogleClientId = "";
+        try {
+          activeAppId = resolveCircleAppId();
+          activeGoogleClientId = resolveGoogleClientId();
+        } catch (configErr) {
+          console.error("[Vector] W3S config:", configErr);
+          if (!cancelled) setSdkReady(false);
+          return;
+        }
+
+        const restoredAppId =
+          (getCookie("appId") as string) || activeAppId || "";
         const restoredGoogleClientId =
-          (getCookie("google.clientId") as string) || googleClientId || "";
+          (getCookie("google.clientId") as string) ||
+          activeGoogleClientId ||
+          "";
         const restoredDeviceToken = (getCookie("deviceToken") as string) || "";
         const restoredDeviceEncryptionKey =
           (getCookie("deviceEncryptionKey") as string) || "";
@@ -187,44 +208,149 @@ export default function HomePage() {
   }, []);
 
   const [deviceIdError, setDeviceIdError] = useState<string | null>(null);
+  /** The single in-flight getDeviceId handshake, or null. See fetchDeviceId. */
   const deviceIdFetchRef = useRef<Promise<string | null> | null>(null);
+  /** Whether the on-mount background prefetch has already had its one try. */
+  const deviceIdPrefetchedRef = useRef(false);
 
-  const fetchDeviceId = async (attempt = 1): Promise<string | null> => {
-    if (!sdkRef.current) return null;
-    try {
-      const cached =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("deviceId")
-          : null;
-      if (cached) {
-        setDeviceId(cached);
-        setDeviceIdError(null);
-        return cached;
-      }
-      setDeviceIdLoading(true);
-      const id = await sdkRef.current.getDeviceId();
-      setDeviceId(id);
+  /**
+   * Fetch Circle's deviceId.
+   *
+   * ── WHAT THIS ACTUALLY DOES (verified in the SDK source, not inferred) ──────
+   * `sdk.getDeviceId()` appends a hidden iframe pointing at a HARDCODED Circle
+   * URL and waits for a `postMessage` back from that exact origin:
+   *
+   *   https://pw-auth.circle.com/device-id?origin=<protocol>//<host>
+   *
+   * If no message arrives within 10s it rejects with the string
+   * 'Failed to receive deviceId'.
+   * (node_modules/@circle-fin/w3s-pw-web-sdk/src/index.ts — getDeviceId @149,
+   *  appendIframe @339, serviceUrl @49, origin check @752.)
+   *
+   * Two consequences worth keeping in mind:
+   *  1. `host` INCLUDES the subdomain, so `www.vectorprotocol.pro` and
+   *     `vectorprotocol.pro` are DIFFERENT origins to Circle. If the origin
+   *     serving the app isn't registered against the Circle App ID, Circle
+   *     simply never posts back and this times out silently.
+   *  2. Nothing in this path touches a wallet extension. An earlier version of
+   *     this function blamed "several wallet extensions" — that was a guess, it
+   *     was wrong, and it sent real debugging time in the wrong direction.
+   *     Don't reintroduce a cause we haven't verified.
+   *
+   * ── ONLY ONE HANDSHAKE AT A TIME (verified in the SDK source) ───────────────
+   * The SDK stores the pending promise's handles on the INSTANCE:
+   *   private receivedResponseFromService = false   (@80)
+   *   private resolveDeviceIdPromise?  (@84)   private rejectDeviceIdPromise?  (@88)
+   * and getDeviceId() OVERWRITES both on every call (@151-152). So two
+   * overlapping calls corrupt each other: the second call replaces the handles,
+   * then the FIRST call's 10s timer fires, rejects the SECOND call's promise, and
+   * calls unSubscribeMessage() — tearing down the listener so Circle's reply to
+   * the second call is never received. The background prefetch would therefore
+   * sabotage any Google click made in its first 10 seconds, which is exactly
+   * when a first-time visitor clicks. We serialise on `deviceIdFetchRef`: if a
+   * handshake is already running, await THAT instead of starting another.
+   *
+   * @param opts.attempts How many times to try before giving up (10s each).
+   * @param opts.silent   Background mode: don't drive the button's loading label
+   *                      and don't surface an error. Used for the on-mount
+   *                      prefetch, so a failing handshake can't stall the UI.
+   */
+  const fetchDeviceId = async (
+    opts: { attempts?: number; silent?: boolean } = {},
+  ): Promise<string | null> => {
+    const { attempts = 2, silent = false } = opts;
+    // Capture the SDK once rather than re-reading sdkRef.current after each
+    // await. TS would let the narrowed property survive the loop, but that's an
+    // unsoundness — the Retry button genuinely does set sdkRef.current = null,
+    // so a local binding is the honest way to hold it.
+    const sdk = sdkRef.current;
+    if (!sdk) return null;
+
+    const cached =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("deviceId")
+        : null;
+    if (cached) {
+      setDeviceId(cached);
       setDeviceIdError(null);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("deviceId", id);
+      return cached;
+    }
+
+    if (!silent) setDeviceIdLoading(true);
+    try {
+      // Join an in-flight handshake rather than corrupting it (see above). If it
+      // succeeds we're done; if it fails we fall through and try again ourselves.
+      let joinedFailure = false;
+      const inFlight = deviceIdFetchRef.current;
+      if (inFlight) {
+        const joined = await inFlight;
+        if (joined) {
+          setDeviceIdError(null);
+          return joined;
+        }
+        joinedFailure = true;
       }
-      return id;
-    } catch (error) {
-      console.error(`Failed to get deviceId (attempt ${attempt}):`, error);
-      // This step talks to a hidden Circle iframe over postMessage — a
-      // heavy set of competing wallet extensions on some browser profiles
-      // can delay or break that handshake. A short retry clears most of
-      // those cases.
-      if (attempt < 3) {
-        await new Promise((r) => setTimeout(r, 1000 * attempt));
-        return fetchDeviceId(attempt + 1);
+
+      // A handshake we waited out and watched fail COUNTS as one of our attempts.
+      // Without this, joining the background prefetch would ADD 10s to the click
+      // path (10s joined + 10s + 1s + 10s = 31s) — worse than the stall this
+      // whole change exists to remove. Charging it keeps the worst case at ~20s.
+      const remaining = attempts - (joinedFailure ? 1 : 0);
+      if (remaining > 0) {
+        const run = (async () => {
+          for (let attempt = 1; attempt <= remaining; attempt++) {
+            try {
+              const id = await sdk.getDeviceId();
+              setDeviceId(id);
+              setDeviceIdError(null);
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("deviceId", id);
+              }
+              return id;
+            } catch (error) {
+              console.error(
+                `[Vector] getDeviceId failed (attempt ${attempt}/${remaining}):`,
+                error,
+              );
+              if (attempt < remaining) {
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+            }
+          }
+          return null;
+        })();
+        deviceIdFetchRef.current = run;
+
+        try {
+          const id = await run;
+          if (id) return id;
+        } finally {
+          // Release the slot so a later click (or Retry) can start a fresh
+          // handshake instead of joining a promise that has already failed.
+          if (deviceIdFetchRef.current === run) deviceIdFetchRef.current = null;
+        }
       }
-      setDeviceIdError(
-        "Couldn't reach Circle's login service. This can happen when several wallet extensions are active at once, try disabling some, or use an Incognito window, then retry.",
+
+      // Every attempt timed out. Name the origin Circle was asked to validate —
+      // that string is the whole diagnosis, so put it where it can be read.
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "this site";
+      console.error(
+        "[Vector] Circle's login service never responded. It was asked to " +
+          `validate origin: ${origin}\n` +
+          "The SDK loads https://pw-auth.circle.com/device-id?origin=<origin> " +
+          "and waits 10s for a postMessage reply. A silent timeout usually " +
+          "means this EXACT origin (subdomain included) is not registered " +
+          `against ${circleAppIdEnvName()} in the Circle console.`,
       );
+      if (!silent) {
+        setDeviceIdError(
+          `Circle's login service didn't respond for ${origin}. Google sign-in is unavailable right now — you can still connect an existing wallet below. (Details in the browser console.)`,
+        );
+      }
       return null;
     } finally {
-      setDeviceIdLoading(false);
+      if (!silent) setDeviceIdLoading(false);
     }
   };
 
@@ -233,8 +359,19 @@ export default function HomePage() {
     // returning users (with a cached deviceId) see an instantly-usable
     // button. If it's not ready yet by the time someone clicks, handleConnect
     // below fetches it on demand instead of leaving the button disabled.
-    if (sdkReady && !deviceIdFetchRef.current) {
-      deviceIdFetchRef.current = fetchDeviceId();
+    //
+    // `silent` + a SINGLE attempt is what keeps that promise. This prefetch
+    // used to run 3×10s attempts (with 1s and 2s backoffs) while driving the
+    // button's loading label, so a failing Circle handshake left every
+    // first-time visitor staring at "Connecting to Circle…" for ~33s before an
+    // error appeared — the opposite of quiet. Now a failure here costs nothing
+    // visible: the button reads "Continue with Google" immediately, and the
+    // on-demand fetch in handleConnect does the retrying and the reporting when
+    // someone actually clicks. fetchDeviceId itself owns deviceIdFetchRef, so a
+    // click during this window JOINS this handshake rather than breaking it.
+    if (sdkReady && !deviceIdPrefetchedRef.current) {
+      deviceIdPrefetchedRef.current = true;
+      void fetchDeviceId({ attempts: 1, silent: true });
     }
   }, [sdkReady]);
 
@@ -347,6 +484,9 @@ export default function HomePage() {
         return;
       }
 
+      const appId = resolveCircleAppId();
+      const googleClientId = resolveGoogleClientId();
+
       setCookie("appId", appId);
       setCookie("google.clientId", googleClientId);
 
@@ -367,6 +507,11 @@ export default function HomePage() {
       sdk.performLogin(SocialLoginProvider.GOOGLE);
     } catch (err) {
       console.error(err);
+      const message =
+        err instanceof Error ? err.message : "Couldn't start session";
+      if (message.startsWith("Missing NEXT_PUBLIC_")) {
+        setLoginError(message);
+      }
       setStatus("Couldn't start session");
       setBusy(false);
     }
@@ -490,7 +635,7 @@ export default function HomePage() {
       ? {
           source: "wallet" as const,
           address: injectedAddress,
-          blockchain: "ARC-TESTNET",
+          blockchain: w3sBlockchainLabel,
           balance: injectedBalance
             ? Number(
                 formatUnits(injectedBalance.value, injectedBalance.decimals),
@@ -545,7 +690,7 @@ export default function HomePage() {
           </span>
         </div>
         <span className="text-xs text-[var(--vector-text-dim)] font-mono">
-          Arc Testnet
+          {headerNetworkLabel}
         </span>
       </header>
 
@@ -1004,9 +1149,9 @@ function WalletCard({
 
       {/* Arc gas is paid in USDC, so a 0-balance wallet can't do anything until
           it's funded. Nudge new users straight to the faucet. */}
-      {needsFunds && (
+      {needsFunds && isTestnet && arcFaucetUrl && (
         <a
-          href={ARC_FAUCET_URL}
+          href={arcFaucetUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="block mb-6 rounded-2xl border border-[var(--vector-pink)] bg-[var(--vector-surface-raised)] px-4 py-3 hover:opacity-90 transition-opacity"
@@ -1019,6 +1164,22 @@ function WalletCard({
             send, swap, or bridge. Claim free test USDC from the faucet.
           </p>
         </a>
+      )}
+
+      {needsFunds && !isTestnet && onBridge && (
+        <button
+          type="button"
+          onClick={onBridge}
+          className="block w-full mb-6 rounded-2xl border border-[var(--vector-pink)] bg-[var(--vector-surface-raised)] px-4 py-3 hover:opacity-90 transition-opacity text-left"
+        >
+          <p className="text-[13px] font-semibold text-[var(--vector-text)] mb-0.5">
+            Bridge USDC to Arc
+          </p>
+          <p className="text-[12px] leading-relaxed text-[var(--vector-text-dim)]">
+            Arc pays gas in USDC. Bridge USDC from another network to fund this
+            wallet before you send, swap, or earn.
+          </p>
+        </button>
       )}
 
       {/* Wallet actions — Send / Receive / Swap / Bridge / Earn are all live for
@@ -1067,17 +1228,16 @@ function WalletCard({
         {copied ? "Copied" : short}
       </button>
 
-      {/* Faucet — always available so users can top up test USDC anytime, not
-          just when empty. Link-out (user chose the official Arc faucet); no
-          funds move through Vector. URL is env-overridable (see lib/faucet.ts). */}
-      <a
-        href={ARC_FAUCET_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-3 flex items-center justify-center h-[44px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[13px] text-[var(--vector-text-dim)] hover:border-[var(--vector-pink)] hover:text-[var(--vector-text)] transition-colors"
-      >
-        Get test USDC (Faucet) ↗
-      </a>
+      {isTestnet && arcFaucetUrl && (
+        <a
+          href={arcFaucetUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 flex items-center justify-center h-[44px] rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] font-semibold text-[13px] text-[var(--vector-text-dim)] hover:border-[var(--vector-pink)] hover:text-[var(--vector-text)] transition-colors"
+        >
+          Get test USDC (Faucet) ↗
+        </a>
+      )}
 
       {onHistory && (
         <button

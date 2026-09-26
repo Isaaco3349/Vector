@@ -11,6 +11,8 @@ import {
 import {
   BRIDGE_CHAINS,
   bridgeChainById,
+  defaultBridgeFromChain,
+  defaultBridgeToChain,
   explorerAddressUrl,
   type BridgeChainId,
 } from "../lib/bridge-chains";
@@ -54,8 +56,8 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const { address, isConnected, connector, chainId: wagmiChainId } = useAccount();
   const { switchChainAsync, isPending: switching } = useSwitchChain();
 
-  const [fromChain, setFromChain] = useState<BridgeChainId>("Arc_Testnet");
-  const [toChain, setToChain] = useState<BridgeChainId>("Base_Sepolia");
+  const [fromChain, setFromChain] = useState<BridgeChainId>(defaultBridgeFromChain());
+  const [toChain, setToChain] = useState<BridgeChainId>(defaultBridgeToChain());
   const [amount, setAmount] = useState("");
 
   const [quote, setQuote] = useState<BridgeQuote | null>(null);

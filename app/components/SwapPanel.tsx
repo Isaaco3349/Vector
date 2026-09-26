@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { arcTestnet } from "viem/chains";
 import { useAccount, useSwitchChain } from "wagmi";
+import {
+  arcExplorerTxUrl,
+  chainId as ARC_CHAIN_ID,
+  displayName as ARC_DISPLAY_NAME,
+} from "../lib/network";
 import {
   classifySwapError,
   estimateSwap,
@@ -19,13 +23,6 @@ import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import { useTokenBalance } from "./useTokenBalance";
-
-/**
- * Arc Testnet's chain id (5042002), read from viem's own chain definition —
- * the same source `app/wagmi-config.ts` builds the config from, so there is no
- * second hand-typed copy of a money-critical number to drift out of sync.
- */
-const ARC_CHAIN_ID = arcTestnet.id;
 
 /**
  * Looser slippage tolerances offered — only ever after Circle has said the
@@ -170,7 +167,7 @@ async function quoteViaSwapEndpoint(args: {
 }
 
 /**
- * Swap panel for external (injected) wallets on Arc Testnet.
+ * Swap panel for external (injected) wallets on Arc (network from app/lib/network.ts).
  *
  * Uses the connected wallet's EIP-1193 provider (via wagmi's connector) with
  * Circle's App Kit browser-wallet adapter. Google-login (Circle) wallets take
@@ -476,7 +473,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
             } else if (attempt.outcome === "no-estimate") {
               setErrorState({
-                text: `Circle can build a ${tokenIn} → ${tokenOut} swap on Arc Testnet but returned no estimated output, so Vector won't ask you to confirm a trade it can't price. Try a different amount.`,
+                text: `Circle can build a ${tokenIn} → ${tokenOut} swap on ${ARC_DISPLAY_NAME} but returned no estimated output, so Vector won't ask you to confirm a trade it can't price. Try a different amount.`,
                 info: null,
               });
             } else {
@@ -518,7 +515,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       setErrorState(
         describeSwapError(
           switchError,
-          "Couldn't switch networks. Switch to Arc Testnet in your wallet, then try again.",
+          `Couldn't switch networks. Switch to ${ARC_DISPLAY_NAME} in your wallet, then try again.`,
           { tokenIn, tokenOut, slippageBps: effectiveSlippageBps },
         ),
       );
@@ -550,7 +547,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           text:
             liveChainId === null
               ? "Couldn't confirm which network your wallet is on, so nothing was sent. Reconnect the wallet and try again."
-              : `Your wallet is on chain ${liveChainId}, but swaps run on Arc Testnet (${ARC_CHAIN_ID}). Switch networks and try again — nothing was sent.`,
+              : `Your wallet is on chain ${liveChainId}, but swaps run on ${ARC_DISPLAY_NAME} (${ARC_CHAIN_ID}). Switch networks and try again — nothing was sent.`,
           info: null,
         });
         return;
@@ -845,7 +842,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
         {txHash && (
           <a
-            href={`https://testnet.arcscan.app/tx/${txHash}`}
+            href={arcExplorerTxUrl(txHash)}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-[13px] text-[var(--vector-pink)] font-mono mb-4 underline break-all"
@@ -864,8 +861,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             telling someone to do something impossible is worse than silence. */}
         {pairIsUnroutable && !error && (
           <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed">
-            Circle returned &quot;not found&quot; for {tokenIn} → {tokenOut} on
-            Arc Testnet the last time Vector priced it, on both of the endpoints
+            Circle returned &quot;not found&quot; for {tokenIn} → {tokenOut} on{" "}
+            {ARC_DISPLAY_NAME} the last time Vector priced it, on both of the endpoints
             it can ask. Changing the amount tries again.
           </p>
         )}
@@ -873,7 +870,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         {needsChainSwitch ? (
           <div>
             <p className="text-[12px] text-[var(--vector-text-dim)] leading-relaxed mb-3 text-center">
-              Swaps run on Arc Testnet, and your wallet is on{" "}
+              Swaps run on {ARC_DISPLAY_NAME}, and your wallet is on{" "}
               <span className="font-mono">chain {walletChainId}</span>. Switch
               networks to continue — nothing has been sent.
             </p>
@@ -882,7 +879,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               disabled={switching}
               className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
             >
-              {switching ? "Switching…" : "Switch to Arc Testnet"}
+              {switching ? "Switching…" : `Switch to ${ARC_DISPLAY_NAME}`}
             </button>
           </div>
         ) : (
@@ -903,7 +900,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         )}
 
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          Swaps run on Arc Testnet through Circle&apos;s App Kit. Estimated
+          Swaps run on {ARC_DISPLAY_NAME} through Circle&apos;s App Kit. Estimated
           output can move slightly before the transaction confirms.
         </p>
       </div>
@@ -999,7 +996,7 @@ function describeSwapError(
         return "You cancelled the request in your wallet.";
 
       case "chain-mismatch":
-        return "Your wallet is on a different network than Arc Testnet, so it wouldn't sign. Switch to Arc Testnet and try again — nothing was sent.";
+        return `Your wallet is on a different network than ${ARC_DISPLAY_NAME}, so it wouldn't sign. Switch to ${ARC_DISPLAY_NAME} and try again — nothing was sent.`;
 
       case "permit-generation":
         return "Your wallet couldn't approve this swap, so nothing was sent. Reconnect the wallet and try again.";
@@ -1013,7 +1010,7 @@ function describeSwapError(
         // removed a working token from Swap. Report what happened, no more. What
         // we must also not do is replace one guess with another: only a pair
         // Circle has actually priced this session gets named as an alternative.
-        const base = `Circle wouldn't price ${pair} on Arc Testnet — its swap service returned "not found" for this pair.`;
+        const base = `Circle wouldn't price ${pair} on ${ARC_DISPLAY_NAME} — its swap service returned "not found" for this pair.`;
         const proven = provenPairOtherThan(pairKey(ctx.tokenIn, ctx.tokenOut));
         return proven
           ? `${base} ${proven} priced successfully earlier in this session — try that instead.`
@@ -1021,7 +1018,7 @@ function describeSwapError(
       }
 
       case "unsupported-token":
-        return `Circle's swap service doesn't support one of these tokens on Arc Testnet yet, so ${pair} can't be quoted. Nothing was sent.`;
+        return `Circle's swap service doesn't support one of these tokens on ${ARC_DISPLAY_NAME} yet, so ${pair} can't be quoted. Nothing was sent.`;
 
       case "slippage":
         // Circle *could* price this trade — it just couldn't hit the minimum

@@ -9,11 +9,13 @@ import {
 } from "../lib/google-bridge";
 import {
   BRIDGE_CHAINS,
+  arcBridgeChainId,
   bridgeChainById,
   explorerAddressUrl,
   explorerTxUrl,
   type BridgeChainId,
 } from "../lib/bridge-chains";
+import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
@@ -71,7 +73,7 @@ import { useLatestTxHash } from "../lib/use-latest-tx-hash";
  * Arc-scoped wallet never has to switch chains).
  */
 const DEST_CHAINS: BridgeChainId[] = BRIDGE_CHAINS.filter(
-  (c) => c.appKitChain !== "Arc_Testnet" && c.forwarderDestination,
+  (c) => c.appKitChain !== arcBridgeChainId() && c.forwarderDestination,
 ).map((c) => c.appKitChain);
 
 export function GoogleBridgePanel({
@@ -143,8 +145,8 @@ export function GoogleBridgePanel({
     trigger: done,
   });
   const explorerUrl = burnTxHash
-    ? explorerTxUrl("Arc_Testnet", burnTxHash)
-    : explorerAddressUrl("Arc_Testnet", walletAddress);
+    ? explorerTxUrl(arcBridgeChainId(), burnTxHash)
+    : explorerAddressUrl(arcBridgeChainId(), walletAddress);
   const explorerIsTx = burnTxHash != null;
 
   /**
@@ -307,7 +309,7 @@ export function GoogleBridgePanel({
                 <span className="text-[12px] text-[var(--vector-text-dim)]">
                   From
                 </span>
-                <span className="text-[13px] font-mono">Arc Testnet</span>
+                <span className="text-[13px] font-mono">{ARC_DISPLAY_NAME}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[12px] text-[var(--vector-text-dim)]">

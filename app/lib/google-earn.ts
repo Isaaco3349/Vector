@@ -92,6 +92,15 @@
 
 import type { Eip1193Provider } from "./appkit";
 import type { EarnPosition } from "./earn";
+import { EarnChain } from "@circle-fin/app-kit";
+import {
+  chainIdHex as ARC_CHAIN_ID_HEX,
+  earnApiChainDefault,
+  isMainnet,
+  rpcUrl as ARC_RPC_FALLBACK,
+} from "./network";
+
+const ARC_CHAIN_ENUM = isMainnet ? EarnChain.Arc : EarnChain.Arc_Testnet;
 
 /** The two Earn actions this module encodes. */
 export type EarnAction = "deposit" | "withdraw";
@@ -130,15 +139,8 @@ export type BuildEarnPlanArgs = {
   amount: string;
 };
 
-/** The Google wallet only ever earns on Arc. adapter def id (underscore). */
-const ARC_CHAIN_ENUM = "Arc_Testnet";
-
-/**
- * The chain string the EARN HTTP endpoints expect. This is
- * CHAIN_TO_API[Blockchain.Arc_Testnet] = "ARC-TESTNET" (hyphen/upper) — DIFFERENT
- * from the adapter def id "Arc_Testnet". Verified provider-earn-service @9131.
- */
-const ARC_EARN_API_CHAIN = "ARC-TESTNET";
+/** Circle Earn HTTP `chain` field (CHAIN_TO_API: Arc → "ARC", Arc_Testnet → "ARC-TESTNET"). */
+const ARC_EARN_API_CHAIN = earnApiChainDefault;
 
 /** PermitType.NONE — no user off-chain permit; tokens pre-approved on-chain. */
 const PERMIT_TYPE_NONE = 0;
@@ -436,12 +438,13 @@ async function buildEarnPlan(
   const rpcUrl =
     Array.isArray(rpcList) && typeof rpcList[0] === "string"
       ? (rpcList[0] as string)
-      : "https://rpc.testnet.arc.network/";
+      : ARC_RPC_FALLBACK;
   const numericChainId = (arcDef as { chainId?: unknown }).chainId;
   const chainIdHex =
     typeof numericChainId === "number"
       ? "0x" + numericChainId.toString(16)
-      : "0x" + (5042002).toString(16);
+      : ARC_CHAIN_ID_HEX;
+
 
   // 1) deposit/withdraw via our same-origin server proxy (permissionless testnet).
   //    Returns Circle's executionParams + proxy-signed signature (`.data`-wrapped
@@ -626,12 +629,12 @@ async function resolveArcRpc(): Promise<{ rpcUrl: string; chainIdHex: string }> 
   const rpcUrl =
     Array.isArray(rpcList) && typeof rpcList[0] === "string"
       ? (rpcList[0] as string)
-      : "https://rpc.testnet.arc.network/";
+      : ARC_RPC_FALLBACK;
   const numericChainId = (arcDef as { chainId?: unknown }).chainId;
   const chainIdHex =
     typeof numericChainId === "number"
       ? "0x" + numericChainId.toString(16)
-      : "0x" + (5042002).toString(16);
+      : ARC_CHAIN_ID_HEX;
   return { rpcUrl, chainIdHex };
 }
 

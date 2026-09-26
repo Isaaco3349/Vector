@@ -1,5 +1,10 @@
 "use client";
 
+import { SwapChain } from "@circle-fin/app-kit";
+import { isMainnet } from "./network";
+
+const ARC_CHAIN = isMainnet ? SwapChain.Arc : SwapChain.Arc_Testnet;
+
 /**
  * Isolated Circle App Kit integration (Swap).
  *
@@ -99,10 +104,6 @@ export type SwapResult = {
   raw: unknown;
 };
 
-// Arc Testnet identifier as expected by App Kit's `from.chain` (per the Arc
-// docs same-chain swap quickstart).
-const ARC_TESTNET_CHAIN = "Arc_Testnet";
-
 /**
  * The viem provider-adapter export name is in transition across SDK versions
  * (`createViemAdapterFromProvider` in newer docs, `createAdapterFromProvider`
@@ -187,7 +188,7 @@ async function buildKitAndParams(args: SwapArgs) {
   const swapParams = {
     from: {
       adapter,
-      chain: ARC_TESTNET_CHAIN,
+      chain: ARC_CHAIN,
       // address is intentionally omitted — user-controlled adapters resolve it
       // from the connected wallet (AdapterContext + AddressField typing).
     },
@@ -479,7 +480,7 @@ export async function estimateSwap(args: SwapArgs): Promise<SwapQuote> {
   if (typeof console !== "undefined") {
     console.log("[Vector] estimateSwap params:", {
       ...swapParams,
-      from: { chain: ARC_TESTNET_CHAIN, adapter: "[ViemAdapter]" },
+      from: { chain: ARC_CHAIN, adapter: "[ViemAdapter]" },
       config: swapParams.config
         ? {
             ...swapParams.config,

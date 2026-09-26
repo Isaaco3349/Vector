@@ -43,9 +43,7 @@
 
 import { getProviderChainId, type Eip1193Provider } from "./appkit";
 import type { SwapCall, SwapPlan } from "./google-swap";
-
-/** Arc Testnet. Same constant the panel's chain guard uses. */
-const ARC_CHAIN_ID = 5042002;
+import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "./network";
 
 /** How long to wait for a receipt before giving up, and how often to ask. */
 const RECEIPT_TIMEOUT_MS = 180_000;
@@ -174,7 +172,7 @@ export async function executeSwapPlan(
     throw new Error(
       chainId === null
         ? "Couldn't confirm which network your wallet is on, so nothing was sent."
-        : `Your wallet is on chain ${chainId}, but swaps run on Arc Testnet ` +
+        : `Your wallet is on chain ${chainId}, but swaps run on ${ARC_DISPLAY_NAME} ` +
           `(${ARC_CHAIN_ID}). Nothing was sent.`,
     );
   }

@@ -8,7 +8,12 @@ import {
   type SwapPlan,
   type SwapSymbol,
 } from "../lib/google-swap";
-import { explorerAddressUrl, explorerTxUrl } from "../lib/bridge-chains";
+import {
+  arcBridgeChainId,
+  explorerAddressUrl,
+  explorerTxUrl,
+} from "../lib/bridge-chains";
+import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
@@ -112,8 +117,8 @@ export function GoogleSwapPanel({
     trigger: done,
   });
   const explorerUrl = execTxHash
-    ? explorerTxUrl("Arc_Testnet", execTxHash)
-    : explorerAddressUrl("Arc_Testnet", walletAddress);
+    ? explorerTxUrl(arcBridgeChainId(), execTxHash)
+    : explorerAddressUrl(arcBridgeChainId(), walletAddress);
   const explorerIsTx = execTxHash != null;
 
   /** Any input change invalidates a previously fetched quote/plan. */
@@ -193,7 +198,7 @@ export function GoogleSwapPanel({
       // Arc Testnet yet — explain it honestly rather than as a generic failure.
       setError(
         /no route|route.*(available|found)|no.*liquidity/i.test(msg)
-          ? "No swap route for this pair on Arc Testnet yet. Swap routes depend on Circle-provided liquidity, which isn't available for this pair right now — try again later."
+          ? `No swap route for this pair on ${ARC_DISPLAY_NAME} yet. Swap routes depend on Circle-provided liquidity, which isn't available for this pair right now — try again later.`
           : msg,
       );
     }
@@ -261,7 +266,7 @@ export function GoogleSwapPanel({
             </div>
             <p className="text-[15px] font-semibold mb-1.5">Swap complete</p>
             <p className="text-[13px] text-[var(--vector-text-dim)] leading-relaxed mb-6">
-              Swapped {amount} {fromSymbol} to {toSymbol} on Arc Testnet.
+              Swapped {amount} {fromSymbol} to {toSymbol} on {ARC_DISPLAY_NAME}.
             </p>
             {explorerUrl && (
               <a
@@ -426,7 +431,7 @@ export function GoogleSwapPanel({
             <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
               {plan
                 ? "Confirming is two steps: first approve, then the swap. You'll enter your Circle PIN for each. Gas is paid in USDC on Arc."
-                : "Swaps run on Arc Testnet through Circle. The estimated output can move slightly before you confirm."}
+                : `Swaps run on ${ARC_DISPLAY_NAME} through Circle. The estimated output can move slightly before you confirm.`}
             </p>
           </>
         )}
