@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { isAddress, parseUnits } from "viem";
 import type { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 import { runChallenge, type W3sAuth } from "../lib/w3s-tx";
-import { explorerAddressUrl, explorerTxUrl } from "../lib/bridge-chains";
+import {
+  arcBridgeChainId,
+  explorerAddressUrl,
+  explorerTxUrl,
+} from "../lib/bridge-chains";
+import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 import {
   ARC_NATIVE_DECIMALS,
@@ -124,8 +129,8 @@ export function GoogleSendPanel({
     trigger: done,
   });
   const explorerUrl = sendTxHash
-    ? explorerTxUrl("Arc_Testnet", sendTxHash)
-    : explorerAddressUrl("Arc_Testnet", walletAddress);
+    ? explorerTxUrl(arcBridgeChainId(), sendTxHash)
+    : explorerAddressUrl(arcBridgeChainId(), walletAddress);
   const explorerIsTx = sendTxHash != null;
 
   async function handleSend() {
@@ -275,7 +280,7 @@ export function GoogleSendPanel({
                   To
                 </span>
                 <span className="text-[11px] text-[var(--vector-text-dim)] font-mono">
-                  Arc Testnet
+                  {ARC_DISPLAY_NAME}
                 </span>
               </div>
               <input

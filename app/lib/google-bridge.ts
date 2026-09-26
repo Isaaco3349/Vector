@@ -61,9 +61,15 @@
 
 import { parseUnits } from "viem";
 import {
+  arcBridgeChainId,
   bridgeChainById,
   type BridgeChainId,
 } from "./bridge-chains";
+import {
+  chainIdHex as ARC_CHAIN_ID_HEX,
+  displayName as ARC_DISPLAY_NAME,
+  rpcUrl as ARC_RPC_FALLBACK,
+} from "./network";
 
 /** A single contract call for the W3S contractExecution challenge. */
 export type BridgeCall = {
@@ -106,7 +112,7 @@ export type BuildBridgePlanArgs = {
 };
 
 /** The Google wallet only ever bridges FROM Arc. */
-const SOURCE_CHAIN: BridgeChainId = "Arc_Testnet";
+const SOURCE_CHAIN: BridgeChainId = arcBridgeChainId();
 
 /** USDC is 6 decimals for CCTP everywhere (Arc's native 18 is gas-only). */
 const USDC_DECIMALS = 6;
@@ -268,7 +274,7 @@ export async function buildBridgePlan(
 ): Promise<BridgePlan> {
   const from = bridgeChainById(SOURCE_CHAIN);
   const to = bridgeChainById(args.toChain);
-  if (!from) throw new Error("Bridge source (Arc Testnet) is not configured.");
+  if (!from) throw new Error(`Bridge source (${ARC_DISPLAY_NAME}) is not configured.`);
   if (!to) throw new Error(`Unsupported destination chain: ${args.toChain}`);
   if (to.appKitChain === from.appKitChain) {
     throw new Error("Pick a destination chain other than Arc.");
@@ -327,12 +333,12 @@ export async function buildBridgePlan(
   const rpcUrl =
     Array.isArray(rpcList) && typeof rpcList[0] === "string"
       ? (rpcList[0] as string)
-      : "https://rpc.testnet.arc.network/";
+      : ARC_RPC_FALLBACK;
   const numericChainId = (sourceDef as { chainId?: unknown }).chainId;
   const chainIdHex =
     typeof numericChainId === "number"
       ? "0x" + numericChainId.toString(16)
-      : "0x" + (5042002).toString(16);
+      : ARC_CHAIN_ID_HEX;
 
   const provider = createReadOnlyArcProvider({
     address: args.walletAddress,

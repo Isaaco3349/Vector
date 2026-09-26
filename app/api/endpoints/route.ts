@@ -1,8 +1,44 @@
 import { NextResponse } from "next/server";
 
+import {
+  earnApiChainDefault,
+  isMainnet,
+  w3sBlockchainLabel,
+} from "../../lib/network";
+
 const CIRCLE_BASE_URL =
   process.env.NEXT_PUBLIC_CIRCLE_BASE_URL ?? "https://api.circle.com";
-const CIRCLE_API_KEY = process.env.CIRCLE_API_KEY as string;
+
+/** W3S `/v1/w3s/*` — TEST key on testnet, LIVE key on mainnet (no cross-fallback). */
+function resolveCircleW3sApiKey(): string {
+  if (isMainnet) {
+    const live = process.env.CIRCLE_API_KEY_LIVE?.trim();
+    if (!live) {
+      throw new Error(
+        "Missing CIRCLE_API_KEY_LIVE. Mainnet W3S requires a LIVE API key from Circle Console; TEST keys are rejected for mainnet blockchains (e.g. Circle error 156006).",
+      );
+    }
+    return live;
+  }
+  const test = process.env.CIRCLE_API_KEY?.trim();
+  if (!test) {
+    throw new Error(
+      "Missing CIRCLE_API_KEY. Testnet W3S requires a TEST API key from Circle Console.",
+    );
+  }
+  return test;
+}
+
+function w3sAuthorizationHeader(): { Authorization: string } {
+  return { Authorization: `Bearer ${resolveCircleW3sApiKey()}` };
+}
+
+function unwrapCircleEnvelope(data: unknown): unknown {
+  if (data !== null && typeof data === "object" && "data" in data) {
+    return (data as { data: unknown }).data;
+  }
+  return data;
+}
 
 // Every call to Circle's API gets a hard timeout. Without this, a slow or
 // flaky connection just hangs indefinitely on the client, showing up as
@@ -58,7 +94,7 @@ export async function POST(request: Request) {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${CIRCLE_API_KEY}`,
+              ...w3sAuthorizationHeader(),
             },
             body: JSON.stringify({
               idempotencyKey: crypto.randomUUID(),
@@ -74,7 +110,7 @@ export async function POST(request: Request) {
         }
 
         // Returns: { deviceToken, deviceEncryptionKey }
-        return NextResponse.json(data.data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       case "initializeUser": {
@@ -92,13 +128,13 @@ export async function POST(request: Request) {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${CIRCLE_API_KEY}`,
+              ...w3sAuthorizationHeader(),
               "X-User-Token": userToken,
             },
             body: JSON.stringify({
               idempotencyKey: crypto.randomUUID(),
               accountType: "SCA",
-              blockchains: ["ARC-TESTNET"],
+              blockchains: [w3sBlockchainLabel],
             }),
           },
         );
@@ -111,7 +147,7 @@ export async function POST(request: Request) {
         }
 
         // Returns: { challengeId }
-        return NextResponse.json(data.data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       case "listWallets": {
@@ -128,7 +164,7 @@ export async function POST(request: Request) {
           headers: {
             accept: "application/json",
             "content-type": "application/json",
-            Authorization: `Bearer ${CIRCLE_API_KEY}`,
+            ...w3sAuthorizationHeader(),
             "X-User-Token": userToken,
           },
         });
@@ -140,7 +176,7 @@ export async function POST(request: Request) {
         }
 
         // Returns: { wallets: [...] }
-        return NextResponse.json(data.data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       case "getTokenBalance": {
@@ -158,7 +194,7 @@ export async function POST(request: Request) {
             method: "GET",
             headers: {
               accept: "application/json",
-              Authorization: `Bearer ${CIRCLE_API_KEY}`,
+              ...w3sAuthorizationHeader(),
               "X-User-Token": userToken,
             },
           },
@@ -171,7 +207,7 @@ export async function POST(request: Request) {
         }
 
         // Returns: { tokenBalances: [...] }
-        return NextResponse.json(data.data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       case "listTransactions": {
@@ -213,7 +249,7 @@ export async function POST(request: Request) {
             method: "GET",
             headers: {
               accept: "application/json",
-              Authorization: `Bearer ${CIRCLE_API_KEY}`,
+              ...w3sAuthorizationHeader(),
               "X-User-Token": userToken,
             },
           },
@@ -226,7 +262,7 @@ export async function POST(request: Request) {
         }
 
         // Returns: { transactions: [...] }
-        return NextResponse.json(data.data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       case "createTransferChallenge": {
@@ -266,7 +302,7 @@ export async function POST(request: Request) {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${CIRCLE_API_KEY}`,
+              ...w3sAuthorizationHeader(),
               "X-User-Token": userToken,
             },
             body: JSON.stringify({
@@ -288,7 +324,7 @@ export async function POST(request: Request) {
         }
 
         // Returns: { challengeId }
-        return NextResponse.json(data.data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       case "createContractExecutionChallenge": {
@@ -366,7 +402,7 @@ export async function POST(request: Request) {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${CIRCLE_API_KEY}`,
+              ...w3sAuthorizationHeader(),
               "X-User-Token": userToken,
             },
             body: JSON.stringify(contractBody),
@@ -381,7 +417,7 @@ export async function POST(request: Request) {
         }
 
         // Returns: { challengeId }
-        return NextResponse.json(data.data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       case "createSwapTransaction": {
@@ -501,7 +537,7 @@ export async function POST(request: Request) {
         //   { vaultAddress, amount, address, chain }.
         //   - vaultAddress: discovered via exploreVaults, never hardcoded.
         //   - amount: human-readable decimal STRING; the service scales it.
-        //   - chain: MUST be "ARC-TESTNET" (CHAIN_TO_API[Arc_Testnet], :9131).
+        //   - chain: CHAIN_TO_API (Arc → "ARC", Arc_Testnet → "ARC-TESTNET").
         // The response IS `.data`-wrapped (depositPayloadSchema :11490 /
         // withdrawPayloadSchema): { data: { execId, executionParams, signature } }.
         // We unwrap to `.data` so the client gets the payload at top level,
@@ -520,8 +556,10 @@ export async function POST(request: Request) {
           vaultAddress,
           amount: String(amount),
           address,
-          // Default to Arc Testnet's API chain string if the client omits it.
-          chain: typeof chain === "string" && chain ? chain : "ARC-TESTNET",
+          chain:
+            typeof chain === "string" && chain
+              ? chain
+              : earnApiChainDefault ?? "ARC-TESTNET",
         };
 
         const response = await fetchCircle(
@@ -548,7 +586,7 @@ export async function POST(request: Request) {
         }
 
         // Unwrap the `.data` envelope → { execId, executionParams, signature }.
-        return NextResponse.json(data?.data ?? data, { status: 200 });
+        return NextResponse.json(unwrapCircleEnvelope(data), { status: 200 });
       }
 
       default:
@@ -561,6 +599,17 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.name === "AbortError") {
       console.error(`Circle API call timed out during "${action}"`);
       return timeoutErrorResponse(action);
+    }
+    if (
+      error instanceof Error &&
+      (error.message.startsWith("Missing CIRCLE_API_KEY") ||
+        error.message.startsWith("Missing CIRCLE_API_KEY_LIVE"))
+    ) {
+      console.error(`Config error in /api/endpoints (action: ${action}):`, error.message);
+      return NextResponse.json(
+        { error: error.message, code: "CONFIG" },
+        { status: 500 },
+      );
     }
     console.error(`Error in /api/endpoints (action: ${action}):`, error);
     return NextResponse.json(

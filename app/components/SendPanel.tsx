@@ -9,14 +9,13 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { bridgeChainByNumericId } from "../lib/bridge-chains";
+import { BRIDGE_CHAINS, bridgeChainByNumericId } from "../lib/bridge-chains";
+import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import {
   VECTOR_ROUTER_ABI,
   vectorRouterAddress,
 } from "../lib/vector-router";
 import { useSendBalance } from "./useSendBalance";
-
-const ARC_TESTNET_ID = 5042002;
 
 /**
  * Send USDC panel for external (injected) wallets.
@@ -50,7 +49,7 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
   // it is never an error state, so Send always works either way.
   const routerAddress = useMemo(() => vectorRouterAddress(), []);
   const routedThroughVector =
-    !!routerAddress && chain?.chainId === ARC_TESTNET_ID;
+    !!routerAddress && chain?.chainId === ARC_CHAIN_ID;
 
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
@@ -114,7 +113,7 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
     try {
       let hash: `0x${string}`;
       if (chain.usdcKind === "native") {
-        const router = chain.chainId === ARC_TESTNET_ID ? routerAddress : null;
+        const router = chain.chainId === ARC_CHAIN_ID ? routerAddress : null;
         if (router) {
           // Arc + router configured: a real contract call. `parsed` is passed
           // BOTH as the argument and as msg.value — the router reverts unless
@@ -182,14 +181,14 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
           <div className="text-center py-4">
             <p className="text-[13px] text-[var(--vector-text-dim)] mb-5 leading-relaxed">
               You&apos;re on a network Vector doesn&apos;t support for sending yet.
-              Switch to Arc Testnet, Base Sepolia, or Ethereum Sepolia.
+              Switch to {BRIDGE_CHAINS.map((c) => c.label).join(", ")}.
             </p>
             <button
-              onClick={() => switchChain({ chainId: ARC_TESTNET_ID })}
+              onClick={() => switchChain({ chainId: ARC_CHAIN_ID })}
               disabled={switching}
               className="w-full h-[48px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[14px] disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
-              {switching ? "Switching…" : "Switch to Arc Testnet"}
+              {switching ? "Switching…" : `Switch to ${ARC_DISPLAY_NAME}`}
             </button>
           </div>
         ) : (

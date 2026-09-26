@@ -1,5 +1,14 @@
 "use client";
 
+import { SwapChain } from "@circle-fin/app-kit";
+import {
+  chainIdHex as ARC_CHAIN_ID_HEX,
+  isMainnet,
+  rpcUrl as ARC_RPC_FALLBACK,
+} from "./network";
+
+const ARC_CHAIN_ENUM = isMainnet ? SwapChain.Arc : SwapChain.Arc_Testnet;
+
 /**
  * Google-wallet (Circle user-controlled / W3S) SWAP encoder.
  *
@@ -139,11 +148,8 @@ export type BuildSwapPlanArgs = {
   slippageBps?: number;
 };
 
-/** The Google wallet only ever swaps on Arc. Blockchain enum value (underscore). */
-const ARC_CHAIN_ENUM = "Arc_Testnet";
-
 /**
- * Per-symbol decimals on Arc Testnet, copied verbatim from Circle's SDK token
+ * Per-symbol decimals on Arc, copied verbatim from Circle's SDK token
  * registry (USDC = 6; cirBTC = 8; EURC = 6 — the SDK's token defs state
  * CIRBTC.decimals = 8 and EURC.decimals = 6). Amounts are scaled by the RELEVANT
  * token's decimals (input for the amount, output for the estimate); this is
@@ -406,12 +412,12 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
   const rpcUrl =
     Array.isArray(rpcList) && typeof rpcList[0] === "string"
       ? (rpcList[0] as string)
-      : "https://rpc.testnet.arc.network/";
+      : ARC_RPC_FALLBACK;
   const numericChainId = (sourceDef as { chainId?: unknown }).chainId;
   const chainIdHex =
     typeof numericChainId === "number"
       ? "0x" + numericChainId.toString(16)
-      : "0x" + (5042002).toString(16);
+      : ARC_CHAIN_ID_HEX;
 
   // 1) createSwap via our same-origin server proxy (permissionless testnet).
   //    Returns Circle's executionParams + proxy-signed signature.

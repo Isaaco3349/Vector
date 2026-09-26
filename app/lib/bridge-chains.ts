@@ -1,37 +1,25 @@
 /**
- * Chains available for CCTP bridging in Vector.
+ * Chains available for CCTP bridging in Vector (testnet vs mainnet registries).
  *
- * The bridge moves USDC cross-chain via Circle's CCTP v2 (burn on source,
- * mint on destination). App Kit dictates which chains are actually bridgeable
- * through its `BridgeChain` enum — this registry lists ONLY the testnet chains
- * that both (a) appear in that enum and (b) we've verified against the SDK's
- * own chain table, so no route here can send funds somewhere CCTP isn't
- * deployed.
- *
- * Every value below (chainId, USDC address, explorer URL, forwarder support)
- * is copied verbatim from the installed SDK's first-party chain definitions
- * (node_modules/@circle-fin/app-kit/chains.d.mts, each chain's `cctp` block) and
- * cross-checked against viem's chain ids + block explorers. Nothing is hardcoded
- * from memory — a wrong bridge address could burn real test funds into a dead
- * contract. Every destination below has `cctp.forwarderSupported.destination =
- * true`, so Circle's relayer mints on the destination and the wallet never has
- * to switch chains mid-flow.
- *
- * NOT included, on purpose:
- *  - Sonic Testnet: Circle's chainId (14601) does NOT match viem's `sonicTestnet`
- *    (64165) or `sonicBlazeTestnet` (57054). Registering it in wagmi under the
- *    wrong id would misroute balance reads / chain switches, so it's excluded
- *    until a manual viem chain def with id 14601 is verified.
- *  - Solana Devnet: non-EVM — incompatible with the wagmi / injected path.
- *  - BNB / BSC: absent from App Kit's BridgeChain enum (Circle hasn't deployed
- *    CCTP there). Adding it would be a guess that fails — or worse, misroutes.
- *  - USDT: Circle's SDK has no Arc_Testnet USDT locator, so USDT can't be a swap
- *    token on Arc (see swap-tokens.ts); bridging is USDC-only regardless.
- *  - Mainnets: this app is testnet-only for now.
+ * Arc row (chain id, appKit id, explorers) comes from app/lib/network.ts.
+ * Testnet USDC addresses are SDK-verified literals. Mainnet USDC (and Arc EURC)
+ * are merged from App Kit `getSupportedChains("bridge")` via kit-bridge-chains.ts.
  */
 
-/** The exact string literals App Kit's `from.chain` / `to.chain` accept for bridging. */
-export type BridgeChainId =
+import {
+  appKitChain as arcAppKitChain,
+  arcEurcAddress,
+  arcExplorerAddressUrl,
+  arcExplorerTxUrl,
+  arcUsdcAddress,
+  chainId as arcChainId,
+  displayName as arcDisplayName,
+  isMainnet,
+} from "./network";
+import { getKitBridgeChainByAppKitId } from "./kit-bridge-chains";
+
+/** App Kit bridge identifiers — testnet set. */
+export type TestnetBridgeChainId =
   | "Arc_Testnet"
   | "Base_Sepolia"
   | "Ethereum_Sepolia"
@@ -42,14 +30,31 @@ export type BridgeChainId =
   | "Unichain_Sepolia"
   | "Linea_Sepolia";
 
-/**
- * The numeric chain ids, as a literal union. These MUST match the chains
- * registered in app/wagmi-config.ts — wagmi's `chainId` read option is typed to
- * the registered set, so keeping this a literal union means a chain that isn't
- * actually registered can't slip into a balance read.
- */
+/** App Kit bridge identifiers — mainnet set (Arc uses `Arc` per product; not in SDK 1.12 enum). */
+export type MainnetBridgeChainId =
+  | "Arc"
+  | "Ethereum"
+  | "Base"
+  | "Arbitrum"
+  | "Avalanche"
+  | "Optimism"
+  | "Polygon"
+  | "Unichain"
+  | "Linea";
+
+export type BridgeChainId = TestnetBridgeChainId | MainnetBridgeChainId;
+
 export type BridgeChainNumericId =
+  | 5042
   | 5042002
+  | 1
+  | 8453
+  | 42161
+  | 43114
+  | 10
+  | 137
+  | 130
+  | 59144
   | 84532
   | 11155111
   | 421614
@@ -60,49 +65,23 @@ export type BridgeChainNumericId =
   | 59141;
 
 export type BridgeChain = {
-  /** App Kit chain identifier string (a BridgeChain enum literal). */
   appKitChain: BridgeChainId;
-  /** viem/wagmi numeric chain id — used to scope balance reads to this chain. */
   chainId: BridgeChainNumericId;
-  /** Short label for the UI. */
   label: string;
-  /**
-   * How to read the wallet's USDC balance on this chain:
-   *  - "native": USDC is the native gas asset (Arc) → wagmi useBalance, no address.
-   *  - "erc20": USDC is a standard ERC-20 at `usdcAddress`.
-   */
   usdcKind: "native" | "erc20";
-  /** ERC-20 USDC address (only when usdcKind === "erc20"). From SDK chains.d.mts. */
   usdcAddress?: `0x${string}`;
-  /** Explorer tx URL template; replace `{hash}`. From SDK chains.d.mts. */
+  /** Arc only — from SDK on mainnet when available. */
+  eurcAddress?: `0x${string}`;
   explorerTx: string;
-  /**
-   * Explorer ADDRESS URL template; replace `{address}`. This is the account's
-   * activity page on the same block explorer as `explorerTx` — every explorer
-   * we use (arcscan, basescan, etherscan) exposes it at the standard
-   * `/address/<addr>` path. It needs no API key or lookup, so it's the
-   * always-correct fallback link when a specific tx hash isn't available (e.g.
-   * a W3S CREATE_TRANSACTION challenge returns no hash) and the source of truth
-   * for "view my full history".
-   */
   explorerAddress: string;
-  /**
-   * Whether Circle's Forwarder supports this chain as a bridge DESTINATION.
-   * Verified `true` for every chain here in chains.d.mts (`cctp.forwarderSupported`).
-   * When true, we can pass `useForwarder: true` so the relayer mints on the
-   * destination and the wallet never has to switch chains mid-flow.
-   */
   forwarderDestination: boolean;
 };
 
-export const BRIDGE_CHAINS: BridgeChain[] = [
+const TESTNET_BRIDGE_CHAINS: BridgeChain[] = [
   {
     appKitChain: "Arc_Testnet",
     chainId: 5042002,
     label: "Arc Testnet",
-    // On Arc, USDC IS the native gas asset (18 decimals) — read as native
-    // balance. (An ERC-20 interface also exists at 0x3600…0000, but the
-    // spendable balance users care about is the native one.)
     usdcKind: "native",
     explorerTx: "https://testnet.arcscan.app/tx/{hash}",
     explorerAddress: "https://testnet.arcscan.app/address/{address}",
@@ -190,16 +169,161 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
   },
 ];
 
+const MAINNET_BRIDGE_CHAINS: BridgeChain[] = [
+  {
+    appKitChain: "Arc",
+    chainId: 5042,
+    label: arcDisplayName,
+    usdcKind: "native",
+    explorerTx: arcExplorerTxUrl("{hash}"),
+    explorerAddress: arcExplorerAddressUrl("{address}"),
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Ethereum",
+    chainId: 1,
+    label: "Ethereum",
+    usdcKind: "erc20",
+    explorerTx: "https://etherscan.io/tx/{hash}",
+    explorerAddress: "https://etherscan.io/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Base",
+    chainId: 8453,
+    label: "Base",
+    usdcKind: "erc20",
+    explorerTx: "https://basescan.org/tx/{hash}",
+    explorerAddress: "https://basescan.org/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Arbitrum",
+    chainId: 42161,
+    label: "Arbitrum",
+    usdcKind: "erc20",
+    explorerTx: "https://arbiscan.io/tx/{hash}",
+    explorerAddress: "https://arbiscan.io/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Avalanche",
+    chainId: 43114,
+    label: "Avalanche",
+    usdcKind: "erc20",
+    explorerTx: "https://snowtrace.io/tx/{hash}",
+    explorerAddress: "https://snowtrace.io/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Optimism",
+    chainId: 10,
+    label: "Optimism",
+    usdcKind: "erc20",
+    explorerTx: "https://optimistic.etherscan.io/tx/{hash}",
+    explorerAddress: "https://optimistic.etherscan.io/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Polygon",
+    chainId: 137,
+    label: "Polygon",
+    usdcKind: "erc20",
+    explorerTx: "https://polygonscan.com/tx/{hash}",
+    explorerAddress: "https://polygonscan.com/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Unichain",
+    chainId: 130,
+    label: "Unichain",
+    usdcKind: "erc20",
+    explorerTx: "https://uniscan.xyz/tx/{hash}",
+    explorerAddress: "https://uniscan.xyz/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Linea",
+    chainId: 59144,
+    label: "Linea",
+    usdcKind: "erc20",
+    explorerTx: "https://lineascan.build/tx/{hash}",
+    explorerAddress: "https://lineascan.build/address/{address}",
+    forwarderDestination: true,
+  },
+];
+
+function asHexAddress(
+  value: string | null | undefined,
+): `0x${string}` | undefined {
+  if (typeof value === "string" && value.startsWith("0x")) {
+    return value as `0x${string}`;
+  }
+  return undefined;
+}
+
+/** Fill mainnet USDC (and Arc EURC) from App Kit bridge chain defs. */
+function enrichMainnetFromKit(chains: BridgeChain[]): BridgeChain[] {
+  if (!isMainnet) return chains;
+  return chains.map((row) => {
+    const kit = getKitBridgeChainByAppKitId(row.appKitChain);
+    if (!kit) return row;
+    const usdc = asHexAddress(kit.usdcAddress);
+    const eurc = asHexAddress(kit.eurcAddress);
+    return {
+      ...row,
+      ...(usdc ? { usdcAddress: usdc } : {}),
+      ...(row.usdcKind === "native" && arcUsdcAddress
+        ? { usdcAddress: arcUsdcAddress }
+        : {}),
+      ...(row.appKitChain === "Arc" && (eurc || arcEurcAddress)
+        ? { eurcAddress: eurc ?? arcEurcAddress }
+        : {}),
+    };
+  });
+}
+
+// Sync Arc row with network.ts (ids / explorers may differ from static testnet row).
+function withNetworkArc(chains: BridgeChain[]): BridgeChain[] {
+  return chains.map((c) =>
+    c.appKitChain === arcAppKitChain ||
+    c.chainId === arcChainId ||
+    c.appKitChain === "Arc_Testnet" ||
+    c.appKitChain === "Arc"
+      ? {
+          ...c,
+          appKitChain: arcAppKitChain as BridgeChainId,
+          chainId: arcChainId as BridgeChainNumericId,
+          label: arcDisplayName,
+          explorerTx: arcExplorerTxUrl("{hash}"),
+          explorerAddress: arcExplorerAddressUrl("{address}"),
+        }
+      : c,
+  );
+}
+
+export const BRIDGE_CHAINS: BridgeChain[] = enrichMainnetFromKit(
+  withNetworkArc(
+    isMainnet ? MAINNET_BRIDGE_CHAINS : TESTNET_BRIDGE_CHAINS,
+  ),
+);
+
+export function arcBridgeChainId(): BridgeChainId {
+  return arcAppKitChain as BridgeChainId;
+}
+
+export function defaultBridgeFromChain(): BridgeChainId {
+  return arcBridgeChainId();
+}
+
+export function defaultBridgeToChain(): BridgeChainId {
+  return isMainnet ? "Base" : "Base_Sepolia";
+}
+
 export function bridgeChainById(id: BridgeChainId): BridgeChain | undefined {
   return BRIDGE_CHAINS.find((c) => c.appKitChain === id);
 }
 
-/**
- * Look up a chain by its numeric (viem/wagmi) id — used by the Send feature,
- * which operates on whatever network the wallet is currently connected to.
- * Returns undefined for any chain Vector doesn't support, so the UI can say
- * "switch to a supported network" instead of guessing how to move funds.
- */
 export function bridgeChainByNumericId(
   chainId: number | undefined,
 ): BridgeChain | undefined {
@@ -207,19 +331,12 @@ export function bridgeChainByNumericId(
   return BRIDGE_CHAINS.find((c) => c.chainId === chainId);
 }
 
-/** Build an explorer tx URL for a given chain + hash, or null if unknown. */
 export function explorerTxUrl(id: BridgeChainId, hash: string): string | null {
   const chain = bridgeChainById(id);
   if (!chain || !hash) return null;
   return chain.explorerTx.replace("{hash}", hash);
 }
 
-/**
- * Build an explorer ADDRESS (account activity) URL for a given chain + address.
- * Unlike a tx link, this needs no hash and can't be wrong — it's the fallback
- * we always show for W3S transactions (whose challenge result carries no hash)
- * and the "view full history" link. Returns null only if the chain is unknown.
- */
 export function explorerAddressUrl(
   id: BridgeChainId,
   address: string,
@@ -229,11 +346,6 @@ export function explorerAddressUrl(
   return chain.explorerAddress.replace("{address}", address);
 }
 
-/**
- * Same as explorerAddressUrl but keyed by the numeric (viem/wagmi) chain id —
- * used by the external-wallet history view, which only knows the connected
- * chain's numeric id. Returns null for any chain Vector doesn't support.
- */
 export function explorerAddressUrlByNumericId(
   chainId: number | undefined,
   address: string,
@@ -242,3 +354,4 @@ export function explorerAddressUrlByNumericId(
   if (!chain || !address) return null;
   return chain.explorerAddress.replace("{address}", address);
 }
+

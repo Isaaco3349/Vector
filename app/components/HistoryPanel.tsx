@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  BRIDGE_CHAINS,
+  arcBridgeChainId,
   explorerAddressUrl,
   explorerAddressUrlByNumericId,
   explorerTxUrl,
@@ -81,7 +83,7 @@ export function HistoryPanel({
   // external wallet. Always available, needs no API.
   const fullHistoryUrl = useMemo(() => {
     return isCircle
-      ? explorerAddressUrl("Arc_Testnet", walletAddress)
+      ? explorerAddressUrl(arcBridgeChainId(), walletAddress)
       : explorerAddressUrlByNumericId(numericChainId, walletAddress);
   }, [isCircle, walletAddress, numericChainId]);
 
@@ -157,8 +159,9 @@ export function HistoryPanel({
               </a>
             ) : (
               <p className="text-[13px] text-[var(--vector-text-dim)] font-mono text-center leading-relaxed">
-                Switch to a supported network (Arc Testnet, Base Sepolia, or
-                Ethereum Sepolia) to open its explorer.
+                Switch to a supported network (
+                {BRIDGE_CHAINS.map((c) => c.label).join(", ")}) to open its
+                explorer.
               </p>
             )}
           </div>
@@ -171,7 +174,7 @@ export function HistoryPanel({
 /** One transaction row for the Circle-wallet list. */
 function TxRow({ tx }: { tx: W3sTx }) {
   const label = txLabel(tx);
-  const link = tx.txHash ? explorerTxUrl("Arc_Testnet", tx.txHash) : null;
+  const link = tx.txHash ? explorerTxUrl(arcBridgeChainId(), tx.txHash) : null;
   const when = relativeTime(tx.createDate);
   const badge = stateBadge(tx.state);
   // Only show an amount for plain transfers — a contract execution's amount

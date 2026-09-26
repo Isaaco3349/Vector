@@ -10,7 +10,12 @@ import {
   type EarnPlan,
 } from "../lib/google-earn";
 import { listArcVaults, type EarnPosition, type EarnVault } from "../lib/earn";
-import { explorerAddressUrl, explorerTxUrl } from "../lib/bridge-chains";
+import {
+  arcBridgeChainId,
+  explorerAddressUrl,
+  explorerTxUrl,
+} from "../lib/bridge-chains";
+import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
@@ -151,8 +156,8 @@ export function GoogleEarnPanel({
     trigger: done,
   });
   const explorerUrl = execTxHash
-    ? explorerTxUrl("Arc_Testnet", execTxHash)
-    : explorerAddressUrl("Arc_Testnet", walletAddress);
+    ? explorerTxUrl(arcBridgeChainId(), execTxHash)
+    : explorerAddressUrl(arcBridgeChainId(), walletAddress);
   const explorerIsTx = execTxHash != null;
 
   /** Any input change invalidates a previously built plan. */
@@ -324,8 +329,8 @@ export function GoogleEarnPanel({
             </p>
             <p className="text-[13px] text-[var(--vector-text-dim)] leading-relaxed mb-6">
               {mode === "deposit"
-                ? `Deposited ${amount} USDC into ${selected?.name ?? "the vault"} on Arc Testnet.`
-                : `Withdrew ${amount} USDC from ${selected?.name ?? "the vault"} on Arc Testnet.`}
+                ? `Deposited ${amount} USDC into ${selected?.name ?? "the vault"} on ${ARC_DISPLAY_NAME}.`
+                : `Withdrew ${amount} USDC from ${selected?.name ?? "the vault"} on ${ARC_DISPLAY_NAME}.`}
             </p>
             {explorerUrl && (
               <a
@@ -361,7 +366,7 @@ export function GoogleEarnPanel({
             )}
             {!vaultsLoading && !vaultsError && vaults && vaults.length === 0 && (
               <p className="text-[13px] text-[var(--vector-text-dim)] py-6 text-center leading-relaxed">
-                No USDC vaults are available on Arc Testnet right now. Check back
+                No USDC vaults are available on {ARC_DISPLAY_NAME} right now. Check back
                 later.
               </p>
             )}
@@ -540,7 +545,7 @@ export function GoogleEarnPanel({
                     mode +
                     ". You'll enter your Circle PIN for each. Gas is paid in USDC on Arc."
                   : "You'll enter your Circle PIN to confirm. Gas is paid in USDC on Arc."
-                : "Runs on Arc Testnet through Circle's Earn. Gas is paid in USDC — leave a little for the network fee. APY is variable and not guaranteed."}
+                : `Runs on ${ARC_DISPLAY_NAME} through Circle's Earn. Gas is paid in USDC — leave a little for the network fee. APY is variable and not guaranteed.`}
             </p>
           </div>
         )}
