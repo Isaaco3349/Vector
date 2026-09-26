@@ -8,6 +8,7 @@ import {
   type SwapPlan,
   type SwapSymbol,
 } from "../lib/google-swap";
+import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import {
   arcBridgeChainId,
   explorerAddressUrl,
@@ -55,7 +56,9 @@ import { useLatestTxHash } from "../lib/use-latest-tx-hash";
  * `SwapSymbol` union rather than the token registry; if you change one, change
  * the other.
  */
-const SWAP_SYMBOLS: SwapSymbol[] = ["USDC", "cirBTC", "EURC"];
+const SWAP_SYMBOLS = ARC_SWAP_TOKENS.map(
+  (t) => t.symbol,
+) as SwapSymbol[];
 
 export function GoogleSwapPanel({
   sdk,

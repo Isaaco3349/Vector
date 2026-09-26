@@ -164,7 +164,9 @@ const TOKEN_DECIMALS: Record<SwapSymbol, number> = { USDC: 6, cirBTC: 8, EURC: 6
  * CIRBTC.locators[Blockchain.Arc_Testnet] — verified in both the swap-kit and
  * app-kit bundles. USDC's address is still read from the resolved chain def.
  */
-const CIRBTC_ARC_ADDRESS = "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF";
+/** Arc Testnet only — mainnet swap chain def exposes no cirBTC locator. */
+const CIRBTC_ARC_TESTNET_ADDRESS =
+  "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF";
 
 /**
  * Minimal read-only EIP-1193 provider for the W3S wallet — identical intent to
@@ -394,7 +396,15 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
   // (pinned above, since the chain def carries no cirBTC address).
   const symbolToAddress = (s: SwapSymbol): string => {
     if (s === "USDC") return usdcAddress;
-    if (s === "cirBTC") return CIRBTC_ARC_ADDRESS;
+    if (s === "cirBTC") {
+      if (isMainnet) {
+        throw new Error(
+          "cirBTC isn't available to swap on Arc mainnet yet (Circle's SDK " +
+            "lists no mainnet contract). No funds moved — pick USDC or EURC.",
+        );
+      }
+      return CIRBTC_ARC_TESTNET_ADDRESS;
+    }
     // EURC
     if (!eurcAddress) {
       throw new Error(
