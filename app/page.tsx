@@ -90,6 +90,7 @@ export default function HomePage() {
   // wallet reads cirBTC on-chain via useTokenBalance instead, so this stays null
   // for that path.
   const [cirBtcBalance, setCirBtcBalance] = useState<string | null>(null);
+  const [eurcBalance, setEurcBalance] = useState<string | null>(null);
   // Circle's own token UUID for this wallet's USDC — required as `tokenId` when
   // creating a transfer challenge. Captured from the balances endpoint so we
   // never hardcode a USDC address for the Google-wallet Send path.
@@ -407,6 +408,13 @@ export default function HomePage() {
           return symbol === "cirbtc" || name.includes("cirbtc");
         }) ?? null;
       setCirBtcBalance(cirBtcEntry?.amount ?? "0");
+      const eurcEntry =
+        balances.find((t) => {
+          const symbol = (t.token?.symbol || "").toUpperCase();
+          const name = (t.token?.name || "").toUpperCase();
+          return symbol === "EURC" || name.includes("EURC");
+        }) ?? null;
+      setEurcBalance(eurcEntry?.amount ?? "0");
       return amount;
     } catch (err) {
       console.error("Failed to load USDC balance:", err);
@@ -615,6 +623,8 @@ export default function HomePage() {
     setChallengeId(null);
     setWallets([]);
     setUsdcBalance(null);
+    setEurcBalance(null);
+    setCirBtcBalance(null);
     setUsdcTokenId(null);
     setDeviceToken("");
     setDeviceEncryptionKey("");
@@ -929,7 +939,11 @@ export default function HomePage() {
             auth={loginResult}
             walletId={primaryWallet.id}
             walletAddress={primaryWallet.address}
-            usdcBalance={usdcBalance}
+            tokenBalances={{
+              USDC: usdcBalance,
+              EURC: eurcBalance,
+              cirBTC: cirBtcBalance,
+            }}
             onClose={() => setShowSwap(false)}
             onSuccess={() => {
               void loadUsdcBalance(loginResult.userToken, primaryWallet.id);

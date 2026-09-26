@@ -70,6 +70,7 @@ import {
   displayName as ARC_DISPLAY_NAME,
   rpcUrl as ARC_RPC_FALLBACK,
 } from "./network";
+import { bridgeCustomFeeForAmount } from "./fees";
 
 /** A single contract call for the W3S contractExecution challenge. */
 export type BridgeCall = {
@@ -375,7 +376,10 @@ export async function buildBridgePlan(
   // config MUST be a present object (burn reads params.config.customFee without
   // optional chaining). We set FAST and OMIT maxFee, so Circle fetches the true
   // fee live in the browser — we don't fake a fee.
-  const config = { transferSpeed: "FAST" as const };
+  const config = {
+    transferSpeed: "FAST" as const,
+    ...bridgeCustomFeeForAmount(amountTrimmed),
+  };
 
   // 1) APPROVE. Circle mirrors amount+customFee; with no customFee that's just
   //    the transfer amount. Target resolves to Arc's USDC token, delegate to the

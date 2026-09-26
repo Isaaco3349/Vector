@@ -19,6 +19,7 @@ import {
   type SwapQuote,
   type SwapResult,
 } from "../lib/appkit";
+import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
@@ -764,6 +765,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         {quote && (quote.rate || quote.feeText) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
             {quote.rate && <div>Rate: {quote.rate}</div>}
+            <div>{formatVectorFeeLabel(SWAP_FEE_BPS)}</div>
             {quote.feeText && <div>Fee: {quote.feeText}</div>}
             {slippageBps !== null && (
               <div>Slippage tolerance: {formatBps(slippageBps)} (you raised this)</div>
@@ -783,6 +785,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               {fallbackPlan.fromSymbol} → ~{fallbackPlan.estimatedAmount}{" "}
               {fallbackPlan.toSymbol}
             </div>
+            <div>{formatVectorFeeLabel(SWAP_FEE_BPS)}</div>
             <div>
               This route takes two confirmations in your wallet — an approval,
               then the swap. Nothing moves until you confirm the second one.

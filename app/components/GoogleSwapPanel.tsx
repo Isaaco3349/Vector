@@ -13,6 +13,7 @@ import {
   explorerAddressUrl,
   explorerTxUrl,
 } from "../lib/bridge-chains";
+import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
 import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
@@ -61,7 +62,7 @@ export function GoogleSwapPanel({
   auth,
   walletId,
   walletAddress,
-  usdcBalance,
+  tokenBalances,
   onClose,
   onSuccess,
 }: {
@@ -69,8 +70,8 @@ export function GoogleSwapPanel({
   auth: W3sAuth;
   walletId: string;
   walletAddress: string;
-  /** USDC balance for display + the insufficient check (only when paying USDC). */
-  usdcBalance: string | null;
+  /** Human-readable balances from Circle W3S (same source as portfolio). */
+  tokenBalances: Record<SwapSymbol, string | null>;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -92,13 +93,10 @@ export function GoogleSwapPanel({
   const amountValid =
     amount.trim() !== "" && Number.isFinite(amountNum) && amountNum > 0;
 
-  // We only know the USDC balance here, so the insufficient check applies only
-  // when the user is paying USDC. (The non-USDC token's balance isn't fetched
-  // in this panel.)
-  const payingUsdc = fromSymbol === "USDC";
+  const payBalanceRaw = tokenBalances[fromSymbol];
   const balanceNum =
-    payingUsdc && usdcBalance !== null && usdcBalance !== ""
-      ? Number(usdcBalance)
+    payBalanceRaw !== null && payBalanceRaw !== ""
+      ? Number(payBalanceRaw)
       : null;
   const insufficient =
     amountValid && balanceNum !== null && amountNum > balanceNum;
@@ -317,16 +315,14 @@ export function GoogleSwapPanel({
               />
               <div className="flex items-center justify-between mt-2 text-[11px] text-[var(--vector-text-dim)] font-mono">
                 <span>
-                  {payingUsdc
-                    ? usdcBalance !== null
-                      ? `Balance: ${usdcBalance} USDC`
-                      : "Balance: —"
+                  {payBalanceRaw !== null
+                    ? `Balance: ${payBalanceRaw} ${fromSymbol}`
                     : "Balance: —"}
                 </span>
-                {payingUsdc && balanceNum !== null && balanceNum > 0 && (
+                {balanceNum !== null && balanceNum > 0 && (
                   <button
                     onClick={() => {
-                      setAmount(usdcBalance as string);
+                      setAmount(payBalanceRaw as string);
                       invalidatePlan();
                     }}
                     disabled={submitting}
@@ -386,6 +382,10 @@ export function GoogleSwapPanel({
               </div>
             </div>
 
+            <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4">
+              {formatVectorFeeLabel(SWAP_FEE_BPS)}
+            </p>
+
             {error && (
               <p className="text-[13px] text-[var(--vector-pink)] font-mono mb-4">
                 {error}
@@ -394,7 +394,7 @@ export function GoogleSwapPanel({
 
             {insufficient && !error && (
               <p className="text-[13px] text-[var(--vector-pink)] font-mono mb-4">
-                Amount exceeds your USDC balance.
+                Amount exceeds your {fromSymbol} balance.
               </p>
             )}
 
