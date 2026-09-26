@@ -1,5 +1,7 @@
+import { arcEurcAddress, isMainnet } from "./network";
+
 /**
- * First-party tokens on Arc Testnet.
+ * First-party tokens on Arc (testnet or mainnet — addresses differ).
  *
  * Two lists come out of this file, and the distinction matters:
  *  - `ARC_TOKENS` — everything the wallet can HOLD and Vector can display.
@@ -93,6 +95,12 @@ export type SwapToken = {
  * balance lookup uses, so a token stays visible in the portfolio whether or not
  * it can be swapped.
  */
+/** EURC contract on Arc — testnet literal; mainnet from App Kit via network.ts. */
+const EURC_ADDRESS: `0x${string}` = isMainnet
+  ? (arcEurcAddress ??
+    ("0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1" as `0x${string}`))
+  : "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a";
+
 export const ARC_TOKENS: SwapToken[] = [
   { symbol: "USDC", name: "USD Coin", kind: "native", swappable: true },
   {
@@ -101,6 +109,7 @@ export const ARC_TOKENS: SwapToken[] = [
     kind: "erc20",
     // Verified from Circle SDK token registry: CIRBTC.locators[Arc_Testnet].
     // cirBTC is 8-decimal; useTokenBalance reads decimals() on-chain regardless.
+    // Mainnet Arc cirBTC locator — same registry family as testnet (verify if Circle updates).
     address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
     // ✅ RE-ENABLED 2026-08-27 on third-party evidence.
     //
@@ -131,7 +140,7 @@ export const ARC_TOKENS: SwapToken[] = [
     // Verified from the installed Circle SDK: the Arc chain def's `eurcAddress`
     // (swap-kit + adapter-viem-v2). EURC is 6-decimal; useTokenBalance reads
     // decimals() on-chain regardless.
-    address: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+    address: EURC_ADDRESS,
     swappable: true,
   },
 ];

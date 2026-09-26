@@ -1,6 +1,7 @@
 "use client";
 
 import { SwapChain } from "@circle-fin/app-kit";
+import { swapCustomFeeConfig } from "./fees";
 import { isMainnet } from "./network";
 
 const ARC_CHAIN = isMainnet ? SwapChain.Arc : SwapChain.Arc_Testnet;
@@ -177,13 +178,15 @@ async function buildKitAndParams(args: SwapArgs) {
     kitKey?: string;
     allowanceStrategy?: "permit" | "approve";
     slippageBps?: number;
-  } = {};
+    customFee: ReturnType<typeof swapCustomFeeConfig>["customFee"];
+  } = {
+    customFee: swapCustomFeeConfig().customFee,
+  };
   if (kitKey) config.kitKey = kitKey;
   if (args.allowanceStrategy) config.allowanceStrategy = args.allowanceStrategy;
   if (typeof args.slippageBps === "number" && Number.isFinite(args.slippageBps)) {
     config.slippageBps = args.slippageBps;
   }
-  const hasConfig = Object.keys(config).length > 0;
 
   const swapParams = {
     from: {
@@ -195,7 +198,7 @@ async function buildKitAndParams(args: SwapArgs) {
     tokenIn: args.tokenIn,
     tokenOut: args.tokenOut,
     amountIn: args.amountIn,
-    ...(hasConfig ? { config } : {}),
+    config,
   };
 
   return { kit, swapParams };

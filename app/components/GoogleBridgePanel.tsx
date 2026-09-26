@@ -16,6 +16,7 @@ import {
   type BridgeChainId,
 } from "../lib/bridge-chains";
 import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
+import { BRIDGE_FEE_BPS, formatVectorFeeLabel } from "../lib/fees";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
@@ -379,6 +380,10 @@ export function GoogleBridgePanel({
                 )}
               </div>
             </div>
+
+            <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 px-1">
+              {formatVectorFeeLabel(BRIDGE_FEE_BPS)}
+            </p>
 
             {/* Recipient on the destination chain */}
             <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">

@@ -17,6 +17,7 @@ import {
   type BridgeChainId,
 } from "../lib/bridge-chains";
 import { getProviderChainId } from "../lib/appkit";
+import { BRIDGE_FEE_BPS, formatVectorFeeLabel } from "../lib/fees";
 import { useBridgeBalance } from "./useBridgeBalance";
 
 /**
@@ -434,10 +435,11 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Quote detail */}
-        {quote && (quote.feeText || quote.gasText) && (
+        {(quote || amount.trim()) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
-            {quote.feeText && <div>Fee: {quote.feeText}</div>}
-            {quote.gasText && <div>Source gas: {quote.gasText}</div>}
+            <div>{formatVectorFeeLabel(BRIDGE_FEE_BPS)}</div>
+            {quote?.feeText && <div>Fee: {quote.feeText}</div>}
+            {quote?.gasText && <div>Source gas: {quote.gasText}</div>}
           </div>
         )}
 

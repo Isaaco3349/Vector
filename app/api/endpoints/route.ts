@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { swapCustomFeeConfig } from "../../lib/fees";
 import {
   earnApiChainDefault,
   isMainnet,
@@ -487,6 +488,7 @@ export async function POST(request: Request) {
         if (slippageBps != null && Number.isFinite(Number(slippageBps))) {
           swapBody.slippageBps = Number(slippageBps);
         }
+        swapBody.config = swapCustomFeeConfig();
 
         const response = await fetchCircle(
           `${CIRCLE_BASE_URL}/v1/stablecoinKits/swap`,
