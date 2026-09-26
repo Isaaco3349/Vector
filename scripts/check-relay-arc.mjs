@@ -19,6 +19,8 @@ const BASE_CHAIN_ID = 8453;
 
 /** Circle App Kit bridge def for Arc mainnet (verified locally). */
 const ARC_USDC = "0x3600000000000000000000000000000000000000";
+/** Circle App Kit `eurcAddress` on Arc mainnet (verified locally). */
+const ARC_EURC = "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1";
 /** Base mainnet USDC (Circle). */
 const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
@@ -167,6 +169,22 @@ await postQuote(
 await postQuote(
   `quote ${AMOUNT_USDC} USDC Base (${BASE_CHAIN_ID}) → Arc (${ARC_CHAIN_ID})`,
   quoteBaseToArc,
+);
+
+const quoteArcSameChain = {
+  user: USER,
+  recipient: USER,
+  originChainId: ARC_CHAIN_ID,
+  destinationChainId: ARC_CHAIN_ID,
+  originCurrency: ARC_USDC,
+  destinationCurrency: ARC_EURC,
+  amount: AMOUNT_MINOR,
+  tradeType: "EXACT_INPUT",
+};
+
+await postQuote(
+  `quote ${AMOUNT_USDC} USDC → EURC same-chain Arc (${ARC_CHAIN_ID})`,
+  quoteArcSameChain,
 );
 
 const outPath = join(__dirname, "check-relay-arc-output.json");
