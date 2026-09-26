@@ -13,12 +13,10 @@ import { arcEurcAddress, isMainnet } from "./network";
  * it. It exists so that a token which cannot route is never offered as a button
  * that can only return an error.
  *
- * ⚠️ As of 2026-08-27 the two lists are IDENTICAL — all three Arc assets
- * (USDC/EURC/cirBTC) are swappable. Keep the split anyway: it is what stops a
- * token that cannot route from being offered as a button that can only ever
- * return an error, and the last token to sit on the unswappable side (cirBTC)
- * turned out to have been put there on unsound reasoning. Read the `swappable`
- * doc below before ever setting it false again.
+ * On Arc Testnet all three assets (USDC/EURC/cirBTC) can be swappable; on Arc
+ * mainnet cirBTC is withheld when App Kit exposes no mainnet locator (see
+ * `cirBtcArcToken`). Keep the ARC_TOKENS vs ARC_SWAP_TOKENS split so a token
+ * that cannot route is never offered as a swap button.
  *
  * The `symbol` is what App Kit's `tokenIn`/`tokenOut` expect (symbolic
  * identifiers — the SDK resolves routing itself). The `address` is only used
@@ -101,38 +99,32 @@ const EURC_ADDRESS: `0x${string}` = isMainnet
     ("0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1" as `0x${string}`))
   : "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a";
 
-export const ARC_TOKENS: SwapToken[] = [
-  { symbol: "USDC", name: "USD Coin", kind: "native", swappable: true },
-  {
+/** Testnet locator only — Arc mainnet swap chain def has no cirBTC field in App Kit. */
+const CIRBTC_ARC_TESTNET_ADDRESS =
+  "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF" as const;
+
+function cirBtcArcToken(): SwapToken {
+  if (isMainnet) {
+    return {
+      symbol: "cirBTC",
+      name: "Circle Bitcoin",
+      kind: "unknown",
+      swappable: false,
+    };
+  }
+  return {
     symbol: "cirBTC",
     name: "Circle Bitcoin",
     kind: "erc20",
-    // Verified from Circle SDK token registry: CIRBTC.locators[Arc_Testnet].
-    // cirBTC is 8-decimal; useTokenBalance reads decimals() on-chain regardless.
-    // Mainnet Arc cirBTC locator — same registry family as testnet (verify if Circle updates).
-    address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
-    // ✅ RE-ENABLED 2026-08-27 on third-party evidence.
-    //
-    // History, so this isn't re-litigated: set false on 2026-08-22 because the
-    // deployed app returned INPUT_UNSUPPORTED_ROUTE (1003, FATAL) for
-    // USDC → cirBTC, which was read at the time as Circle stating the pair
-    // doesn't route. That reading was WRONG — 1003/FATAL is the SDK's blanket
-    // mapping for any unexplained 404 (see the `swappable` doc above), not a
-    // liquidity verdict. The comment left here said the way to settle it was a
-    // real observation rather than a second guess.
-    //
-    // That observation now exists and it is external to this codebase: cirBTC
-    // swaps work in a THIRD-PARTY app (ezwallet.cash) against the same Circle
-    // swap service on the same chain. A pair that routes for another caller
-    // routes for us; whatever produced our 404 was on our side of the call, not
-    // Circle's liquidity. Since 1003 was never evidence, there is nothing left
-    // holding this false.
-    //
-    // If cirBTC declines again, the thing to capture is the `detail` string from
-    // BOTH endpoints (SwapPanel tries GET /quote then POST /swap) — not the
-    // 1003 code, which carries no information.
+    address: CIRBTC_ARC_TESTNET_ADDRESS,
+    // Testnet: re-enabled 2026-08-27 after 1003/FATAL was misread as “no route”.
     swappable: true,
-  },
+  };
+}
+
+export const ARC_TOKENS: SwapToken[] = [
+  { symbol: "USDC", name: "USD Coin", kind: "native", swappable: true },
+  cirBtcArcToken(),
   {
     symbol: "EURC",
     name: "Euro Coin",

@@ -103,7 +103,8 @@ export function GoogleBridgePanel({
    * this wallet is an Arc-only smart account and the same address may not be
    * controllable on the destination chain. See the note at the top of this file.
    */
-  const [recipient, setRecipient] = useState(walletAddress);
+  const [recipient, setRecipient] = useState("");
+  const [recipientConfirmed, setRecipientConfirmed] = useState(false);
   // phase drives the button label through the three-step flow.
   const [phase, setPhase] = useState<
     "encoding" | "approving" | "burning" | null
@@ -133,7 +134,13 @@ export function GoogleBridgePanel({
     amountValid && balanceNum !== null && amountNum > balanceNum;
 
   const canBridge =
-    amountValid && !insufficient && recipientValid && !submitting && !done;
+    amountValid &&
+    !insufficient &&
+    recipientValid &&
+    recipientTrimmed !== "" &&
+    recipientConfirmed &&
+    !submitting &&
+    !done;
 
   // The burn is a W3S contractExecution challenge, which returns no txHash, so
   // resolve the real hash from Circle's transactions list in the background
@@ -318,7 +325,10 @@ export function GoogleBridgePanel({
                 </span>
                 <select
                   value={toChain}
-                  onChange={(e) => setToChain(e.target.value as BridgeChainId)}
+                  onChange={(e) => {
+                    setToChain(e.target.value as BridgeChainId);
+                    setRecipientConfirmed(false);
+                  }}
                   disabled={submitting}
                   className="bg-[var(--vector-surface)] border border-[var(--vector-line)] rounded-full px-3 py-1.5 text-[13px] font-mono font-semibold text-[var(--vector-text)] outline-none hover:border-[var(--vector-pink)] transition-colors cursor-pointer disabled:opacity-40"
                 >
@@ -337,13 +347,6 @@ export function GoogleBridgePanel({
                 </select>
               </div>
             </div>
-
-            <p className="text-[11px] leading-relaxed text-[var(--vector-text-dim)] mb-4 px-1">
-              Your Google wallet is a Circle smart account that exists only on
-              Arc, so it can only sign the burn on Arc — the direction can&apos;t
-              be reversed here. To bridge <em>into</em> Arc, connect an external
-              wallet on the other chain and send to your Arc address below.
-            </p>
 
             {/* Amount */}
             <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">
@@ -387,38 +390,55 @@ export function GoogleBridgePanel({
 
             {/* Recipient on the destination chain */}
             <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">
+              <p className="text-[11px] leading-relaxed text-[var(--vector-text-dim)] mb-3">
+                Your Google wallet is a Circle smart account that exists only on
+                Arc ({walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}).
+                That address is <em>not</em> automatically a wallet you control on{" "}
+                {destLabel}. Paste the destination address that should receive the
+                mint — typically an external wallet (MetaMask, etc.) you own on{" "}
+                {destLabel}. To bridge <em>into</em> Arc instead, use Connect
+                Wallet on the source chain.
+              </p>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[12px] text-[var(--vector-text-dim)]">
                   Recipient on {destLabel}
                 </span>
-                {!recipientIsSelf && (
-                  <button
-                    onClick={() => setRecipient(walletAddress)}
-                    disabled={submitting}
-                    className="text-[11px] text-[var(--vector-pink)] hover:opacity-80 transition-opacity uppercase tracking-wide disabled:opacity-40"
-                  >
-                    Use mine
-                  </button>
-                )}
               </div>
               <input
                 spellCheck={false}
                 autoComplete="off"
                 placeholder="0x…"
                 value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
+                onChange={(e) => {
+                  setRecipient(e.target.value);
+                  setRecipientConfirmed(false);
+                }}
                 disabled={submitting}
                 className="w-full bg-transparent text-[13px] font-mono outline-none placeholder:text-[var(--vector-line)] disabled:opacity-60 break-all"
               />
               <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
                 {recipientTrimmed === ""
-                  ? "Enter the address that should receive the USDC."
+                  ? "Required — enter the address that should receive the USDC."
                   : !recipientValid
                     ? "That doesn't look like a wallet address (expected 0x followed by 40 characters)."
                     : recipientIsSelf
-                      ? `This is your Arc smart-account address. If you're not certain you control it on ${destLabel}, paste an address you do control there — a wallet you hold the keys to.`
+                      ? `This matches your Arc smart-account address. Only continue if you are certain you control this same address on ${destLabel}.`
                       : `The mint will go to this address on ${destLabel}. Double-check it: a bridge can't be recalled.`}
               </p>
+              <label className="mt-3 flex items-start gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={recipientConfirmed}
+                  onChange={(e) => setRecipientConfirmed(e.target.checked)}
+                  disabled={
+                    submitting || !recipientValid || recipientTrimmed === ""
+                  }
+                  className="mt-0.5 accent-[var(--vector-pink)] disabled:opacity-40"
+                />
+                <span className="text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
+                  I confirm I control this address on {destLabel}
+                </span>
+              </label>
             </div>
 
             {error && (
