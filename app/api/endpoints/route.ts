@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 
+import {
+  rejectIfDisallowedOrigin,
+  rejectIfRateLimited,
+} from "../../lib/endpoints-abuse-guard";
 import { swapCustomFeeConfig } from "../../lib/fees";
 import {
   earnApiChainDefault,
@@ -71,6 +75,9 @@ function timeoutErrorResponse(action: string) {
 export async function POST(request: Request) {
   let action = "unknown";
   try {
+    const originBlock = rejectIfDisallowedOrigin(request);
+    if (originBlock) return originBlock;
+
     const body = await request.json();
     ({ action } = body ?? {});
     const params = body ?? {};
@@ -78,6 +85,9 @@ export async function POST(request: Request) {
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
     }
+
+    const rateBlock = rejectIfRateLimited(request, action);
+    if (rateBlock) return rateBlock;
 
     switch (action) {
       case "createDeviceToken": {
