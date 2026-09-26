@@ -30,6 +30,10 @@ const AMOUNT_MINOR = "5000000"; // 5 USDC @ 6 decimals
 const USER =
   process.argv[2] || "0x03508bb71268bba25ecacc8f620e01866650532c";
 
+/** App fee probe: 100 bps = 1% of input (docs.relay.link get-quote-v2 `appFees`). */
+const APP_FEE_BPS = "100";
+const APP_FEE_RECIPIENT = USER;
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const report = { probedAt: new Date().toISOString(), steps: {} };
 
@@ -60,18 +64,35 @@ async function getJson(label, url) {
   return entry;
 }
 
-async function postQuote(label, body) {
+function relayQuoteHeaders(extra = {}) {
+  const headers = {
+    accept: "application/json",
+    "content-type": "application/json",
+    ...extra,
+  };
+  const apiKey = process.env.RELAY_API_KEY?.trim();
+  if (apiKey) headers["x-api-key"] = apiKey;
+  return headers;
+}
+
+async function postQuote(label, body, options = {}) {
   const url = `${RELAY_API}/quote/v2`;
+  const headers = relayQuoteHeaders(options.headers);
   console.log(`\n--- ${label}\nPOST ${url}`);
+  console.log(
+    "Headers:",
+    JSON.stringify(
+      { ...headers, "x-api-key": headers["x-api-key"] ? "(set)" : "(missing)" },
+      null,
+      2,
+    ),
+  );
   console.log("Request body:", JSON.stringify(body, null, 2));
-  const entry = { url, requestBody: body };
+  const entry = { url, requestBody: body, apiKeyPresent: Boolean(headers["x-api-key"]) };
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
     const text = await res.text();
@@ -123,6 +144,24 @@ function summarizeQuote(body, status) {
     currencyIn: details?.currencyIn ?? body?.currencyIn ?? null,
     currencyOut: details?.currencyOut ?? body?.currencyOut ?? null,
   };
+}
+
+/** Pull app-fee lines from quote response (fees.app + expandedPriceImpact.app). */
+function extractAppFeeBreakdown(body) {
+  if (!body || typeof body !== "object") return null;
+  const details = body.details;
+  return {
+    feesApp: body.fees?.app ?? null,
+    expandedPriceImpactApp: details?.expandedPriceImpact?.app ?? null,
+    currencyOutAmount: details?.currencyOut?.amount ?? null,
+    currencyOutFormatted: details?.currencyOut?.amountFormatted ?? null,
+    totalImpactUsd: details?.totalImpact?.usd ?? null,
+  };
+}
+
+function printAppFeeComparison(baseline, withFee) {
+  console.log("\n--- App fee A/B (baseline vs appFees in request) ---");
+  console.log(JSON.stringify({ baseline, withFee }, null, 2));
 }
 
 hr("Relay SDK / API (read-only notes)");
@@ -186,6 +225,53 @@ await postQuote(
   `quote ${AMOUNT_USDC} USDC → EURC same-chain Arc (${ARC_CHAIN_ID})`,
   quoteArcSameChain,
 );
+
+hr("App fee probe (POST /quote/v2 `appFees`)");
+console.log(`
+Docs (get-quote-v2): optional \`appFees\` array — each entry { recipient, fee } where fee is bps (100 = 1%).
+Also optional \`referrer\` / \`referrerAddress\` (no fee semantics in OpenAPI).
+Probe: ${APP_FEE_BPS} bps on ${AMOUNT_USDC} USDC Arc→Base, recipient ${APP_FEE_RECIPIENT}
+Set RELAY_API_KEY in the environment if the app-fee quote returns 401 (live API requires x-api-key for appFees).
+`);
+
+const appFeeBaselineBody = {
+  user: USER,
+  recipient: USER,
+  originChainId: ARC_CHAIN_ID,
+  destinationChainId: BASE_CHAIN_ID,
+  originCurrency: ARC_USDC,
+  destinationCurrency: BASE_USDC,
+  amount: AMOUNT_MINOR,
+  tradeType: "EXACT_INPUT",
+};
+
+const appFeeWithFeeBody = {
+  ...appFeeBaselineBody,
+  appFees: [{ recipient: APP_FEE_RECIPIENT, fee: APP_FEE_BPS }],
+  referrer: "vector-app-fee-probe",
+  referrerAddress: APP_FEE_RECIPIENT,
+};
+
+const baselineEntry = await postQuote(
+  `app-fee baseline ${AMOUNT_USDC} USDC Arc→Base (no appFees)`,
+  appFeeBaselineBody,
+);
+const withFeeEntry = await postQuote(
+  `app-fee test ${AMOUNT_USDC} USDC Arc→Base (appFees ${APP_FEE_BPS} bps)`,
+  appFeeWithFeeBody,
+);
+
+const baselineBreakdown = extractAppFeeBreakdown(baselineEntry.body);
+const withFeeBreakdown = extractAppFeeBreakdown(withFeeEntry.body);
+printAppFeeComparison(baselineBreakdown, withFeeBreakdown);
+report.steps.appFeeComparison = {
+  requestField: "appFees",
+  feeDenomination: "basis points of input amount (per OpenAPI + features/app-fees)",
+  bpsUsed: APP_FEE_BPS,
+  recipient: APP_FEE_RECIPIENT,
+  baseline: baselineBreakdown,
+  withAppFees: withFeeBreakdown,
+};
 
 const outPath = join(__dirname, "check-relay-arc-output.json");
 writeFileSync(outPath, JSON.stringify(report, null, 2));
