@@ -254,6 +254,28 @@ function mapVault(raw: unknown): EarnVault | null {
   };
 }
 
+function vaultReportsZeroApy(v: EarnVault): boolean {
+  if (v.apy === 0) return true;
+  const raw = asRecord(v.raw);
+  if (!raw) return false;
+  if (raw.currentApy === 0) return true;
+  const apyProfile = asRecord(raw.apyProfile);
+  return apyProfile?.current === 0;
+}
+
+/** UI-only: hide low-signal vaults unless that would leave nothing to show. */
+function filterVaultsForDisplay(vaults: EarnVault[]): EarnVault[] {
+  const filtered = vaults.filter((v) => {
+    const raw = asRecord(v.raw);
+    const apiName = pickString(raw, ["name"]);
+    if (!apiName || apiName.trim() === "") return false;
+    if (/^test/i.test(apiName.trim())) return false;
+    if (vaultReportsZeroApy(v)) return false;
+    return true;
+  });
+  return filtered.length > 0 ? filtered : vaults;
+}
+
 function extractExecution(raw: unknown): EarnExecution {
   const rec = asRecord(raw);
   const txHash = pickString(rec, ["txHash", "transactionHash", "hash"]);
@@ -290,7 +312,8 @@ export async function listArcVaults(kitKey?: string): Promise<EarnVault[]> {
     const m = mapVault(v);
     if (m) mapped.push(m);
   }
-  return mapped;
+  // exploreVaults uses sortBy: "apy" (desc); filtering preserves that order.
+  return filterVaultsForDisplay(mapped);
 }
 
 export type EarnActionArgs = {
