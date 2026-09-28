@@ -5,19 +5,11 @@ import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { bridgeChainById, type BridgeChainId } from "../lib/bridge-chains";
 
 /**
- * Read the connected wallet's USDC balance ON A SPECIFIC bridge chain.
+ * Read USDC balance on a bridge source/dest chain for display + amount checks.
  *
- * Unlike the swap balance hook (which is Arc-only), a bridge spans chains, so
- * the SOURCE balance must be read on the source chain — not whatever network
- * the wallet is currently pointed at. wagmi's `chainId` option scopes each read
- * to the right chain (all three are registered in wagmi-config), so we never
- * misreport a balance by reading the wrong network.
- *
- *  - Arc: USDC is the native gas asset (18 decimals) → useBalance, no address.
- *  - Base/Ethereum Sepolia: USDC is an ERC-20 → read balanceOf + decimals
- *    on-chain (decimals read, never hardcoded).
- *
- * Returns a display string like "12.5" or null when unavailable/loading.
+ * - Arc: spendable USDC for CCTP is the 6-decimal ERC-20 at `usdcAddress`
+ *   (0x3600…), not native 18-decimal gas balance.
+ * - Other chains: standard ERC-20 USDC via `balanceOf`.
  */
 export function useBridgeBalance(chainId: BridgeChainId): {
   formatted: string | null;
@@ -26,8 +18,13 @@ export function useBridgeBalance(chainId: BridgeChainId): {
   const { address, isConnected } = useAccount();
   const chain = bridgeChainById(chainId);
 
-  const isNative = chain?.usdcKind === "native";
-  const isErc20 = chain?.usdcKind === "erc20" && !!chain.usdcAddress;
+  const arcErc20Usdc =
+    !!chain?.usdcAddress &&
+    (chain.appKitChain === "Arc" || chain.appKitChain === "Arc_Testnet");
+
+  const isErc20 =
+    (chain?.usdcKind === "erc20" && !!chain.usdcAddress) || arcErc20Usdc;
+  const isNative = chain?.usdcKind === "native" && !arcErc20Usdc;
 
   const nativeQuery = useBalance({
     address,
@@ -35,32 +32,38 @@ export function useBridgeBalance(chainId: BridgeChainId): {
     query: { enabled: isConnected && !!address && isNative },
   });
 
+  const erc20Address = chain?.usdcAddress;
+
   const erc20Query = useReadContracts({
-    query: { enabled: isConnected && !!address && isErc20 },
-    contracts: isErc20
-      ? [
-          {
-            chainId: chain!.chainId,
-            address: chain!.usdcAddress!,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [address as `0x${string}`],
-          },
-          {
-            chainId: chain!.chainId,
-            address: chain!.usdcAddress!,
-            abi: erc20Abi,
-            functionName: "decimals",
-          },
-        ]
-      : [],
+    query: { enabled: isConnected && !!address && isErc20 && !!erc20Address },
+    contracts:
+      isErc20 && erc20Address
+        ? [
+            {
+              chainId: chain!.chainId,
+              address: erc20Address,
+              abi: erc20Abi,
+              functionName: "balanceOf",
+              args: [address as `0x${string}`],
+            },
+            {
+              chainId: chain!.chainId,
+              address: erc20Address,
+              abi: erc20Abi,
+              functionName: "decimals",
+            },
+          ]
+        : [],
   });
 
   if (isNative) {
     if (nativeQuery.isLoading) return { formatted: null, isLoading: true };
     const v = nativeQuery.data;
     if (!v) return { formatted: null, isLoading: false };
-    return { formatted: trim(formatUnits(v.value, v.decimals)), isLoading: false };
+    return {
+      formatted: trim(formatUnits(v.value, v.decimals)),
+      isLoading: false,
+    };
   }
 
   if (isErc20) {
@@ -71,7 +74,10 @@ export function useBridgeBalance(chainId: BridgeChainId): {
     if (typeof rawBalance !== "bigint" || typeof decimals !== "number") {
       return { formatted: null, isLoading: false };
     }
-    return { formatted: trim(formatUnits(rawBalance, decimals)), isLoading: false };
+    return {
+      formatted: trim(formatUnits(rawBalance, decimals)),
+      isLoading: false,
+    };
   }
 
   return { formatted: null, isLoading: false };
