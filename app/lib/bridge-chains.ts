@@ -83,6 +83,7 @@ const TESTNET_BRIDGE_CHAINS: BridgeChain[] = [
     chainId: 5042002,
     label: "Arc Testnet",
     usdcKind: "native",
+    usdcAddress: "0x3600000000000000000000000000000000000000",
     explorerTx: "https://testnet.arcscan.app/tx/{hash}",
     explorerAddress: "https://testnet.arcscan.app/address/{address}",
     forwarderDestination: true,

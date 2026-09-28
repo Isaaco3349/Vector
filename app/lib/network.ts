@@ -105,10 +105,17 @@ function asHexAddress(
   return undefined;
 }
 
-/** Native USDC locator on Arc (from SDK on mainnet). */
-export const arcUsdcAddress = isMainnet
-  ? asHexAddress(mainnetArcFromKit?.usdcAddress)
-  : undefined;
+/**
+ * Circle's Arc USDC ERC-20 interface (6 decimals) — CCTP, swap, and bridge burns
+ * use this contract. Same predeploy on testnet and mainnet (App Kit chains def).
+ */
+export const ARC_USDC_ERC20_ADDRESS =
+  "0x3600000000000000000000000000000000000000" as const;
+
+/** USDC token address on Arc (from SDK on mainnet; constant fallback on testnet). */
+export const arcUsdcAddress: `0x${string}` = isMainnet
+  ? (asHexAddress(mainnetArcFromKit?.usdcAddress) ?? ARC_USDC_ERC20_ADDRESS)
+  : ARC_USDC_ERC20_ADDRESS;
 
 /** EURC on Arc (from SDK on mainnet). */
 export const arcEurcAddress = isMainnet

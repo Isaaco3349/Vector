@@ -8,9 +8,7 @@ import {
   useAccount,
   useConnect,
   useDisconnect,
-  useBalance,
 } from "wagmi";
-import { formatUnits } from "viem";
 import { SwapPanel } from "./components/SwapPanel";
 import { BridgePanel } from "./components/BridgePanel";
 import { SendPanel } from "./components/SendPanel";
@@ -56,10 +54,7 @@ export default function HomePage() {
   const { connect, connectors, isPending: isConnectPending, error: connectError } =
     useConnect();
   const { disconnect } = useDisconnect();
-  const { data: injectedBalance } = useBalance({
-    address: injectedAddress,
-    query: { enabled: Boolean(injectedAddress) },
-  });
+  const injectedUsdcOnArc = useTokenBalance("USDC");
   const [showWalletPicker, setShowWalletPicker] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
   const [showBridge, setShowBridge] = useState(false);
@@ -646,11 +641,7 @@ export default function HomePage() {
           source: "wallet" as const,
           address: injectedAddress,
           blockchain: w3sBlockchainLabel,
-          balance: injectedBalance
-            ? Number(
-                formatUnits(injectedBalance.value, injectedBalance.decimals),
-              ).toFixed(2)
-            : "0.00",
+          balance: injectedUsdcOnArc.formatted ?? "0.00",
         }
       : null;
 
