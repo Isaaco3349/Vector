@@ -70,7 +70,10 @@ import {
   displayName as ARC_DISPLAY_NAME,
   rpcUrl as ARC_RPC_FALLBACK,
 } from "./network";
-import { bridgeCustomFeeForAmount } from "./fees";
+import {
+  bridgeCustomFeeBaseForCctpBurn,
+  bridgePlatformFeeBaseUnits,
+} from "./fees";
 
 /** A single contract call for the W3S contractExecution challenge. */
 export type BridgeCall = {
@@ -378,13 +381,15 @@ export async function buildBridgePlan(
   // fee live in the browser — we don't fake a fee.
   const config = {
     transferSpeed: "FAST" as const,
-    ...bridgeCustomFeeForAmount(amountTrimmed),
+    ...bridgeCustomFeeBaseForCctpBurn(amountTrimmed),
   };
 
-  // 1) APPROVE. Circle mirrors amount+customFee; with no customFee that's just
-  //    the transfer amount. Target resolves to Arc's USDC token, delegate to the
-  //    Arc bridge — all inside approve().
-  const approvePrepared = await cctp.approve(source, amountMinor);
+  const platformFeeMinor = bridgePlatformFeeBaseUnits(amountTrimmed);
+  const approvalAmount = (amountMinorBig + platformFeeMinor).toString();
+
+  // 1) APPROVE. Circle mirrors amount+customFee (executeBatchedApproveAndBurn).
+  //    Target resolves to Arc's USDC token, delegate to the Arc bridge.
+  const approvePrepared = await cctp.approve(source, approvalAmount);
   const approve = readCallData(approvePrepared, "approve");
 
   // 2) BURN (Arc → destination, forwarded). Target resolves to the Arc bridge;

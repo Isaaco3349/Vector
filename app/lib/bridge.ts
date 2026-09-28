@@ -40,7 +40,7 @@
  */
 
 import type { Eip1193Provider } from "./appkit";
-import { bridgeCustomFeeForAmount } from "./fees";
+import { bridgeCustomFeeHumanForAppKit } from "./fees";
 import { formatUnits } from "viem";
 import {
   bridgeChainById,
@@ -171,7 +171,7 @@ async function buildKitAndParams(args: BridgeArgs) {
     amount: args.amount,
     token: "USDC" as const,
     config: {
-      ...bridgeCustomFeeForAmount(args.amount),
+      ...bridgeCustomFeeHumanForAppKit(args.amount),
     },
   };
 

@@ -1,4 +1,4 @@
-import { getAddress, isAddress, parseUnits } from "viem";
+import { formatUnits, getAddress, isAddress, parseUnits } from "viem";
 
 const USDC_DECIMALS = 6;
 
@@ -32,38 +32,66 @@ function throwInvalidRecipient(raw: string): never {
   );
 }
 
-/** App Kit / Stablecoin Service swap `config.customFee` (percentage of swap input). */
-export function swapCustomFeeConfig() {
+function parseBridgeAmountHuman(amountHuman: string): bigint {
+  const trimmed = amountHuman.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+    throw new Error("Invalid bridge amount for platform fee calculation.");
+  }
+  try {
+    const amountBase = parseUnits(trimmed as `${number}`, USDC_DECIMALS);
+    if (amountBase <= BigInt(0)) {
+      throw new Error("Invalid bridge amount for platform fee calculation.");
+    }
+    return amountBase;
+  } catch {
+    throw new Error("Invalid bridge amount for platform fee calculation.");
+  }
+}
+
+/** Platform fee in USDC base units (6 decimals): amount × BRIDGE_FEE_BPS / 10_000. */
+export function bridgePlatformFeeBaseUnits(amountHuman: string): bigint {
+  const amountBase = parseBridgeAmountHuman(amountHuman);
+  return (amountBase * BigInt(BRIDGE_FEE_BPS)) / BigInt(10_000);
+}
+
+/** Human USDC fee string for display / SDK paths that expect decimal amounts. */
+export function bridgePlatformFeeHuman(amountHuman: string): string {
+  return formatUnits(bridgePlatformFeeBaseUnits(amountHuman), USDC_DECIMALS);
+}
+
+/**
+ * App Kit / Bridge Kit `config.customFee.value` — human-readable USDC decimal string.
+ * Bridge Kit scales `amount`, `maxFee`, and `customFee.value` to base units at the
+ * kit boundary; passing base units here is interpreted as whole USDC and overscales.
+ */
+export function bridgeCustomFeeHumanForAppKit(amountHuman: string) {
   return {
     customFee: {
-      percentageBps: SWAP_FEE_BPS,
+      value: bridgePlatformFeeHuman(amountHuman),
       recipientAddress: requirePlatformFeeRecipient(),
     },
   };
 }
 
 /**
- * App Kit / Bridge Kit `config.customFee.value` — integer string in USDC base units
- * (6 decimals). Some bridge paths call `BigInt(value)` before scaling human amounts.
+ * CCTP v2 provider `burn()` when `amount` is already in minor units — fee must
+ * match the same unit (integer string). Used by the Google-wallet encoder path.
  */
-export function bridgeCustomFeeForAmount(amountHuman: string) {
-  const trimmed = amountHuman.trim();
-  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
-    throw new Error("Invalid bridge amount for platform fee calculation.");
-  }
-  let amountBase: bigint;
-  try {
-    amountBase = parseUnits(trimmed as `${number}`, USDC_DECIMALS);
-  } catch {
-    throw new Error("Invalid bridge amount for platform fee calculation.");
-  }
-  if (amountBase <= BigInt(0)) {
-    throw new Error("Invalid bridge amount for platform fee calculation.");
-  }
-  const feeBase = (amountBase * BigInt(BRIDGE_FEE_BPS)) / BigInt(10_000);
+export function bridgeCustomFeeBaseForCctpBurn(amountHuman: string) {
+  const feeBase = bridgePlatformFeeBaseUnits(amountHuman);
   return {
     customFee: {
       value: feeBase.toString(),
+      recipientAddress: requirePlatformFeeRecipient(),
+    },
+  };
+}
+
+/** App Kit / Stablecoin Service swap `config.customFee` (percentage of swap input). */
+export function swapCustomFeeConfig() {
+  return {
+    customFee: {
+      percentageBps: SWAP_FEE_BPS,
       recipientAddress: requirePlatformFeeRecipient(),
     },
   };

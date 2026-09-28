@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:fees": "node scripts/verify-platform-fees.mjs"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.18.0",
