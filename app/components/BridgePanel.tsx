@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { parseUnits } from "viem";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
   estimateBridge,
@@ -17,8 +18,20 @@ import {
   type BridgeChainId,
 } from "../lib/bridge-chains";
 import { getProviderChainId } from "../lib/appkit";
-import { BRIDGE_FEE_BPS, formatVectorFeeLabel } from "../lib/fees";
+import {
+  bridgeMaxAmountHumanFromBalance,
+  BRIDGE_FEE_BPS,
+  formatVectorFeeLabel,
+} from "../lib/fees";
+import {
+  MIN_NATIVE_GAS_USDC,
+  useArcNativeGasBalance,
+} from "./useArcNativeGasBalance";
 import { useBridgeBalance } from "./useBridgeBalance";
+
+function isArcBridgeChain(id: BridgeChainId): boolean {
+  return id === "Arc" || id === "Arc_Testnet";
+}
 
 /**
  * Bridge panel (CCTP v2) for external (injected) wallets.
@@ -77,6 +90,13 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
 
   const balanceFrom = useBridgeBalance(fromChain);
+  const nativeGas = useArcNativeGasBalance();
+  const burnOnArc = isArcBridgeChain(fromChain);
+
+  const nativeGasTooLow = useMemo(() => {
+    if (!burnOnArc || nativeGas.isLoading || nativeGas.raw === null) return false;
+    return nativeGas.raw < MIN_NATIVE_GAS_USDC;
+  }, [burnOnArc, nativeGas.isLoading, nativeGas.raw]);
 
   /**
    * The numeric id of the chain the burn has to be signed on. Comes from the
@@ -151,8 +171,16 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   const insufficient = useMemo(() => {
     if (!parsedAmount || balanceFrom.formatted === null) return false;
-    return parsedAmount > Number(balanceFrom.formatted);
-  }, [parsedAmount, balanceFrom.formatted]);
+    const max = bridgeMaxAmountHumanFromBalance(balanceFrom.formatted);
+    if (!max) return true;
+    try {
+      const want = parseUnits(amount.trim() as `${number}`, 6);
+      const cap = parseUnits(max as `${number}`, 6);
+      return want > cap;
+    } catch {
+      return true;
+    }
+  }, [parsedAmount, balanceFrom.formatted, amount]);
 
   // Only claim the wallet is on the wrong chain once it has actually told us.
   // A null answer means "unknown", which is not the same as "wrong" — the
@@ -278,6 +306,16 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         );
         return;
       }
+      if (
+        burnOnArc &&
+        nativeGas.raw !== null &&
+        nativeGas.raw < MIN_NATIVE_GAS_USDC
+      ) {
+        setError(
+          "Not enough native USDC on Arc to pay network fees for the burn. Add ~0.05+ native USDC on Arc — nothing was sent.",
+        );
+        return;
+      }
       const result = await executeBridge({
         provider,
         fromChain,
@@ -384,10 +422,39 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             symbol="USDC"
             onMax={
               balanceFrom.formatted
-                ? () => setAmount(balanceFrom.formatted as string)
+                ? () => {
+                    const max = bridgeMaxAmountHumanFromBalance(
+                      balanceFrom.formatted as string,
+                    );
+                    setAmount(max ?? (balanceFrom.formatted as string));
+                  }
                 : undefined
             }
           />
+          {burnOnArc && (
+            <>
+              <div className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)] font-mono">
+                {nativeGas.isLoading
+                  ? "Gas balance (native USDC on Arc): …"
+                  : nativeGas.formatted !== null
+                    ? `Gas balance (native USDC on Arc): ${nativeGas.formatted}`
+                    : "Gas balance (native USDC on Arc): —"}
+              </div>
+              {nativeGasTooLow && (
+                <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-pink)]">
+                  Bridging out of Arc signs a burn on Arc. MetaMask pays network
+                  fees from native USDC (18 decimals), not the ERC-20 balance
+                  above. Add ~0.05+ native USDC on Arc, then retry.
+                </p>
+              )}
+            </>
+          )}
+          {!burnOnArc && (
+            <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
+              Source-chain gas (e.g. ETH on Base) is paid separately in your
+              wallet&apos;s native token — not USDC.
+            </p>
+          )}
         </div>
 
         {/* Flip */}
@@ -499,7 +566,8 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
               !quote?.amount ||
               sameChain ||
               !parsedAmount ||
-              insufficient
+              insufficient ||
+              nativeGasTooLow
             }
             className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
           >

@@ -102,3 +102,32 @@ export function formatVectorFeeLabel(bps: number): string {
   const pct = bps / 100;
   return `Includes ${pct.toFixed(2)}% Vector fee`;
 }
+
+/**
+ * USDC (6 dp) the wallet must hold for a bridge: burn amount + Vector kit fee.
+ * Circle approves/pulls `amount + customFee` on the source chain.
+ */
+export function bridgeTotalUsdcRequiredBaseUnits(amountHuman: string): bigint {
+  const amountBase = parseBridgeAmountHuman(amountHuman);
+  return amountBase + bridgePlatformFeeBaseUnits(amountHuman);
+}
+
+/**
+ * Largest human USDC amount bridgeable from a balance without exceeding it
+ * after the 0.10% kit fee. Use for MAX instead of the raw balance string.
+ */
+export function bridgeMaxAmountHumanFromBalance(balanceHuman: string): string | null {
+  const trimmed = balanceHuman.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  let balanceBase: bigint;
+  try {
+    balanceBase = parseUnits(trimmed as `${number}`, USDC_DECIMALS);
+  } catch {
+    return null;
+  }
+  if (balanceBase <= BigInt(0)) return null;
+  const maxBase =
+    (balanceBase * BigInt(10_000)) / BigInt(10_000 + BRIDGE_FEE_BPS);
+  if (maxBase <= BigInt(0)) return null;
+  return formatUnits(maxBase, USDC_DECIMALS);
+}
