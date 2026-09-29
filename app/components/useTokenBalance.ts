@@ -4,24 +4,28 @@ import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 import { chainId as ARC_CHAIN_ID } from "../lib/network";
 import { tokenBySymbol } from "../lib/swap-tokens";
+import { useArcUsdcBalance } from "./useArcUsdcBalance";
 
 /**
- * Read the connected wallet's balance for Arc tokens Vector knows about.
- *
- * All reads are scoped to Vector's Arc network (`chainId` from network.ts), not
- * whatever chain the wallet UI happens to be on — so a "USDC" balance is never
- * another network's native currency mislabeled.
- *
- * - USDC: 6-decimal ERC-20 at Arc `usdcAddress` (matches App Kit swap/CCTP).
- * - cirBTC / EURC: ERC-20 `balanceOf` + on-chain `decimals`.
- * - kind "unknown": returns null.
+ * Arc token balances for Swap / portfolio.
+ * USDC uses Arc's unified native balance (one pool — see docs.arc.io).
  */
 export function useTokenBalance(symbol: string): {
   formatted: string | null;
   isLoading: boolean;
+  arcWalletDesync?: boolean;
 } {
   const { address, isConnected } = useAccount();
+  const arcUsdc = useArcUsdcBalance();
   const token = tokenBySymbol(symbol);
+
+  if (token?.symbol === "USDC") {
+    return {
+      formatted: arcUsdc.formatted,
+      isLoading: arcUsdc.isLoading,
+      arcWalletDesync: arcUsdc.walletBalanceDesync,
+    };
+  }
 
   const isErc20 = token?.kind === "erc20" && !!token.address;
 
@@ -63,7 +67,6 @@ export function useTokenBalance(symbol: string): {
   return { formatted: null, isLoading: false };
 }
 
-/** Trim to 4 dp for display without lying about tiny dust. */
 function trim(value: string): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return value;

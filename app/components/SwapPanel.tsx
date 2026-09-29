@@ -19,14 +19,11 @@ import {
   type SwapQuote,
   type SwapResult,
 } from "../lib/appkit";
+import { ensureArcNetwork } from "../lib/arc-wallet";
 import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
-import {
-  MIN_NATIVE_GAS_USDC,
-  useArcNativeGasBalance,
-} from "./useArcNativeGasBalance";
 import { useTokenBalance } from "./useTokenBalance";
 
 /**
@@ -298,12 +295,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   const balanceIn = useTokenBalance(tokenIn);
   const balanceOut = useTokenBalance(tokenOut);
-  const nativeGas = useArcNativeGasBalance();
-
-  const nativeGasTooLow = useMemo(() => {
-    if (nativeGas.isLoading || nativeGas.raw === null) return false;
-    return nativeGas.raw < MIN_NATIVE_GAS_USDC;
-  }, [nativeGas.isLoading, nativeGas.raw]);
+  const arcWalletDesync =
+    tokenIn === "USDC" && balanceIn.arcWalletDesync === true;
 
   // Pull the raw EIP-1193 provider out of the active wagmi connector. This is
   // what App Kit's browser adapter wraps. `connector.getProvider()` is wagmi's
@@ -515,6 +508,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       // doesn't know Arc yet, offers to add it from viem's own chain definition
       // — so no RPC URL or chain id is hand-written into this prompt.
       await switchChainAsync({ chainId: ARC_CHAIN_ID });
+      const p = providerRef.current;
+      if (p) await ensureArcNetwork(p);
     } catch (err) {
       switchError = err;
     }
@@ -564,10 +559,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         return;
       }
 
-      if (nativeGas.raw !== null && nativeGas.raw < MIN_NATIVE_GAS_USDC) {
+      try {
+        await ensureArcNetwork(provider);
+      } catch {
         setErrorState({
           text:
-            "Not enough native USDC on Arc to pay network fees. The balance shown above is spendable ERC-20 USDC (swap input); MetaMask pays gas from a separate native USDC balance (~0.02+ per step). Send a small amount of native USDC to this address on Arc, then try again — nothing was sent.",
+            "Couldn't switch to Arc in your wallet. If you use OKX or another extension, approve adding the Arc network (USDC gas) and try again — nothing was sent.",
           info: null,
         });
         return;
@@ -728,19 +725,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
                 : undefined
             }
           />
-          <div className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)] font-mono">
-            {nativeGas.isLoading
-              ? "Gas balance (native USDC): …"
-              : nativeGas.formatted !== null
-                ? `Gas balance (native USDC): ${nativeGas.formatted}`
-                : "Gas balance (native USDC): —"}
-          </div>
-          {nativeGasTooLow && (
+          {arcWalletDesync && (
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-pink)]">
-              Native USDC on Arc pays transaction fees. CCTP mints spendable USDC
-              to the ERC-20 balance above — not always the same as gas. Add ~0.05+
-              native USDC on Arc (another wallet send or Arc faucet on testnet)
-              before swapping.
+              Your wallet shows token USDC but not Arc gas USDC. On Arc they are
+              the same balance — try &quot;Switch to Arc&quot; below, re-add the Arc
+              network in OKX/MetaMask, or update the wallet app.
             </p>
           )}
         </div>
@@ -923,12 +912,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <button
             onClick={handleSwap}
             disabled={
-              swapping ||
-              quoting ||
-              !displayAmountOut ||
-              sameToken ||
-              !parsedAmount ||
-              nativeGasTooLow
+              swapping || quoting || !displayAmountOut || sameToken || !parsedAmount
             }
             className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
           >

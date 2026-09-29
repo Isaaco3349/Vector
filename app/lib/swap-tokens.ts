@@ -1,4 +1,4 @@
-import { arcEurcAddress, arcUsdcAddress, isMainnet } from "./network";
+import { arcEurcAddress, isMainnet } from "./network";
 
 /**
  * First-party tokens on Arc (testnet or mainnet — addresses differ).
@@ -25,9 +25,9 @@ import { arcEurcAddress, arcUsdcAddress, isMainnet } from "./network";
  *
  * Every address/kind below is copied VERBATIM from the installed Circle SDK's
  * first-party token registry (not guessed):
- *  - USDC: Arc gas is native 18-decimal USDC; swap/CCTP/bridge spend the
- *          6-decimal ERC-20 at 0x3600…0000 (App Kit `usdcAddress`). Balances
- *          in Swap/portfolio read that ERC-20 on Arc chainId — not native.
+ *  - USDC: One balance on Arc (native 18 dp + ERC-20 6 dp are the same pool).
+ *          Display via native `eth_getBalance`; App Kit uses the ERC-20 interface
+ *          at 0x3600… for approvals — see docs.arc.io stablecoin-native model.
  *  - cirBTC: ERC-20 at 0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF (8 decimals).
  *          Verified from the SDK registry — its own docs state
  *          `CIRBTC.locators[Blockchain.Arc_Testnet]` = that address and
@@ -123,13 +123,7 @@ function cirBtcArcToken(): SwapToken {
 }
 
 export const ARC_TOKENS: SwapToken[] = [
-  {
-    symbol: "USDC",
-    name: "USD Coin",
-    kind: "erc20",
-    address: arcUsdcAddress,
-    swappable: true,
-  },
+  { symbol: "USDC", name: "USD Coin", kind: "native", swappable: true },
   cirBtcArcToken(),
   {
     symbol: "EURC",
