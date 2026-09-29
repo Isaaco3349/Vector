@@ -172,6 +172,9 @@ async function buildKitAndParams(args: BridgeArgs) {
     token: "USDC" as const,
     config: {
       ...bridgeCustomFeeHumanForAppKit(args.amount),
+      // OKX (and some wallets) block EIP-5792 `wallet_sendCalls` and certain
+      // batched signatures as "risky". Sequential approve → burn uses normal txs.
+      batchTransactions: false,
     },
   };
 

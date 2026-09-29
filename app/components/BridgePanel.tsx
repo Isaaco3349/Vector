@@ -24,6 +24,7 @@ import {
   BRIDGE_FEE_BPS,
   formatVectorFeeLabel,
 } from "../lib/fees";
+import { isOkxWallet } from "../lib/wallet-brand";
 import { useBridgeBalance } from "./useBridgeBalance";
 
 function isArcBridgeChain(id: BridgeChainId): boolean {
@@ -88,6 +89,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   const balanceFrom = useBridgeBalance(fromChain);
   const burnOnArc = isArcBridgeChain(fromChain);
+  const okxWallet = isOkxWallet(connector);
 
   /**
    * The numeric id of the chain the burn has to be signed on. Comes from the
@@ -560,6 +562,14 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
           </button>
         )}
 
+        {okxWallet && (
+          <p className="mt-3 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
+            OKX may show one or two normal Arc transactions (approve, then burn) —
+            confirm each. If OKX blocks with &quot;risky signature&quot; and only
+            offers Cancel, update the OKX extension or use MetaMask for this bridge;
+            Vector uses the same CCTP flow as Arc Portal.
+          </p>
+        )}
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
           Bridges USDC across chains via Circle&apos;s CCTP. You sign the burn on
           the source chain, so your wallet needs to be on {chainLabel(fromChain)};
@@ -637,6 +647,12 @@ function chainLabel(id: BridgeChainId): string {
 
 function readableError(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) {
+    if (/risky|signature type|blocked to protect/i.test(err.message)) {
+      return (
+        "Your wallet blocked this request as a security precaution (common with OKX on Arc/CCTP). " +
+        "Update OKX Wallet, confirm each transaction prompt if shown, or connect MetaMask/Rabby for this bridge."
+      );
+    }
     if (/reject|denied|user cancel/i.test(err.message)) {
       return "You cancelled the request in your wallet.";
     }
