@@ -82,7 +82,7 @@ function envLimit(name: string, fallback: number): number {
 
 const BUCKET_LIMITS: Record<RateBucket, () => number> = {
   device: () => envLimit("RATE_LIMIT_DEVICE_PER_MINUTE", 10),
-  kit: () => envLimit("RATE_LIMIT_KIT_PER_MINUTE", 20),
+  kit: () => envLimit("RATE_LIMIT_KIT_PER_MINUTE", 40),
   default: () => envLimit("RATE_LIMIT_DEFAULT_PER_MINUTE", 30),
 };
 
