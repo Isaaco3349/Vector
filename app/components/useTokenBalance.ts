@@ -19,15 +19,8 @@ export function useTokenBalance(symbol: string): {
   const arcUsdc = useArcUsdcBalance();
   const token = tokenBySymbol(symbol);
 
-  if (token?.symbol === "USDC") {
-    return {
-      formatted: arcUsdc.formatted,
-      isLoading: arcUsdc.isLoading,
-      arcWalletDesync: arcUsdc.walletBalanceDesync,
-    };
-  }
-
-  const isErc20 = token?.kind === "erc20" && !!token.address;
+  const isUsdc = token?.symbol === "USDC";
+  const isErc20 = !isUsdc && token?.kind === "erc20" && !!token.address;
 
   const erc20Query = useReadContracts({
     query: { enabled: isConnected && !!address && isErc20 },
@@ -49,6 +42,14 @@ export function useTokenBalance(symbol: string): {
         ]
       : [],
   });
+
+  if (isUsdc) {
+    return {
+      formatted: arcUsdc.formatted,
+      isLoading: arcUsdc.isLoading,
+      arcWalletDesync: arcUsdc.walletBalanceDesync,
+    };
+  }
 
   if (isErc20) {
     if (erc20Query.isLoading) return { formatted: null, isLoading: true };
