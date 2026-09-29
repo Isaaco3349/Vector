@@ -18,15 +18,12 @@ import {
   type BridgeChainId,
 } from "../lib/bridge-chains";
 import { getProviderChainId } from "../lib/appkit";
+import { ensureArcNetwork } from "../lib/arc-wallet";
 import {
   bridgeMaxAmountHumanFromBalance,
   BRIDGE_FEE_BPS,
   formatVectorFeeLabel,
 } from "../lib/fees";
-import {
-  MIN_NATIVE_GAS_USDC,
-  useArcNativeGasBalance,
-} from "./useArcNativeGasBalance";
 import { useBridgeBalance } from "./useBridgeBalance";
 
 function isArcBridgeChain(id: BridgeChainId): boolean {
@@ -90,13 +87,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
 
   const balanceFrom = useBridgeBalance(fromChain);
-  const nativeGas = useArcNativeGasBalance();
   const burnOnArc = isArcBridgeChain(fromChain);
-
-  const nativeGasTooLow = useMemo(() => {
-    if (!burnOnArc || nativeGas.isLoading || nativeGas.raw === null) return false;
-    return nativeGas.raw < MIN_NATIVE_GAS_USDC;
-  }, [burnOnArc, nativeGas.isLoading, nativeGas.raw]);
 
   /**
    * The numeric id of the chain the burn has to be signed on. Comes from the
@@ -260,6 +251,9 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       // doesn't know the chain yet, offers to add it from viem's own chain
       // definition — so no RPC URL or chain id is hand-written into this prompt.
       await switchChainAsync({ chainId: sourceChainId });
+      if (burnOnArc && providerRef.current) {
+        await ensureArcNetwork(providerRef.current);
+      }
     } catch (err) {
       switchError = err;
     }
@@ -306,15 +300,15 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         );
         return;
       }
-      if (
-        burnOnArc &&
-        nativeGas.raw !== null &&
-        nativeGas.raw < MIN_NATIVE_GAS_USDC
-      ) {
-        setError(
-          "Not enough native USDC on Arc to pay network fees for the burn. Add ~0.05+ native USDC on Arc — nothing was sent.",
-        );
-        return;
+      if (burnOnArc) {
+        try {
+          await ensureArcNetwork(provider);
+        } catch {
+          setError(
+            "Couldn't switch to Arc in your wallet. Approve adding Arc (USDC gas) in OKX/MetaMask — nothing was sent.",
+          );
+          return;
+        }
       }
       const result = await executeBridge({
         provider,
@@ -431,23 +425,11 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
                 : undefined
             }
           />
-          {burnOnArc && (
-            <>
-              <div className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)] font-mono">
-                {nativeGas.isLoading
-                  ? "Gas balance (native USDC on Arc): …"
-                  : nativeGas.formatted !== null
-                    ? `Gas balance (native USDC on Arc): ${nativeGas.formatted}`
-                    : "Gas balance (native USDC on Arc): —"}
-              </div>
-              {nativeGasTooLow && (
-                <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-pink)]">
-                  Bridging out of Arc signs a burn on Arc. MetaMask pays network
-                  fees from native USDC (18 decimals), not the ERC-20 balance
-                  above. Add ~0.05+ native USDC on Arc, then retry.
-                </p>
-              )}
-            </>
+          {burnOnArc && balanceFrom.arcWalletDesync && (
+            <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-pink)]">
+              Wallet shows token USDC but not Arc gas USDC — on Arc they are one
+              balance. Re-add Arc in OKX/MetaMask or switch networks, then retry.
+            </p>
           )}
           {!burnOnArc && (
             <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
@@ -566,8 +548,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
               !quote?.amount ||
               sameChain ||
               !parsedAmount ||
-              insufficient ||
-              nativeGasTooLow
+              insufficient
             }
             className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
           >

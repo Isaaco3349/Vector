@@ -3,60 +3,64 @@
 import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { bridgeChainById, type BridgeChainId } from "../lib/bridge-chains";
+import { useArcUsdcBalance } from "./useArcUsdcBalance";
+
+function isArcChain(id: BridgeChainId | undefined): boolean {
+  return id === "Arc" || id === "Arc_Testnet";
+}
 
 /**
- * Read USDC balance on a bridge source/dest chain for display + amount checks.
- *
- * - Arc: spendable USDC for CCTP is the 6-decimal ERC-20 at `usdcAddress`
- *   (0x3600…), not native 18-decimal gas balance.
- * - Other chains: standard ERC-20 USDC via `balanceOf`.
+ * USDC on the selected bridge chain. On Arc, one USDC balance (native view).
  */
 export function useBridgeBalance(chainId: BridgeChainId): {
   formatted: string | null;
   isLoading: boolean;
+  arcWalletDesync?: boolean;
 } {
   const { address, isConnected } = useAccount();
   const chain = bridgeChainById(chainId);
+  const arcUsdc = useArcUsdcBalance();
 
-  const arcErc20Usdc =
-    !!chain?.usdcAddress &&
-    (chain.appKitChain === "Arc" || chain.appKitChain === "Arc_Testnet");
+  if (isArcChain(chain?.appKitChain)) {
+    return {
+      formatted: arcUsdc.formatted,
+      isLoading: arcUsdc.isLoading,
+      arcWalletDesync: arcUsdc.walletBalanceDesync,
+    };
+  }
 
-  const isErc20 =
-    (chain?.usdcKind === "erc20" && !!chain.usdcAddress) || arcErc20Usdc;
-  const isNative = chain?.usdcKind === "native" && !arcErc20Usdc;
+  const isErc20 = chain?.usdcKind === "erc20" && !!chain.usdcAddress;
 
   const nativeQuery = useBalance({
     address,
     chainId: chain?.chainId,
-    query: { enabled: isConnected && !!address && isNative },
+    query: {
+      enabled: isConnected && !!address && chain?.usdcKind === "native",
+    },
   });
-
-  const erc20Address = chain?.usdcAddress;
 
   const erc20Query = useReadContracts({
-    query: { enabled: isConnected && !!address && isErc20 && !!erc20Address },
-    contracts:
-      isErc20 && erc20Address
-        ? [
-            {
-              chainId: chain!.chainId,
-              address: erc20Address,
-              abi: erc20Abi,
-              functionName: "balanceOf",
-              args: [address as `0x${string}`],
-            },
-            {
-              chainId: chain!.chainId,
-              address: erc20Address,
-              abi: erc20Abi,
-              functionName: "decimals",
-            },
-          ]
-        : [],
+    query: { enabled: isConnected && !!address && isErc20 },
+    contracts: isErc20
+      ? [
+          {
+            chainId: chain!.chainId,
+            address: chain!.usdcAddress!,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [address as `0x${string}`],
+          },
+          {
+            chainId: chain!.chainId,
+            address: chain!.usdcAddress!,
+            abi: erc20Abi,
+            functionName: "decimals",
+          },
+        ]
+      : [],
   });
 
-  if (isNative) {
+  if (chain?.usdcKind === "native") {
     if (nativeQuery.isLoading) return { formatted: null, isLoading: true };
     const v = nativeQuery.data;
     if (!v) return { formatted: null, isLoading: false };
@@ -83,7 +87,6 @@ export function useBridgeBalance(chainId: BridgeChainId): {
   return { formatted: null, isLoading: false };
 }
 
-/** Trim to 4 dp for display without lying about tiny dust. */
 function trim(value: string): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return value;
