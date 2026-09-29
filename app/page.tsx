@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { setCookie, getCookie, deleteCookie } from "cookies-next";
 import { SocialLoginProvider } from "@circle-fin/w3s-pw-web-sdk/dist/src/types";
@@ -785,6 +786,18 @@ export default function HomePage() {
                 {isConnectPending ? "Connecting…" : "Connect Wallet"}
               </button>
 
+              <p className="mt-5 text-[11px] text-[var(--vector-text-dim)] leading-relaxed text-center">
+                By connecting, you agree to our{" "}
+                <Link href="/terms" className="text-[var(--vector-pink)] underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="text-[var(--vector-pink)] underline">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+
               {showWalletPicker && (
                 <div
                   className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
@@ -898,7 +911,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="flex items-center justify-center gap-5 px-6 py-6">
+      <footer className="flex flex-col items-center gap-4 px-6 py-6">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[12px] text-[var(--vector-text-dim)]">
+          <Link href="/terms" className="hover:text-[var(--vector-pink)] transition-colors">
+            Terms
+          </Link>
+          <span className="text-[var(--vector-line)]" aria-hidden>
+            ·
+          </span>
+          <Link href="/privacy" className="hover:text-[var(--vector-pink)] transition-colors">
+            Privacy
+          </Link>
+        </div>
+        <div className="flex items-center justify-center gap-5">
         <SocialLink
           href="https://github.com/Isaaco3349/Vector"
           label="Vector on GitHub"
@@ -914,6 +939,7 @@ export default function HomePage() {
         >
           <MailMark />
         </SocialLink>
+        </div>
       </footer>
 
       {showSwap && connected?.source === "wallet" && (
