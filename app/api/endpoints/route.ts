@@ -4,6 +4,7 @@ import {
   rejectIfDisallowedOrigin,
   rejectIfRateLimited,
 } from "../../lib/endpoints-abuse-guard";
+import { validateW3sContractExecution } from "../../lib/w3s-contract-allowlist";
 import { swapCustomFeeConfig } from "../../lib/fees";
 import {
   earnApiChainDefault,
@@ -370,6 +371,7 @@ export async function POST(request: Request) {
           abiFunctionSignature,
           abiParameters,
           amount,
+          earnVaultAddress,
         } = params;
 
         const hasCallData =
@@ -385,6 +387,19 @@ export async function POST(request: Request) {
                 "Missing userToken, walletId, contractAddress, or a call spec (callData OR abiFunctionSignature[+abiParameters])",
             },
             { status: 400 },
+          );
+        }
+
+        const contractGuard = validateW3sContractExecution({
+          contractAddress: String(contractAddress),
+          callData: hasCallData ? String(callData) : undefined,
+          earnVaultAddress:
+            typeof earnVaultAddress === "string" ? earnVaultAddress : undefined,
+        });
+        if (!contractGuard.ok) {
+          return NextResponse.json(
+            { error: contractGuard.message, code: "CONTRACT_NOT_ALLOWED" },
+            { status: 403 },
           );
         }
 

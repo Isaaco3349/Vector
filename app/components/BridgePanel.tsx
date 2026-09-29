@@ -563,12 +563,14 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         )}
 
         {okxWallet && (
-          <p className="mt-3 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-            OKX may show one or two normal Arc transactions (approve, then burn) —
-            confirm each. If OKX blocks with &quot;risky signature&quot; and only
-            offers Cancel, update the OKX extension or use MetaMask for this bridge;
-            Vector uses the same CCTP flow as Arc Portal.
-          </p>
+          <div className="mt-3 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
+            <span className="font-semibold text-[var(--vector-text)]">
+              OKX wallet:
+            </span>{" "}
+            If you only see &quot;risky signature&quot; with Cancel, that is OKX
+            security — not Vector. Use MetaMask/Rabby for bridge, or Continue with
+            Google for Arc → other chains.
+          </div>
         )}
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
           Bridges USDC across chains via Circle&apos;s CCTP. You sign the burn on

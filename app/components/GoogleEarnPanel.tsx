@@ -186,6 +186,7 @@ export function GoogleEarnPanel({
         contractAddress: call.to,
         callData: call.data,
         amount: call.value,
+        earnVaultAddress: selected?.vaultAddress,
       }),
     });
     const data = await response.json();
