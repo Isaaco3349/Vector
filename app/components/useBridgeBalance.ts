@@ -21,7 +21,43 @@ export function useBridgeBalance(chainId: BridgeChainId): {
   const chain = bridgeChainById(chainId);
   const arcUsdc = useArcUsdcBalance();
 
-  if (isArcChain(chain?.appKitChain)) {
+  const isArc = isArcChain(chain?.appKitChain);
+  const isErc20 =
+    !isArc && chain?.usdcKind === "erc20" && !!chain.usdcAddress;
+  const isNative = !isArc && chain?.usdcKind === "native";
+
+  // All wagmi hooks must run every render — never return before these (Rules of Hooks).
+  const nativeQuery = useBalance({
+    address,
+    chainId: chain?.chainId,
+    query: {
+      enabled: isConnected && !!address && isNative,
+    },
+  });
+
+  const erc20Query = useReadContracts({
+    query: { enabled: isConnected && !!address && isErc20 },
+    contracts:
+      isErc20 && chain?.usdcAddress
+        ? [
+            {
+              chainId: chain.chainId,
+              address: chain.usdcAddress,
+              abi: erc20Abi,
+              functionName: "balanceOf",
+              args: [address as `0x${string}`],
+            },
+            {
+              chainId: chain.chainId,
+              address: chain.usdcAddress,
+              abi: erc20Abi,
+              functionName: "decimals",
+            },
+          ]
+        : [],
+  });
+
+  if (isArc) {
     return {
       formatted: arcUsdc.formatted,
       isLoading: arcUsdc.isLoading,
@@ -29,38 +65,7 @@ export function useBridgeBalance(chainId: BridgeChainId): {
     };
   }
 
-  const isErc20 = chain?.usdcKind === "erc20" && !!chain.usdcAddress;
-
-  const nativeQuery = useBalance({
-    address,
-    chainId: chain?.chainId,
-    query: {
-      enabled: isConnected && !!address && chain?.usdcKind === "native",
-    },
-  });
-
-  const erc20Query = useReadContracts({
-    query: { enabled: isConnected && !!address && isErc20 },
-    contracts: isErc20
-      ? [
-          {
-            chainId: chain!.chainId,
-            address: chain!.usdcAddress!,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [address as `0x${string}`],
-          },
-          {
-            chainId: chain!.chainId,
-            address: chain!.usdcAddress!,
-            abi: erc20Abi,
-            functionName: "decimals",
-          },
-        ]
-      : [],
-  });
-
-  if (chain?.usdcKind === "native") {
+  if (isNative) {
     if (nativeQuery.isLoading) return { formatted: null, isLoading: true };
     const v = nativeQuery.data;
     if (!v) return { formatted: null, isLoading: false };
