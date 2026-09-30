@@ -24,6 +24,7 @@ import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
+import { isOkxWallet } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
 
 /**
@@ -206,6 +207,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     connector,
     chainId: wagmiChainId,
   } = useAccount();
+  const okxWallet = isOkxWallet(connector);
   const { switchChainAsync, isPending: switching } = useSwitchChain();
 
   const [tokenIn, setTokenIn] = useState("USDC");
@@ -611,6 +613,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         // otherwise Circle's own 3% default applies. The quote above was fetched
         // with the same value, so what was shown is what gets executed.
         ...(slippageBps !== null ? { slippageBps } : {}),
+        ...(okxWallet
+          ? {
+              allowanceStrategy: "approve" as const,
+              batchTransactions: false as const,
+            }
+          : {}),
       };
 
       let result: SwapResult;

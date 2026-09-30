@@ -17,7 +17,7 @@ import {
   unichain,
   unichainSepolia,
 } from "viem/chains";
-import { injected } from "wagmi/connectors";
+import { injected, walletConnect } from "wagmi/connectors";
 import { isMainnet, rpcUrl as arcRpcUrl } from "./lib/network";
 import { arcViemChain } from "./lib/viem-arc-chain";
 
@@ -56,9 +56,29 @@ function transportMap(
 const transports = transportMap(chains);
 transports[arcViemChain.id] = http(arcRpcUrl);
 
+const wcProjectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID?.trim();
+
+const connectors = [
+  injected(),
+  ...(wcProjectId
+    ? [
+        walletConnect({
+          projectId: wcProjectId,
+          showQrModal: true,
+          metadata: {
+            name: "Vector Protocol",
+            description: "USDC-native DeFi on Arc — swap, bridge, earn",
+            url: "https://vectorprotocol.pro",
+            icons: ["https://vectorprotocol.pro/icon.svg"],
+          },
+        }),
+      ]
+    : []),
+];
+
 export const wagmiConfig = createConfig({
   chains,
-  connectors: [injected()],
+  connectors,
   transports,
   ssr: true,
 });

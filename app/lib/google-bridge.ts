@@ -104,6 +104,8 @@ export type BridgePlan = {
 export type BuildBridgePlanArgs = {
   /** The W3S wallet's EVM address (source + default mint recipient). */
   walletAddress: string;
+  /** Source chain (defaults to Arc — the Google wallet path). */
+  fromChain?: BridgeChainId;
   /** Destination chain. Source is always Arc for the Google wallet. */
   toChain: BridgeChainId;
   /** Human-readable USDC amount, e.g. "1.5". Converted to 6-decimal minor units. */
@@ -114,9 +116,6 @@ export type BuildBridgePlanArgs = {
    */
   recipientAddress?: string;
 };
-
-/** The Google wallet only ever bridges FROM Arc. */
-const SOURCE_CHAIN: BridgeChainId = arcBridgeChainId();
 
 /** USDC is 6 decimals for CCTP everywhere (Arc's native 18 is gas-only). */
 const USDC_DECIMALS = 6;
@@ -276,9 +275,10 @@ function readCallData(prepared: unknown, label: string): BridgeCall {
 export async function buildBridgePlan(
   args: BuildBridgePlanArgs,
 ): Promise<BridgePlan> {
-  const from = bridgeChainById(SOURCE_CHAIN);
+  const fromChain = args.fromChain ?? arcBridgeChainId();
+  const from = bridgeChainById(fromChain);
   const to = bridgeChainById(args.toChain);
-  if (!from) throw new Error(`Bridge source (${ARC_DISPLAY_NAME}) is not configured.`);
+  if (!from) throw new Error(`Bridge source chain is not configured.`);
   if (!to) throw new Error(`Unsupported destination chain: ${args.toChain}`);
   if (to.appKitChain === from.appKitChain) {
     throw new Error("Pick a destination chain other than Arc.");

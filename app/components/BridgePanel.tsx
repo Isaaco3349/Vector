@@ -317,6 +317,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         fromChain,
         toChain,
         amount: String(parsedAmount),
+        useSequentialTransactions: okxWallet,
       });
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
@@ -567,9 +568,9 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             <span className="font-semibold text-[var(--vector-text)]">
               OKX wallet:
             </span>{" "}
-            If you only see &quot;risky signature&quot; with Cancel, that is OKX
-            security — not Vector. Use MetaMask/Rabby for bridge, or Continue with
-            Google for Arc → other chains.
+            Vector uses standard transaction confirms for OKX (no batched signatures).
+            Approve USDC, then confirm the burn. If OKX still blocks with no Confirm
+            button, update OKX or use MetaMask / Continue with Google.
           </div>
         )}
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
