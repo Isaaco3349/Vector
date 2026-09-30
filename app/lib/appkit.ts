@@ -84,6 +84,8 @@ export type SwapArgs = {
    * accepting a worse price, so it is never widened on the user's behalf.
    */
   slippageBps?: number;
+  /** When false, never use EIP-5792 batched swap transactions (recommended for OKX). */
+  batchTransactions?: boolean;
 };
 
 /** Circle's documented default slippage tolerance (SwapConfig.slippageBps). */
@@ -178,6 +180,7 @@ async function buildKitAndParams(args: SwapArgs) {
     kitKey?: string;
     allowanceStrategy?: "permit" | "approve";
     slippageBps?: number;
+    batchTransactions?: boolean;
     customFee: ReturnType<typeof swapCustomFeeConfig>["customFee"];
   } = {
     customFee: swapCustomFeeConfig().customFee,
@@ -186,6 +189,9 @@ async function buildKitAndParams(args: SwapArgs) {
   if (args.allowanceStrategy) config.allowanceStrategy = args.allowanceStrategy;
   if (typeof args.slippageBps === "number" && Number.isFinite(args.slippageBps)) {
     config.slippageBps = args.slippageBps;
+  }
+  if (args.batchTransactions === false) {
+    config.batchTransactions = false;
   }
 
   const swapParams = {

@@ -56,6 +56,11 @@ export type BridgeArgs = {
   toChain: BridgeChainId;
   /** Human-readable USDC amount, e.g. "1.00" — App Kit takes it as a string. */
   amount: string;
+  /**
+   * OKX and some wallets block App Kit batch/permit flows. Use Circle-encoded
+   * approve + burn as plain `eth_sendTransaction` only.
+   */
+  useSequentialTransactions?: boolean;
 };
 
 export type BridgeQuote = {
@@ -356,6 +361,13 @@ function extractFailureDetail(result: unknown): string | null {
 
 /** Execute the bridge. Returns best-effort source tx + state, plus raw result. */
 export async function executeBridge(args: BridgeArgs): Promise<BridgeExecution> {
+  if (args.useSequentialTransactions) {
+    const { executeBridgeViaSequentialTransactions } = await import(
+      "./bridge-sequential-tx"
+    );
+    return executeBridgeViaSequentialTransactions(args);
+  }
+
   const { kit, bridgeParams } = await buildKitAndParams(args);
   const result = await kit.bridge(bridgeParams);
 
