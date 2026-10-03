@@ -92,6 +92,8 @@ export type BridgeCall = {
 export type BridgePlan = {
   approve: BridgeCall;
   burn: BridgeCall;
+  /** USDC minor units Circle approves (amount + platform fee). */
+  approvalAmountMinor: string;
   /** Human amount echoed back for display, and its 6-decimal minor-unit form. */
   amount: string;
   amountMinor: string;
@@ -407,6 +409,7 @@ export async function buildBridgePlan(
   return {
     approve,
     burn,
+    approvalAmountMinor: approvalAmount,
     amount: amountTrimmed,
     amountMinor,
     useForwarder: true,

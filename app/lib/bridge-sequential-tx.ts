@@ -7,7 +7,14 @@
  * "risky signature" with no Confirm. This module encodes with Circle's CCTP
  * provider (same bytes as Arc Portal) and submits only legacy transactions.
  */
-import { createPublicClient, http, type Hash } from "viem";
+import {
+  createPublicClient,
+  decodeFunctionData,
+  erc20Abi,
+  http,
+  type Hash,
+  type Hex,
+} from "viem";
 import type { BridgeExecution, BridgeArgs } from "./bridge";
 import { bridgeChainById, explorerTxUrl } from "./bridge-chains";
 import { buildBridgePlan, type BridgeCall } from "./google-bridge";
@@ -89,24 +96,41 @@ export async function executeBridgeViaSequentialTransactions(
   const sourceDefRpc = await resolveSourceRpc(fromMeta.appKitChain);
   const chainId = fromMeta.chainId;
 
+  if (typeof console !== "undefined") {
+    console.info("[Vector] bridge: OKX-safe sequential path (eth_sendTransaction only)");
+  }
+
+  const publicClient = createPublicClient({ transport: http(sourceDefRpc) });
+  const needsApprove = await usdcAllowanceInsufficient(
+    publicClient,
+    plan.approve.to as `0x${string}`,
+    address,
+    plan.approve.data as Hex,
+    BigInt(plan.approvalAmountMinor),
+  );
+
   let approveHash: Hash | null = null;
-  try {
-    approveHash = await sendLegacyTransaction(
-      args.provider,
-      address,
-      plan.approve,
-      chainId,
-    );
-    await waitForReceipt(sourceDefRpc, approveHash);
-  } catch (err) {
+  if (needsApprove) {
+    try {
+      approveHash = await sendLegacyTransaction(
+        args.provider,
+        address,
+        plan.approve,
+        chainId,
+      );
+      await waitForReceipt(sourceDefRpc, approveHash);
+    } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/reject|denied|cancel|risky|blocked/i.test(msg)) {
       throw err;
     }
     // Allowance may already be sufficient — continue to burn on benign reverts.
-    if (!/allowance|already|execution reverted/i.test(msg)) {
-      throw err;
+      if (!/allowance|already|execution reverted/i.test(msg)) {
+        throw err;
+      }
     }
+  } else if (typeof console !== "undefined") {
+    console.info("[Vector] bridge: skipping approve — USDC allowance already sufficient");
   }
 
   const burnHash = await sendLegacyTransaction(
@@ -123,6 +147,65 @@ export async function executeBridgeViaSequentialTransactions(
     failureDetail: null,
     raw: { path: "sequential-eth_sendTransaction", approveHash, burnHash },
   };
+}
+
+function decodeAllowanceSpender(approveData: Hex): `0x${string}` | null {
+  const candidates = [
+    {
+      name: "approve",
+      type: "function",
+      inputs: [
+        { name: "spender", type: "address" },
+        { name: "amount", type: "uint256" },
+      ],
+      outputs: [{ type: "bool" }],
+      stateMutability: "nonpayable",
+    },
+    {
+      name: "increaseAllowance",
+      type: "function",
+      inputs: [
+        { name: "spender", type: "address" },
+        { name: "increment", type: "uint256" },
+      ],
+      outputs: [{ type: "bool" }],
+      stateMutability: "nonpayable",
+    },
+  ] as const;
+  for (const abi of candidates) {
+    try {
+      const decoded = decodeFunctionData({ abi: [abi], data: approveData });
+      const spender = decoded.args[0];
+      if (typeof spender === "string" && spender.startsWith("0x")) {
+        return spender as `0x${string}`;
+      }
+    } catch {
+      /* try next shape */
+    }
+  }
+  return null;
+}
+
+async function usdcAllowanceInsufficient(
+  client: ReturnType<typeof createPublicClient>,
+  token: `0x${string}`,
+  owner: `0x${string}`,
+  approveData: Hex,
+  required: bigint,
+): Promise<boolean> {
+  const spender = decodeAllowanceSpender(approveData);
+  if (!spender) return true;
+  try {
+    const allowance = await client.readContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [owner, spender],
+    });
+    return allowance < required;
+  } catch {
+    return true;
+  }
 }
 
 async function resolveSourceRpc(appKitChain: string): Promise<string> {
