@@ -24,7 +24,7 @@ import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
-import { isOkxWallet } from "../lib/wallet-brand";
+import { isOkxWallet, useOkxSafeTransactionPath } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
 
 /**
@@ -207,7 +207,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     connector,
     chainId: wagmiChainId,
   } = useAccount();
-  const okxWallet = isOkxWallet(connector);
   const { switchChainAsync, isPending: switching } = useSwitchChain();
 
   const [tokenIn, setTokenIn] = useState("USDC");
@@ -305,6 +304,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   // documented, stable way to get it (defined on the Connector type), so we
   // don't have to reach through undocumented client internals.
   const providerRef = useRef<Eip1193Provider | null>(null);
+  const [okxViaProvider, setOkxViaProvider] = useState(false);
+  const okxWallet = isOkxWallet(connector) || okxViaProvider;
 
   /**
    * Re-ask the wallet which chain it is on. Returns the id as well as storing
@@ -322,11 +323,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     async function resolveProvider(): Promise<Eip1193Provider | null> {
       providerRef.current = null;
+      setOkxViaProvider(false);
       try {
         if (connector?.getProvider) {
           const p = (await connector.getProvider()) as Eip1193Provider;
           if (!cancelled && p && typeof p.request === "function") {
             providerRef.current = p;
+            setOkxViaProvider(useOkxSafeTransactionPath(connector, p));
             return p;
           }
         }
@@ -338,6 +341,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             : undefined;
         if (!cancelled && injected && typeof injected.request === "function") {
           providerRef.current = injected;
+          setOkxViaProvider(useOkxSafeTransactionPath(connector, injected));
           return injected;
         }
       } catch (err) {
@@ -613,7 +617,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         // otherwise Circle's own 3% default applies. The quote above was fetched
         // with the same value, so what was shown is what gets executed.
         ...(slippageBps !== null ? { slippageBps } : {}),
-        ...(okxWallet
+        ...(useOkxSafeTransactionPath(connector, provider)
           ? {
               allowanceStrategy: "approve" as const,
               batchTransactions: false as const,
@@ -1029,7 +1033,7 @@ function describeSwapError(
   const text = ((): string => {
     switch (info.kind) {
       case "user-cancelled":
-        return "You cancelled the request in your wallet.";
+        return "You cancelled in your wallet. Nothing was sent.";
 
       case "chain-mismatch":
         return `Your wallet is on a different network than ${ARC_DISPLAY_NAME}, so it wouldn't sign. Switch to ${ARC_DISPLAY_NAME} and try again — nothing was sent.`;

@@ -3,6 +3,7 @@
 import { SwapChain } from "@circle-fin/app-kit";
 import { swapCustomFeeConfig } from "./fees";
 import { isMainnet } from "./network";
+import { errorTextBlob, sanitizeWalletDetail } from "./wallet-errors";
 
 const ARC_CHAIN = isMainnet ? SwapChain.Arc : SwapChain.Arc_Testnet;
 
@@ -404,7 +405,8 @@ function readAmountBounds(cause: unknown): {
  */
 export function classifySwapError(err: unknown): SwapErrorInfo {
   const message =
-    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+    errorTextBlob(err) ||
+    (err instanceof Error ? err.message : typeof err === "string" ? err : "");
   const rec =
     err && typeof err === "object" ? (err as Record<string, unknown>) : null;
 
@@ -439,7 +441,8 @@ export function classifySwapError(err: unknown): SwapErrorInfo {
     name,
     code,
     recoverability,
-    detail: message.length > 0 ? message : null,
+    detail:
+      message.length > 0 ? sanitizeWalletDetail(message.split("\n")[0] ?? message) : null,
     ...readAmountBounds(rec?.cause),
   };
 }

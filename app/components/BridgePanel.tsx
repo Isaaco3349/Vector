@@ -24,7 +24,11 @@ import {
   BRIDGE_FEE_BPS,
   formatVectorFeeLabel,
 } from "../lib/fees";
-import { isOkxWallet } from "../lib/wallet-brand";
+import { isOkxWallet, useOkxSafeTransactionPath } from "../lib/wallet-brand";
+import {
+  friendlyBridgeFailureMessage,
+  friendlyWalletError,
+} from "../lib/wallet-errors";
 import { useBridgeBalance } from "./useBridgeBalance";
 
 function isArcBridgeChain(id: BridgeChainId): boolean {
@@ -89,7 +93,6 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   const balanceFrom = useBridgeBalance(fromChain);
   const burnOnArc = isArcBridgeChain(fromChain);
-  const okxWallet = isOkxWallet(connector);
 
   /**
    * The numeric id of the chain the burn has to be signed on. Comes from the
@@ -103,6 +106,9 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   // provider from the active wagmi connector (its documented getProvider()),
   // falling back to window.ethereum.
   const providerRef = useRef<Eip1193Provider | null>(null);
+  /** Wagmi often labels OKX as generic "Injected" — detect via the provider object too. */
+  const [okxViaProvider, setOkxViaProvider] = useState(false);
+  const okxWallet = isOkxWallet(connector) || okxViaProvider;
 
   /**
    * Re-ask the wallet which chain it is on. Returns the id as well as storing
@@ -120,11 +126,13 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     async function resolveProvider(): Promise<Eip1193Provider | null> {
       providerRef.current = null;
+      setOkxViaProvider(false);
       try {
         if (connector?.getProvider) {
           const p = (await connector.getProvider()) as Eip1193Provider;
           if (!cancelled && p && typeof p.request === "function") {
             providerRef.current = p;
+            setOkxViaProvider(useOkxSafeTransactionPath(connector, p));
             return p;
           }
         }
@@ -134,6 +142,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             : undefined;
         if (!cancelled && injected && typeof injected.request === "function") {
           providerRef.current = injected;
+          setOkxViaProvider(useOkxSafeTransactionPath(connector, injected));
           return injected;
         }
       } catch (err) {
@@ -226,7 +235,9 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       } catch (err) {
         if (!cancelled) {
           setQuote(null);
-          setError(readableError(err, "Couldn't estimate this bridge route."));
+          setError(
+            friendlyWalletError(err, "Couldn't estimate this bridge route."),
+          );
         }
       } finally {
         if (!cancelled) setQuoting(false);
@@ -265,7 +276,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     if (id === sourceChainId) return;
     if (switchError) {
       setError(
-        readableError(
+        friendlyWalletError(
           switchError,
           `Couldn't switch networks. Switch to ${chainLabel(fromChain)} in your wallet, then try again.`,
         ),
@@ -317,30 +328,17 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         fromChain,
         toChain,
         amount: String(parsedAmount),
-        useSequentialTransactions: okxWallet,
+        useSequentialTransactions: useOkxSafeTransactionPath(connector, provider),
       });
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
       if (result.state === "error") {
-        // Report what Circle actually said, and DON'T claim funds are safe
-        // unless that's knowable. If a burn hash came back, the source-chain
-        // burn happened — telling someone "no funds were moved" in that case
-        // would send them looking for money that is mid-flight, or stop them
-        // reporting a real loss. The tx link is rendered below either way.
-        const detail = result.failureDetail;
-        if (result.txHash) {
-          setError(
-            detail
-              ? `The burn was sent on ${chainLabel(fromChain)} but Circle reported the bridge as failed: ${detail} Check the transaction below before retrying — this amount may already have left your wallet.`
-              : `The burn was sent on ${chainLabel(fromChain)} but Circle reported the bridge as failed, without giving a reason. Check the transaction below before retrying — this amount may already have left your wallet.`,
-          );
-        } else {
-          setError(
-            detail
-              ? `Circle reported the bridge didn't go through: ${detail}`
-              : "Circle reported the bridge didn't go through, without giving a reason. No burn transaction was recorded, so your funds should be untouched — check your wallet before retrying.",
-          );
-        }
+        setError(
+          friendlyBridgeFailureMessage(result.failureDetail, {
+            burnSubmitted: Boolean(result.txHash),
+            fromChainLabel: chainLabel(fromChain),
+          }),
+        );
       } else if (!result.txHash) {
         // bridge() resolved without error, so the burn was submitted — the SDK
         // just hasn't handed back a source hash yet. That is NOT a failure, so
@@ -359,7 +357,10 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       }
     } catch (err) {
       setError(
-        readableError(err, "Bridge failed. No funds were moved if it was rejected."),
+        friendlyWalletError(
+          err,
+          "Bridge didn't complete. Nothing was sent if you cancelled.",
+        ),
       );
     } finally {
       setBridging(false);
@@ -648,25 +649,3 @@ function chainLabel(id: BridgeChainId): string {
   return BRIDGE_CHAINS.find((c) => c.appKitChain === id)?.label ?? id;
 }
 
-function readableError(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) {
-    if (/risky|signature type|blocked to protect/i.test(err.message)) {
-      return (
-        "Your wallet blocked this request as a security precaution (common with OKX on Arc/CCTP). " +
-        "Update OKX Wallet, confirm each transaction prompt if shown, or connect MetaMask/Rabby for this bridge."
-      );
-    }
-    if (/reject|denied|user cancel/i.test(err.message)) {
-      return "You cancelled the request in your wallet.";
-    }
-    if (/insufficient/i.test(err.message)) {
-      return "Insufficient balance for this bridge (amount plus fees).";
-    }
-    if (/forwarder|relayer/i.test(err.message)) {
-      return "Circle's forwarder is unavailable for this route right now. Try again shortly.";
-    }
-    return err.message;
-  }
-  if (typeof err === "string") return err;
-  return fallback;
-}
