@@ -24,7 +24,7 @@ import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
-import { isOkxWallet, useOkxSafeTransactionPath } from "../lib/wallet-brand";
+import { isOkxWallet, okxSafeTransactionPath } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
 
 /**
@@ -329,7 +329,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           const p = (await connector.getProvider()) as Eip1193Provider;
           if (!cancelled && p && typeof p.request === "function") {
             providerRef.current = p;
-            setOkxViaProvider(useOkxSafeTransactionPath(connector, p));
+            setOkxViaProvider(okxSafeTransactionPath(connector, p));
             return p;
           }
         }
@@ -341,7 +341,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             : undefined;
         if (!cancelled && injected && typeof injected.request === "function") {
           providerRef.current = injected;
-          setOkxViaProvider(useOkxSafeTransactionPath(connector, injected));
+          setOkxViaProvider(okxSafeTransactionPath(connector, injected));
           return injected;
         }
       } catch (err) {
@@ -617,7 +617,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         // otherwise Circle's own 3% default applies. The quote above was fetched
         // with the same value, so what was shown is what gets executed.
         ...(slippageBps !== null ? { slippageBps } : {}),
-        ...(useOkxSafeTransactionPath(connector, provider)
+        ...(okxSafeTransactionPath(connector, provider)
           ? {
               allowanceStrategy: "approve" as const,
               batchTransactions: false as const,

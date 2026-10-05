@@ -10,21 +10,32 @@
   --vector-text: #f5f3f7;
   --vector-text-dim: #9b98a3;
   --vector-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
-  --vector-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --vector-sans: var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  --vector-max-content: 72rem;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body {
   background: var(--vector-bg);
+  background-image: radial-gradient(
+    ellipse 90% 60% at 50% -10%,
+    var(--vector-pink-dim),
+    transparent 55%
+  );
   color: var(--vector-text);
   font-family: var(--vector-sans);
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  min-height: 100%;
 }
 
 ::selection {

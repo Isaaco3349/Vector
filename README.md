@@ -10,6 +10,33 @@ you already use.
 The app also supports **Arc testnet** for development (`NEXT_PUBLIC_NETWORK=testnet`).
 Production is configured for mainnet.
 
+## Interface (desktop & mobile)
+
+- **Layout** — Full-width sticky header with primary nav (Swap, Bridge, Earn, etc.
+  when connected). On large screens, a **two-column** layout puts product copy and
+  feature descriptions on the left and the wallet / connect card on the right (similar
+  in spirit to [Uniswap](https://app.uniswap.org/), which uses the full viewport instead
+  of a single centered phone column).
+- **Typography** — [Inter](https://fonts.google.com/specimen/Inter) via `next/font`
+  for UI copy; monospace for addresses, networks, and balances.
+- **Scroll** — Landing and dashboard content can extend below the fold (feature
+  blurbs, legal links); the page scrolls naturally instead of vertically centering
+  a static block on empty side margins.
+
+## Before you deploy (release check)
+
+After each product upgrade, run the release gate and **push only if it passes**:
+
+```bash
+npm run verify:release
+```
+
+This runs **`npm audit --omit=dev --audit-level=critical`** (production dependency tree;
+fails only on **critical** issues) and **`npm run build`**. Use
+`npm run verify:audit:full` periodically to review moderate/high findings — many are
+**transitive** (Circle App Kit / W3S Firebase, Solana helpers in SDKs) and need upstream
+fixes rather than local overrides.
+
 ## Two ways to connect
 
 - **Continue with Google** — creates a non-custodial **smart contract account (SCA)**

@@ -682,41 +682,83 @@ export default function HomePage() {
     );
   }, [connectors]);
 
+  const appNav =
+    connected
+      ? {
+          onSwap: () => setShowSwap(true),
+          onBridge: () => setShowBridge(true),
+          onEarn: () => setShowEarn(true),
+          onSend: () => setShowSend(true),
+          onReceive: () => setShowReceive(true),
+          onHistory: () => setShowHistory(true),
+        }
+      : null;
+
   return (
     <main className="min-h-screen flex flex-col">
-      <header className="flex items-center justify-between px-6 py-5 md:px-10">
-        <div className="flex items-center gap-2">
-          <VectorMark />
-          <span className="text-[15px] font-semibold tracking-tight">
-            Vector
+      <header className="sticky top-0 z-40 border-b border-[var(--vector-line)] bg-[var(--vector-bg)]/85 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-[var(--vector-max-content)] items-center justify-between gap-4 px-6 py-4 md:px-10">
+          <Link href="/" className="flex items-center gap-2 shrink-0">
+            <VectorMark />
+            <span className="text-[15px] font-semibold tracking-tight">
+              Vector
+            </span>
+          </Link>
+
+          <nav
+            className="hidden md:flex items-center gap-1 text-[14px] font-medium"
+            aria-label="Primary"
+          >
+            {appNav ? (
+              <>
+                <HeaderNavButton label="Swap" onClick={appNav.onSwap} />
+                <HeaderNavButton label="Bridge" onClick={appNav.onBridge} />
+                <HeaderNavButton label="Earn" onClick={appNav.onEarn} />
+                <HeaderNavButton label="Send" onClick={appNav.onSend} />
+                <HeaderNavButton label="Receive" onClick={appNav.onReceive} />
+                <HeaderNavButton label="Activity" onClick={appNav.onHistory} />
+              </>
+            ) : (
+              <>
+                <a
+                  href="#features"
+                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
+                >
+                  Features
+                </a>
+                <a
+                  href="#connect"
+                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
+                >
+                  Connect
+                </a>
+              </>
+            )}
+          </nav>
+
+          <span className="text-xs text-[var(--vector-text-dim)] font-mono shrink-0">
+            {headerNetworkLabel}
           </span>
         </div>
-        <span className="text-xs text-[var(--vector-text-dim)] font-mono">
-          {headerNetworkLabel}
-        </span>
       </header>
 
-      <section className="flex-1 flex items-center justify-center px-6">
-        <div className="w-full max-w-[420px]">
+      <section className="flex-1 w-full mx-auto max-w-[var(--vector-max-content)] px-6 py-10 md:py-14 lg:py-16">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-12 lg:gap-16 items-start">
+          <div className="hidden lg:block pt-2" id="features">
+            <ProductOverview connected={Boolean(connected)} />
+          </div>
+
+          <div
+            id="connect"
+            className="w-full max-w-[420px] mx-auto lg:mx-0 lg:max-w-[420px] scroll-mt-24"
+          >
           {!connected && (
             <>
-              <div className="mb-8">
-                <h1 className="text-[32px] leading-[1.15] font-semibold tracking-tight mb-3">
-                  Swap. Bridge. Earn.
-                  <br />
-                  <span className="text-[var(--vector-pink)]">
-                    All on Arc.
-                  </span>
-                </h1>
-                <p className="text-[var(--vector-text-dim)] text-[15px] leading-relaxed">
-                  Vector is a home base for USDC-native DeFi on Circle&apos;s
-                  Arc network: one place to trade, earn, and move value,
-                  whether you&apos;re new to crypto or bringing a wallet you
-                  already trust.
-                </p>
+              <div className="mb-8 lg:hidden">
+                <LandingHero compact />
               </div>
 
-              <div className="grid grid-cols-3 gap-2 mb-8">
+              <div className="grid grid-cols-3 gap-2 mb-8 lg:hidden">
                 <FeaturePill label="Swap" />
                 <FeaturePill label="Bridge" />
                 <FeaturePill label="Earn" />
@@ -885,33 +927,43 @@ export default function HomePage() {
                 Google sign-in wallets can&apos;t be recovered by Vector or
                 Circle if you lose access to that account, so keep it secure.
               </p>
+
+              <div className="lg:hidden mt-12 pt-10 border-t border-[var(--vector-line)]">
+                <ProductOverview connected={false} />
+              </div>
             </>
           )}
 
           {connected && (
-            <WalletCard
-              address={connected.address}
-              blockchain={connected.blockchain}
-              balance={connected.balance}
-              cirBtcBalance={cirBtcBalance}
-              source={connected.source}
-              onSend={() => setShowSend(true)}
-              onReceive={() => setShowReceive(true)}
-              onSwap={() => setShowSwap(true)}
-              onBridge={() => setShowBridge(true)}
-              onEarn={() => setShowEarn(true)}
-              onHistory={() => setShowHistory(true)}
-              onDisconnect={
-                connected.source === "wallet"
-                  ? () => disconnect()
-                  : handleCircleSignOut
-              }
-            />
+            <>
+              <WalletCard
+                address={connected.address}
+                blockchain={connected.blockchain}
+                balance={connected.balance}
+                cirBtcBalance={cirBtcBalance}
+                source={connected.source}
+                onSend={() => setShowSend(true)}
+                onReceive={() => setShowReceive(true)}
+                onSwap={() => setShowSwap(true)}
+                onBridge={() => setShowBridge(true)}
+                onEarn={() => setShowEarn(true)}
+                onHistory={() => setShowHistory(true)}
+                onDisconnect={
+                  connected.source === "wallet"
+                    ? () => disconnect()
+                    : handleCircleSignOut
+                }
+              />
+              <div className="lg:hidden mt-12 pt-10 border-t border-[var(--vector-line)]">
+                <ProductOverview connected />
+              </div>
+            </>
           )}
+          </div>
         </div>
       </section>
 
-      <footer className="flex flex-col items-center gap-4 px-6 py-6">
+      <footer className="mt-auto border-t border-[var(--vector-line)] flex flex-col items-center gap-4 px-6 py-8">
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[12px] text-[var(--vector-text-dim)]">
           <Link href="/terms" className="hover:text-[var(--vector-pink)] transition-colors">
             Terms
@@ -1288,6 +1340,114 @@ function WalletCard({
         </button>
       )}
     </div>
+  );
+}
+
+function HeaderNavButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] hover:bg-[var(--vector-surface)] transition-colors"
+    >
+      {label}
+    </button>
+  );
+}
+
+function LandingHero({ compact }: { compact?: boolean }) {
+  return (
+    <div className={compact ? "mb-0" : "mb-10"}>
+      <h1
+        className={
+          compact
+            ? "text-[32px] leading-[1.15] font-semibold tracking-tight mb-3"
+            : "text-[40px] lg:text-[44px] leading-[1.1] font-semibold tracking-tight mb-4"
+        }
+      >
+        Swap. Bridge. Earn.
+        <br />
+        <span className="text-[var(--vector-pink)]">All on Arc.</span>
+      </h1>
+      <p
+        className={
+          compact
+            ? "text-[var(--vector-text-dim)] text-[15px] leading-relaxed"
+            : "text-[var(--vector-text-dim)] text-[16px] lg:text-[17px] leading-relaxed max-w-xl"
+        }
+      >
+        Vector is a home base for USDC-native DeFi on Circle&apos;s Arc network:
+        trade, earn yield, and move USDC across chains — with Google sign-in or
+        your own wallet.
+      </p>
+    </div>
+  );
+}
+
+function ProductOverview({ connected }: { connected: boolean }) {
+  return (
+    <div className="space-y-10">
+      {!connected && <LandingHero />}
+
+      {connected && (
+        <div>
+          <p className="text-[12px] uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
+            Your hub
+          </p>
+          <h2 className="text-[28px] font-semibold tracking-tight mb-3">
+            Manage USDC on Arc
+          </h2>
+          <p className="text-[15px] leading-relaxed text-[var(--vector-text-dim)] max-w-lg">
+            Use the card to send, swap, bridge, or earn. Top navigation mirrors
+            the same actions on desktop.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        <FeatureBlurb
+          title="Swap"
+          body="Same-chain USDC ↔ EURC on Arc through Circle App Kit, with transparent Vector fees shown before you confirm."
+        />
+        <FeatureBlurb
+          title="Bridge"
+          body="CCTP v2 cross-chain USDC — burn on the source chain, mint on the destination via Circle's relayer. Arc, Base, Ethereum, and more."
+        />
+        <FeatureBlurb
+          title="Earn"
+          body="Deposit USDC into Morpho-style vaults on Arc. Withdraw anytime. Available for Google and external wallets."
+        />
+      </div>
+
+      <p className="text-[13px] leading-relaxed text-[var(--vector-text-dim)] max-w-lg">
+        Arc uses USDC for gas, so one balance covers fees and transfers. New here?{" "}
+        <Link href="/terms" className="text-[var(--vector-pink)] underline">
+          Terms
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" className="text-[var(--vector-pink)] underline">
+          Privacy
+        </Link>{" "}
+        explain how Vector and Circle handle your data.
+      </p>
+    </div>
+  );
+}
+
+function FeatureBlurb({ title, body }: { title: string; body: string }) {
+  return (
+    <article className="rounded-2xl border border-[var(--vector-line)] bg-[var(--vector-surface)]/60 p-5">
+      <h3 className="text-[15px] font-semibold mb-2">{title}</h3>
+      <p className="text-[14px] leading-relaxed text-[var(--vector-text-dim)]">
+        {body}
+      </p>
+    </article>
   );
 }
 
