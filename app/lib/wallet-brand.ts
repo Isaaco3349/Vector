@@ -32,7 +32,7 @@ export function providerIsOkx(provider: unknown): boolean {
 }
 
 /** Bridge/swap should use plain `eth_sendTransaction` paths for OKX. */
-export function useOkxSafeTransactionPath(
+export function okxSafeTransactionPath(
   connector: WagmiConnectorLike,
   provider?: unknown,
 ): boolean {

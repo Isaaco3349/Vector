@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify:fees": "node scripts/verify-platform-fees.mjs"
+    "verify:fees": "node scripts/verify-platform-fees.mjs",
+    "verify:release": "npm audit --omit=dev --audit-level=critical && npm run build",
+    "verify:audit:full": "npm audit --audit-level=moderate"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.18.0",

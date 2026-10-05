@@ -24,7 +24,7 @@ import {
   BRIDGE_FEE_BPS,
   formatVectorFeeLabel,
 } from "../lib/fees";
-import { isOkxWallet, useOkxSafeTransactionPath } from "../lib/wallet-brand";
+import { isOkxWallet, okxSafeTransactionPath } from "../lib/wallet-brand";
 import {
   friendlyBridgeFailureMessage,
   friendlyWalletError,
@@ -132,7 +132,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
           const p = (await connector.getProvider()) as Eip1193Provider;
           if (!cancelled && p && typeof p.request === "function") {
             providerRef.current = p;
-            setOkxViaProvider(useOkxSafeTransactionPath(connector, p));
+            setOkxViaProvider(okxSafeTransactionPath(connector, p));
             return p;
           }
         }
@@ -142,7 +142,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             : undefined;
         if (!cancelled && injected && typeof injected.request === "function") {
           providerRef.current = injected;
-          setOkxViaProvider(useOkxSafeTransactionPath(connector, injected));
+          setOkxViaProvider(okxSafeTransactionPath(connector, injected));
           return injected;
         }
       } catch (err) {
@@ -328,7 +328,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         fromChain,
         toChain,
         amount: String(parsedAmount),
-        useSequentialTransactions: useOkxSafeTransactionPath(connector, provider),
+        useSequentialTransactions: okxSafeTransactionPath(connector, provider),
       });
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
