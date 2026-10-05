@@ -743,17 +743,21 @@ export default function HomePage() {
       </header>
 
       <section className="flex-1 w-full mx-auto max-w-[var(--vector-max-content)] px-6 py-10 md:py-14 lg:py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-12 lg:gap-16 items-start">
+        <div
+          className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-12 lg:gap-16 ${
+            connected ? "items-start" : "items-start lg:items-stretch"
+          }`}
+        >
           <div className="hidden lg:block pt-2" id="features">
             <ProductOverview connected={Boolean(connected)} />
           </div>
 
           <div
             id="connect"
-            className="w-full max-w-[420px] mx-auto lg:mx-0 lg:max-w-[420px] scroll-mt-24"
+            className="w-full max-w-[420px] mx-auto lg:mx-0 lg:max-w-[420px] scroll-mt-24 lg:flex lg:flex-col"
           >
           {!connected && (
-            <>
+            <div className="lg:flex lg:flex-col lg:flex-1 lg:min-h-[520px]">
               <div className="mb-8 lg:hidden">
                 <LandingHero compact />
               </div>
@@ -812,6 +816,7 @@ export default function HomePage() {
                 <span className="flex-1 h-px bg-[var(--vector-line)]" />
               </div>
 
+              <div className="flex flex-col gap-5 mt-0 lg:flex-1 lg:min-h-[380px] lg:justify-evenly lg:gap-0 lg:py-4">
               <button
                 onClick={() => {
                   if (pickableConnectors.length <= 1) {
@@ -822,13 +827,13 @@ export default function HomePage() {
                   }
                 }}
                 disabled={pickableConnectors.length === 0 || isConnectPending}
-                className="w-full h-[52px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[15px] flex items-center justify-center gap-2.5 hover:border-[var(--vector-pink)] transition-colors disabled:opacity-40"
+                className="w-full h-[52px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[15px] flex items-center justify-center gap-2.5 hover:border-[var(--vector-pink)] transition-colors disabled:opacity-40 shrink-0"
               >
                 <WalletMark />
                 {isConnectPending ? "Connecting…" : "Connect Wallet"}
               </button>
 
-              <p className="mt-5 text-[11px] text-[var(--vector-text-dim)] leading-relaxed text-center">
+              <p className="text-[11px] text-[var(--vector-text-dim)] leading-relaxed text-center shrink-0">
                 By connecting, you agree to our{" "}
                 <Link href="/terms" className="text-[var(--vector-pink)] underline">
                   Terms of Service
@@ -893,20 +898,22 @@ export default function HomePage() {
                 </div>
               )}
 
+              {(status || loginError || connectError || (step === "init" && challengeId)) && (
+                <div className="flex flex-col gap-3 shrink-0">
               {status && (
-                <p className="mt-4 text-center text-[13px] text-[var(--vector-text-dim)] font-mono">
+                <p className="text-center text-[13px] text-[var(--vector-text-dim)] font-mono">
                   {status}
                 </p>
               )}
 
               {loginError && (
-                <p className="mt-4 text-center text-[13px] text-[var(--vector-pink)] font-mono">
+                <p className="text-center text-[13px] text-[var(--vector-pink)] font-mono">
                   {loginError}
                 </p>
               )}
 
               {connectError && (
-                <p className="mt-4 text-center text-[13px] text-[var(--vector-pink)] font-mono">
+                <p className="text-center text-[13px] text-[var(--vector-pink)] font-mono">
                   {connectError.message}
                 </p>
               )}
@@ -915,23 +922,26 @@ export default function HomePage() {
                 <button
                   onClick={handleCreateWallet}
                   disabled={busy}
-                  className="mt-4 w-full h-[52px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[15px] hover:border-[var(--vector-pink)] transition-colors disabled:opacity-40"
+                  className="w-full h-[52px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[15px] hover:border-[var(--vector-pink)] transition-colors disabled:opacity-40"
                 >
                   Confirm wallet setup
                 </button>
               )}
+                </div>
+              )}
 
-              <StepDots step={step} />
+              <StepDots step={step} className="lg:mt-0 shrink-0" />
 
-              <p className="mt-10 text-[12px] leading-relaxed text-[var(--vector-text-dim)] text-center">
+              <p className="text-[12px] leading-relaxed text-[var(--vector-text-dim)] text-center shrink-0 lg:max-w-[340px] lg:mx-auto">
                 Google sign-in wallets can&apos;t be recovered by Vector or
                 Circle if you lose access to that account, so keep it secure.
               </p>
+              </div>
 
               <div className="lg:hidden mt-12 pt-10 border-t border-[var(--vector-line)]">
                 <ProductOverview connected={false} />
               </div>
-            </>
+            </div>
           )}
 
           {connected && (
@@ -1115,11 +1125,13 @@ export default function HomePage() {
   );
 }
 
-function StepDots({ step }: { step: Step }) {
+function StepDots({ step, className }: { step: Step; className?: string }) {
   const order: Step[] = ["start", "device", "auth", "init", "wallet"];
   const idx = Math.max(order.indexOf(step), 0);
   return (
-    <div className="mt-8 flex items-center justify-center gap-1.5">
+    <div
+      className={`mt-8 flex items-center justify-center gap-1.5 ${className ?? ""}`}
+    >
       {order.slice(0, 4).map((_, i) => (
         <span
           key={i}
