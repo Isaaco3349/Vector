@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
@@ -29,7 +29,8 @@ import {
   BRIDGE_FEE_BPS,
   formatVectorFeeLabel,
 } from "../lib/fees";
-import { isOkxWallet, okxSafeTransactionPath } from "../lib/wallet-brand";
+import { isOkxWallet } from "../lib/wallet-brand";
+import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import {
   friendlyBridgeFailureMessage,
   friendlyWalletError,
@@ -118,13 +119,9 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
    */
   const sourceChainId = bridgeChainById(fromChain)?.chainId ?? null;
 
-  // Same provider-resolution approach as SwapPanel: pull the raw EIP-1193
-  // provider from the active wagmi connector (its documented getProvider()),
-  // falling back to window.ethereum.
-  const providerRef = useRef<Eip1193Provider | null>(null);
-  /** Wagmi often labels OKX as generic "Injected" — detect via the provider object too. */
-  const [okxViaProvider, setOkxViaProvider] = useState(false);
-  const okxWallet = isOkxWallet(connector) || okxViaProvider;
+  const { providerRef, okxSafePath, ready: providerReady } =
+    useWalletSigningProviderRef(connector);
+  const okxWallet = isOkxWallet(connector) || okxSafePath;
 
   /**
    * Re-ask the wallet which chain it is on. Returns the id as well as storing
@@ -139,46 +136,18 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
+    if (!providerReady) return;
+    const provider = providerRef.current;
+    if (!provider) return;
     let cancelled = false;
-    async function resolveProvider(): Promise<Eip1193Provider | null> {
-      providerRef.current = null;
-      setOkxViaProvider(false);
-      try {
-        if (connector?.getProvider) {
-          const p = (await connector.getProvider()) as Eip1193Provider;
-          if (!cancelled && p && typeof p.request === "function") {
-            providerRef.current = p;
-            setOkxViaProvider(okxSafeTransactionPath(connector, p));
-            return p;
-          }
-        }
-        const injected =
-          typeof window !== "undefined"
-            ? (window as unknown as { ethereum?: Eip1193Provider }).ethereum
-            : undefined;
-        if (!cancelled && injected && typeof injected.request === "function") {
-          providerRef.current = injected;
-          setOkxViaProvider(okxSafeTransactionPath(connector, injected));
-          return injected;
-        }
-      } catch (err) {
-        console.error("[Vector] failed to resolve wallet provider for bridge:", err);
-      }
-      return null;
-    }
     void (async () => {
-      const provider = await resolveProvider();
-      if (cancelled || !provider) return;
-      // Ask the provider that will actually be signing. wagmiChainId is in the
-      // dependency list only as a signal that something moved — the answer
-      // itself always comes from the wallet.
       const id = await getProviderChainId(provider);
       if (!cancelled) setWalletChainId(id);
     })();
     return () => {
       cancelled = true;
     };
-  }, [connector, wagmiChainId]);
+  }, [connector, wagmiChainId, providerReady, providerRef]);
 
   const parsedAmount = useMemo(() => {
     const n = Number(amount);
@@ -247,6 +216,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       setError(insufficientMessage);
       return;
     }
+    if (!providerReady) return;
     const provider = providerRef.current;
     if (!provider) {
       setError("No wallet provider available. Reconnect your wallet and try again.");
@@ -281,7 +251,15 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [parsedAmount, fromChain, toChain, sameChain, insufficient, insufficientMessage]);
+  }, [
+    parsedAmount,
+    fromChain,
+    toChain,
+    sameChain,
+    insufficient,
+    insufficientMessage,
+    providerReady,
+  ]);
 
   /**
    * Move the wallet to the SOURCE chain, so the burn can be signed. Unlike
@@ -361,7 +339,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         fromChain,
         toChain,
         amount: String(parsedAmount),
-        useSequentialTransactions: okxSafeTransactionPath(connector, provider),
+        useSequentialTransactions: okxSafePath,
       });
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
@@ -626,9 +604,12 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             <span className="font-semibold text-[var(--vector-text)]">
               OKX wallet:
             </span>{" "}
-            Vector uses standard transaction confirms for OKX (no batched signatures).
-            Approve USDC, then confirm the burn. If OKX still blocks with no Confirm
-            button, update OKX or use MetaMask / Continue with Google.
+            Vector binds OKX directly (not MetaMask&apos;s{" "}
+            <span className="font-mono">window.ethereum</span>) and only sends
+            standard transaction confirms — approve, then burn/swap. Pick{" "}
+            <span className="font-semibold">OKX Wallet</span> in Connect if you
+            have multiple extensions. If OKX still shows risk with no Confirm,
+            update the extension or use Continue with Google.
           </div>
         )}
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">

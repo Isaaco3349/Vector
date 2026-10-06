@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
   estimateDeposit,
@@ -13,11 +13,11 @@ import {
   type EarnPosition,
   type EarnQuote,
   type EarnVault,
-  type Eip1193Provider,
 } from "../lib/earn";
 import { arcBridgeChainId, bridgeChainById } from "../lib/bridge-chains";
 import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useSendBalance } from "./useSendBalance";
+import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 
 /**
  * Earn panel for external (injected) wallets — deposit USDC into an Arc yield vault.
@@ -56,37 +56,8 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
   const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Resolve the raw EIP-1193 provider from the active wagmi connector — the same
-  // approach Swap uses. `connector.getProvider()` is wagmi's documented path.
-  const providerRef = useRef<Eip1193Provider | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    async function resolve() {
-      providerRef.current = null;
-      try {
-        if (connector?.getProvider) {
-          const p = (await connector.getProvider()) as Eip1193Provider;
-          if (!cancelled && p && typeof p.request === "function") {
-            providerRef.current = p;
-            return;
-          }
-        }
-        const injected =
-          typeof window !== "undefined"
-            ? (window as unknown as { ethereum?: Eip1193Provider }).ethereum
-            : undefined;
-        if (!cancelled && injected && typeof injected.request === "function") {
-          providerRef.current = injected;
-        }
-      } catch (err) {
-        console.error("[Vector] failed to resolve provider for earn:", err);
-      }
-    }
-    void resolve();
-    return () => {
-      cancelled = true;
-    };
-  }, [connector]);
+  const { providerRef, ready: providerReady } =
+    useWalletSigningProviderRef(connector);
 
   // Discover vaults once when the panel opens.
   useEffect(() => {
@@ -160,6 +131,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
       setQuote(null);
       return;
     }
+    if (!providerReady) return;
     const provider = providerRef.current;
     if (!provider) {
       setError("No wallet provider available. Reconnect and try again.");
@@ -190,7 +162,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [selected, parsedAmount, mode, overMax]);
+  }, [selected, parsedAmount, mode, overMax, providerReady]);
 
   async function handleSubmit() {
     const provider = providerRef.current;

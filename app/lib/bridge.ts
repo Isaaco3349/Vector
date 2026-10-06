@@ -41,6 +41,7 @@
 
 import type { Eip1193Provider } from "./appkit";
 import { bridgeCustomFeeHumanForAppKit } from "./fees";
+import { providerIsOkx } from "./wallet-brand";
 import { formatUnits } from "viem";
 import {
   bridgeChainById,
@@ -361,7 +362,9 @@ function extractFailureDetail(result: unknown): string | null {
 
 /** Execute the bridge. Returns best-effort source tx + state, plus raw result. */
 export async function executeBridge(args: BridgeArgs): Promise<BridgeExecution> {
-  if (args.useSequentialTransactions) {
+  const sequential =
+    args.useSequentialTransactions || providerIsOkx(args.provider);
+  if (sequential) {
     const { executeBridgeViaSequentialTransactions } = await import(
       "./bridge-sequential-tx"
     );

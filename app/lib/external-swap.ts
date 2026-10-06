@@ -83,6 +83,7 @@ async function sendCall(
   from: string,
   call: SwapCall,
   label: string,
+  chainId: number,
 ): Promise<string> {
   const hash = await provider.request({
     method: "eth_sendTransaction",
@@ -92,6 +93,7 @@ async function sendCall(
         to: call.to,
         data: call.data,
         value: toHexQuantity(call.value),
+        chainId: `0x${chainId.toString(16)}`,
       },
     ],
   });
@@ -178,13 +180,25 @@ export async function executeSwapPlan(
   }
 
   onStage?.("approving");
-  const approveTxHash = await sendCall(provider, from, plan.approve, "approval");
+  const approveTxHash = await sendCall(
+    provider,
+    from,
+    plan.approve,
+    "approval",
+    ARC_CHAIN_ID,
+  );
 
   onStage?.("awaiting-approval");
   await waitForSuccess(provider, approveTxHash, "approval");
 
   onStage?.("executing");
-  const executeTxHash = await sendCall(provider, from, plan.execute, "swap");
+  const executeTxHash = await sendCall(
+    provider,
+    from,
+    plan.execute,
+    "swap",
+    ARC_CHAIN_ID,
+  );
 
   onStage?.("awaiting-execution");
   await waitForSuccess(provider, executeTxHash, "swap");
