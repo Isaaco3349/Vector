@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { parseUnits } from "viem";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
   refreshBalancesAfterTx,
@@ -25,7 +24,8 @@ import {
 import { getProviderChainId } from "../lib/appkit";
 import { ensureArcNetwork } from "../lib/arc-wallet";
 import {
-  bridgeMaxAmountHumanFromBalance,
+  bridgeAmountExceedsUsdcBalance,
+  bridgeMaxAmountHumanFromBalanceBaseUnits,
   BRIDGE_FEE_BPS,
   formatVectorFeeLabel,
 } from "../lib/fees";
@@ -187,18 +187,35 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   const sameChain = fromChain === toChain;
 
+  const maxBridgeableHuman = useMemo(() => {
+    if (balanceFrom.balanceBaseUnits === null) return null;
+    return bridgeMaxAmountHumanFromBalanceBaseUnits(
+      balanceFrom.balanceBaseUnits,
+    );
+  }, [balanceFrom.balanceBaseUnits]);
+
   const insufficient = useMemo(() => {
-    if (!parsedAmount || balanceFrom.formatted === null) return false;
-    const max = bridgeMaxAmountHumanFromBalance(balanceFrom.formatted);
-    if (!max) return true;
-    try {
-      const want = parseUnits(amount.trim() as `${number}`, 6);
-      const cap = parseUnits(max as `${number}`, 6);
-      return want > cap;
-    } catch {
-      return true;
+    if (!amount.trim() || balanceFrom.balanceBaseUnits === null) return false;
+    return bridgeAmountExceedsUsdcBalance(
+      amount,
+      balanceFrom.balanceBaseUnits,
+    );
+  }, [amount, balanceFrom.balanceBaseUnits]);
+
+  const insufficientMessage = useMemo(() => {
+    if (!insufficient) return null;
+    const bal = balanceFrom.formatted ?? "—";
+    const max = maxBridgeableHuman;
+    if (max) {
+      return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus Vector's ${(BRIDGE_FEE_BPS / 100).toFixed(2)}% fee (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
     }
-  }, [parsedAmount, balanceFrom.formatted, amount]);
+    return "Amount exceeds your USDC balance on the source chain (including Vector's bridge fee).";
+  }, [
+    insufficient,
+    balanceFrom.formatted,
+    maxBridgeableHuman,
+    fromChain,
+  ]);
 
   // Only claim the wallet is on the wrong chain once it has actually told us.
   // A null answer means "unknown", which is not the same as "wrong" — the
@@ -227,7 +244,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     }
     if (insufficient) {
       setQuote(null);
-      setError("Amount exceeds your USDC balance on the source chain.");
+      setError(insufficientMessage);
       return;
     }
     const provider = providerRef.current;
@@ -264,7 +281,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [parsedAmount, fromChain, toChain, sameChain, insufficient]);
+  }, [parsedAmount, fromChain, toChain, sameChain, insufficient, insufficientMessage]);
 
   /**
    * Move the wallet to the SOURCE chain, so the burn can be signed. Unlike
@@ -440,16 +457,35 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             isLoading={balanceFrom.isLoading}
             symbol="USDC"
             onMax={
-              balanceFrom.formatted
+              balanceFrom.balanceBaseUnits !== null
                 ? () => {
-                    const max = bridgeMaxAmountHumanFromBalance(
-                      balanceFrom.formatted as string,
+                    const max = bridgeMaxAmountHumanFromBalanceBaseUnits(
+                      balanceFrom.balanceBaseUnits as bigint,
                     );
-                    setAmount(max ?? (balanceFrom.formatted as string));
+                    if (max) setAmount(trimBridgeHint(max));
                   }
                 : undefined
             }
           />
+          {maxBridgeableHuman &&
+            balanceFrom.formatted &&
+            !balanceFrom.isLoading && (
+              <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
+                MAX uses your full USDC balance: Vector&apos;s{" "}
+                {(BRIDGE_FEE_BPS / 100).toFixed(2)}% fee is reserved from it; the
+                amount field (up to{" "}
+                <span className="font-mono">{trimBridgeHint(maxBridgeableHuman)}</span>
+                ) is what CCTP sends toward {chainLabel(toChain)}.
+              </p>
+            )}
+          {!balanceFrom.isLoading &&
+            balanceFrom.formatted === null &&
+            !isArcBridgeChain(fromChain) && (
+              <p className="mt-1 text-[10px] leading-snug text-[var(--vector-pink)]">
+                Couldn&apos;t read USDC on {chainLabel(fromChain)}. Reconnect
+                your wallet or try again in a moment.
+              </p>
+            )}
           {burnOnArc && balanceFrom.arcWalletDesync && (
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-pink)]">
               Wallet shows token USDC but not Arc gas USDC — on Arc they are one
@@ -668,5 +704,15 @@ function ChainSelect({
 
 function chainLabel(id: BridgeChainId): string {
   return BRIDGE_CHAINS.find((c) => c.appKitChain === id)?.label ?? id;
+}
+
+/** Short human amount for inputs and hints (up to 6 dp, no trailing zeros). */
+function trimBridgeHint(value: string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return value;
+  return n
+    .toLocaleString("en-US", { maximumFractionDigits: 6, useGrouping: false })
+    .replace(/(\.\d*?)0+$/, "$1")
+    .replace(/\.$/, "");
 }
 

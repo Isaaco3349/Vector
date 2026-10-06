@@ -3,8 +3,20 @@
 import { useCallback } from "react";
 import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
+import { arcUsdcNativeToErc20Minor } from "../lib/arc-usdc-balance";
 import { bridgeChainById, type BridgeChainId } from "../lib/bridge-chains";
 import { useArcUsdcBalance } from "./useArcUsdcBalance";
+
+function arcUsdcBalanceBaseUnits(
+  nativeWei: bigint | null,
+  erc20Minor: bigint | null,
+): bigint | null {
+  if (nativeWei !== null && nativeWei > BigInt(0)) {
+    return arcUsdcNativeToErc20Minor(nativeWei);
+  }
+  if (erc20Minor !== null) return erc20Minor;
+  return null;
+}
 
 function isArcChain(id: BridgeChainId | undefined): boolean {
   return id === "Arc" || id === "Arc_Testnet";
@@ -15,6 +27,8 @@ function isArcChain(id: BridgeChainId | undefined): boolean {
  */
 export function useBridgeBalance(chainId: BridgeChainId): {
   formatted: string | null;
+  /** On-chain USDC balance (6 dp) for fee-aware checks — not display-rounded. */
+  balanceBaseUnits: bigint | null;
   isLoading: boolean;
   arcWalletDesync?: boolean;
   refetch: () => Promise<void>;
@@ -76,6 +90,10 @@ export function useBridgeBalance(chainId: BridgeChainId): {
   if (isArc) {
     return {
       formatted: arcUsdc.formatted,
+      balanceBaseUnits: arcUsdcBalanceBaseUnits(
+        arcUsdc.nativeWei,
+        arcUsdc.erc20Minor,
+      ),
       isLoading: arcUsdc.isLoading,
       arcWalletDesync: arcUsdc.walletBalanceDesync,
       refetch,
@@ -84,12 +102,25 @@ export function useBridgeBalance(chainId: BridgeChainId): {
 
   if (isNative) {
     if (nativeQuery.isLoading) {
-      return { formatted: null, isLoading: true, refetch };
+      return {
+        formatted: null,
+        balanceBaseUnits: null,
+        isLoading: true,
+        refetch,
+      };
     }
     const v = nativeQuery.data;
-    if (!v) return { formatted: null, isLoading: false, refetch };
+    if (!v) {
+      return {
+        formatted: null,
+        balanceBaseUnits: null,
+        isLoading: false,
+        refetch,
+      };
+    }
     return {
       formatted: trim(formatUnits(v.value, v.decimals)),
+      balanceBaseUnits: v.value,
       isLoading: false,
       refetch,
     };
@@ -97,22 +128,38 @@ export function useBridgeBalance(chainId: BridgeChainId): {
 
   if (isErc20) {
     if (erc20Query.isLoading) {
-      return { formatted: null, isLoading: true, refetch };
+      return {
+        formatted: null,
+        balanceBaseUnits: null,
+        isLoading: true,
+        refetch,
+      };
     }
     const results = erc20Query.data;
     const rawBalance = results?.[0]?.result;
     const decimals = results?.[1]?.result;
     if (typeof rawBalance !== "bigint" || typeof decimals !== "number") {
-      return { formatted: null, isLoading: false, refetch };
+      return {
+        formatted: null,
+        balanceBaseUnits: null,
+        isLoading: false,
+        refetch,
+      };
     }
     return {
       formatted: trim(formatUnits(rawBalance, decimals)),
+      balanceBaseUnits: rawBalance,
       isLoading: false,
       refetch,
     };
   }
 
-  return { formatted: null, isLoading: false, refetch: async () => {} };
+  return {
+    formatted: null,
+    balanceBaseUnits: null,
+    isLoading: false,
+    refetch: async () => {},
+  };
 }
 
 function trim(value: string): string {
