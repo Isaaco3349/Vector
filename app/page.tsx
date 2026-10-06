@@ -1196,14 +1196,21 @@ function WalletCard({
 
   return (
     <div className="rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-7">
-      <div className="flex items-center justify-between mb-8">
-        <span className="text-[13px] text-[var(--vector-text-dim)] font-mono">
-          {blockchain}
-        </span>
-        <span className="flex items-center gap-1.5 text-[12px] text-[var(--vector-text-dim)]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--vector-pink)]" />
-          {source === "circle" ? "Google wallet" : "external wallet"}
-        </span>
+      <div className="flex items-center justify-between gap-3 mb-8">
+        <WalletMetaBadge
+          href="https://www.arc.io"
+          title="Arc — Circle's USDC-native L1 (opens arc.io)"
+        >
+          <span className="font-mono uppercase tracking-wider">{blockchain}</span>
+          <ArcLinkIcon />
+        </WalletMetaBadge>
+        <WalletMetaBadge role="status">
+          <span
+            className="h-2 w-2 shrink-0 rounded-full bg-[var(--vector-pink)]"
+            aria-hidden
+          />
+          {source === "circle" ? "Google wallet" : "External wallet"}
+        </WalletMetaBadge>
       </div>
 
       <p className="text-[13px] text-[var(--vector-text-dim)] mb-1.5">
@@ -1352,6 +1359,62 @@ function WalletCard({
         </button>
       )}
     </div>
+  );
+}
+
+const WALLET_META_BADGE =
+  "inline-flex items-center gap-2 rounded-md border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-1.5 text-[11px] font-semibold tracking-wide text-[var(--vector-text)] shadow-sm transition-colors";
+
+function WalletMetaBadge({
+  children,
+  href,
+  title,
+  role,
+}: {
+  children: ReactNode;
+  href?: string;
+  title?: string;
+  role?: "status";
+}) {
+  const className = `${WALLET_META_BADGE}${href ? " hover:border-[var(--vector-pink)]" : ""}`;
+  if (href) {
+    return (
+      <Link
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+        title={title}
+      >
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <span className={className} role={role}>
+      {children}
+    </span>
+  );
+}
+
+function ArcLinkIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      className="text-[var(--vector-text-dim)] shrink-0"
+      aria-hidden
+    >
+      <path
+        d="M3.5 2h6v6M9 3 3 9"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
