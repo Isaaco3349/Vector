@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { wagmiConfig } from "./wagmi-config";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -73,6 +74,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         {children}
+        <ThemeToggle />
       </QueryClientProvider>
     </WagmiProvider>
   );

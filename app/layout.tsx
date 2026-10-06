@@ -19,7 +19,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("vector-theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body suppressHydrationWarning className={inter.className}>
         <Providers>{children}</Providers>
       </body>
