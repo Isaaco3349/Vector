@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+html[data-theme="dark"] {
   --vector-bg: #0b0b0e;
   --vector-surface: #16151b;
   --vector-surface-raised: #1e1c24;
@@ -9,10 +10,23 @@
   --vector-pink-dim: #ff3d811a;
   --vector-text: #f5f3f7;
   --vector-text-dim: #9b98a3;
+  --vector-on-pink: #0b0b0e;
   --vector-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
   --vector-sans: var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont,
     sans-serif;
   --vector-max-content: 72rem;
+}
+
+html[data-theme="light"] {
+  --vector-bg: #f6f5f8;
+  --vector-surface: #ffffff;
+  --vector-surface-raised: #eeeef2;
+  --vector-line: #dddbe3;
+  --vector-pink: #e91e6a;
+  --vector-pink-dim: #ff3d8118;
+  --vector-text: #121018;
+  --vector-text-dim: #5c5866;
+  --vector-on-pink: #0b0b0e;
 }
 
 * {
@@ -40,7 +54,7 @@ body {
 
 ::selection {
   background: var(--vector-pink);
-  color: #0b0b0e;
+  color: var(--vector-on-pink);
 }
 
 button {
