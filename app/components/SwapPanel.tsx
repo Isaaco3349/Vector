@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
@@ -28,9 +28,11 @@ import { ensureArcNetwork } from "../lib/arc-wallet";
 import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
+import { executeSwapViaSequentialTransactions } from "../lib/okx-safe-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
-import { isOkxWallet, okxSafeTransactionPath } from "../lib/wallet-brand";
+import { isOkxWallet } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
+import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 
 /**
  * Looser slippage tolerances offered — only ever after Circle has said the
@@ -318,9 +320,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   // what App Kit's browser adapter wraps. `connector.getProvider()` is wagmi's
   // documented, stable way to get it (defined on the Connector type), so we
   // don't have to reach through undocumented client internals.
-  const providerRef = useRef<Eip1193Provider | null>(null);
-  const [okxViaProvider, setOkxViaProvider] = useState(false);
-  const okxWallet = isOkxWallet(connector) || okxViaProvider;
+  const { providerRef, okxSafePath, ready: providerReady } =
+    useWalletSigningProviderRef(connector);
+  const okxWallet = isOkxWallet(connector) || okxSafePath;
 
   /**
    * Re-ask the wallet which chain it is on. Returns the id as well as storing
@@ -335,48 +337,18 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
+    if (!providerReady) return;
+    const provider = providerRef.current;
+    if (!provider) return;
     let cancelled = false;
-    async function resolveProvider(): Promise<Eip1193Provider | null> {
-      providerRef.current = null;
-      setOkxViaProvider(false);
-      try {
-        if (connector?.getProvider) {
-          const p = (await connector.getProvider()) as Eip1193Provider;
-          if (!cancelled && p && typeof p.request === "function") {
-            providerRef.current = p;
-            setOkxViaProvider(okxSafeTransactionPath(connector, p));
-            return p;
-          }
-        }
-        // Fallback: window.ethereum (single-wallet browsers where the
-        // connector somehow can't hand back a provider).
-        const injected =
-          typeof window !== "undefined"
-            ? (window as unknown as { ethereum?: Eip1193Provider }).ethereum
-            : undefined;
-        if (!cancelled && injected && typeof injected.request === "function") {
-          providerRef.current = injected;
-          setOkxViaProvider(okxSafeTransactionPath(connector, injected));
-          return injected;
-        }
-      } catch (err) {
-        console.error("[Vector] failed to resolve wallet provider for swap:", err);
-      }
-      return null;
-    }
     void (async () => {
-      const provider = await resolveProvider();
-      if (cancelled || !provider) return;
-      // Ask the provider that will actually be signing. wagmiChainId is in the
-      // dependency list only as a signal that something moved — the answer
-      // itself always comes from the wallet.
       const id = await getProviderChainId(provider);
       if (!cancelled) setWalletChainId(id);
     })();
     return () => {
       cancelled = true;
     };
-  }, [connector, wagmiChainId]);
+  }, [connector, wagmiChainId, providerReady, providerRef]);
 
   const parsedAmount = useMemo(() => {
     const n = Number(amountIn);
@@ -433,6 +405,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       );
       return;
     }
+    if (!providerReady) return;
     const provider = providerRef.current;
     if (!provider) {
       setErrorState({
@@ -453,6 +426,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           tokenOut,
           amountIn: String(parsedAmount),
           ...(slippageBps !== null ? { slippageBps } : {}),
+          ...(okxSafePath
+            ? {
+                allowanceStrategy: "approve" as const,
+                batchTransactions: false as const,
+              }
+            : {}),
         });
         if (!cancelled) {
           setQuote(q);
@@ -519,7 +498,17 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [parsedAmount, tokenIn, tokenOut, sameToken, slippageBps, address, recordUnroutablePair]);
+  }, [
+    parsedAmount,
+    tokenIn,
+    tokenOut,
+    sameToken,
+    slippageBps,
+    address,
+    recordUnroutablePair,
+    providerReady,
+    okxSafePath,
+  ]);
 
   async function handleSwitch() {
     setErrorState(null);
@@ -591,6 +580,30 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         return;
       }
 
+      // OKX: always POST /swap plan + sequential eth_sendTransaction (never App Kit permit/batch).
+      if (okxSafePath && address) {
+        const fromSymbol = asSwapSymbol(tokenIn);
+        const toSymbol = asSwapSymbol(tokenOut);
+        if (!fromSymbol || !toSymbol) {
+          setErrorState({
+            text: "Unsupported token pair for this swap.",
+            info: null,
+          });
+          return;
+        }
+        const planResult = await executeSwapViaSequentialTransactions({
+          provider,
+          walletAddress: address,
+          tokenIn: fromSymbol,
+          tokenOut: toSymbol,
+          amountIn: String(parsedAmount),
+          onStage: (stage) => setPlanStage(stage),
+        });
+        setTxHash(planResult.txHash);
+        void syncBalancesAfterSwap(planResult.txHash);
+        return;
+      }
+
       // ── The POST /swap path, taken when GET /quote returned "not found" ──
       // Circle already priced and signed this plan for one exact pair and
       // amount. The quoting effect clears it whenever an input changes, but this
@@ -633,12 +646,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         // otherwise Circle's own 3% default applies. The quote above was fetched
         // with the same value, so what was shown is what gets executed.
         ...(slippageBps !== null ? { slippageBps } : {}),
-        ...(okxSafeTransactionPath(connector, provider)
-          ? {
-              allowanceStrategy: "approve" as const,
-              batchTransactions: false as const,
-            }
-          : {}),
       };
 
       let result: SwapResult;
