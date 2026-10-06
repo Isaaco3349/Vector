@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import {
@@ -19,6 +20,7 @@ export function useArcUsdcBalance(): {
   erc20Minor: bigint | null;
   walletBalanceDesync: boolean;
   isLoading: boolean;
+  refetch: () => Promise<void>;
 } {
   const { address, isConnected } = useAccount();
 
@@ -41,6 +43,10 @@ export function useArcUsdcBalance(): {
     ],
   });
 
+  const refetch = useCallback(async () => {
+    await Promise.all([nativeQuery.refetch(), erc20Query.refetch()]);
+  }, [nativeQuery, erc20Query]);
+
   if (nativeQuery.isLoading || erc20Query.isLoading) {
     return {
       formatted: null,
@@ -48,6 +54,7 @@ export function useArcUsdcBalance(): {
       erc20Minor: null,
       walletBalanceDesync: false,
       isLoading: true,
+      refetch,
     };
   }
 
@@ -64,6 +71,7 @@ export function useArcUsdcBalance(): {
       erc20Minor: null,
       walletBalanceDesync: false,
       isLoading: false,
+      refetch,
     };
   }
 
@@ -90,6 +98,7 @@ export function useArcUsdcBalance(): {
     erc20Minor: erc20,
     walletBalanceDesync,
     isLoading: false,
+    refetch,
   };
 }
 

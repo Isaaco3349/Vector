@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { bridgeChainById, type BridgeChainId } from "../lib/bridge-chains";
@@ -16,6 +17,7 @@ export function useBridgeBalance(chainId: BridgeChainId): {
   formatted: string | null;
   isLoading: boolean;
   arcWalletDesync?: boolean;
+  refetch: () => Promise<void>;
 } {
   const { address, isConnected } = useAccount();
   const chain = bridgeChainById(chainId);
@@ -57,39 +59,60 @@ export function useBridgeBalance(chainId: BridgeChainId): {
         : [],
   });
 
+  const refetch = useCallback(async () => {
+    if (isArc) {
+      await arcUsdc.refetch();
+      return;
+    }
+    if (isNative) {
+      await nativeQuery.refetch();
+      return;
+    }
+    if (isErc20) {
+      await erc20Query.refetch();
+    }
+  }, [arcUsdc, erc20Query, isArc, isErc20, isNative, nativeQuery]);
+
   if (isArc) {
     return {
       formatted: arcUsdc.formatted,
       isLoading: arcUsdc.isLoading,
       arcWalletDesync: arcUsdc.walletBalanceDesync,
+      refetch,
     };
   }
 
   if (isNative) {
-    if (nativeQuery.isLoading) return { formatted: null, isLoading: true };
+    if (nativeQuery.isLoading) {
+      return { formatted: null, isLoading: true, refetch };
+    }
     const v = nativeQuery.data;
-    if (!v) return { formatted: null, isLoading: false };
+    if (!v) return { formatted: null, isLoading: false, refetch };
     return {
       formatted: trim(formatUnits(v.value, v.decimals)),
       isLoading: false,
+      refetch,
     };
   }
 
   if (isErc20) {
-    if (erc20Query.isLoading) return { formatted: null, isLoading: true };
+    if (erc20Query.isLoading) {
+      return { formatted: null, isLoading: true, refetch };
+    }
     const results = erc20Query.data;
     const rawBalance = results?.[0]?.result;
     const decimals = results?.[1]?.result;
     if (typeof rawBalance !== "bigint" || typeof decimals !== "number") {
-      return { formatted: null, isLoading: false };
+      return { formatted: null, isLoading: false, refetch };
     }
     return {
       formatted: trim(formatUnits(rawBalance, decimals)),
       isLoading: false,
+      refetch,
     };
   }
 
-  return { formatted: null, isLoading: false };
+  return { formatted: null, isLoading: false, refetch: async () => {} };
 }
 
 function trim(value: string): string {
