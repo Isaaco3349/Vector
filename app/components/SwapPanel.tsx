@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
+import {
+  refreshBalancesAfterTx,
+  scheduleBalancePoll,
+} from "../lib/balance-refresh";
 import {
   arcExplorerTxUrl,
   chainId as ARC_CHAIN_ID,
@@ -294,8 +299,18 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             ? "Waiting for the swap…"
             : null;
 
+  const queryClient = useQueryClient();
   const balanceIn = useTokenBalance(tokenIn);
   const balanceOut = useTokenBalance(tokenOut);
+
+  const syncBalancesAfterSwap = useCallback(
+    async (txHash: string | null) => {
+      await refreshBalancesAfterTx(queryClient, txHash);
+      scheduleBalancePoll(queryClient);
+      await Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
+    },
+    [queryClient, balanceIn.refetch, balanceOut.refetch],
+  );
   const arcWalletDesync =
     tokenIn === "USDC" && balanceIn.arcWalletDesync === true;
 
@@ -605,6 +620,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           onStage: (stage) => setPlanStage(stage),
         });
         setTxHash(planResult.executeTxHash);
+        void syncBalancesAfterSwap(planResult.executeTxHash);
         return;
       }
 
@@ -649,13 +665,16 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       }
 
       setTxHash(result.txHash);
-      if (!result.txHash) {
+      if (result.txHash) {
+        void syncBalancesAfterSwap(result.txHash);
+      } else {
         // Swap returned but no recognisable hash — surface honestly rather
         // than claim success.
         setErrorState({
           text: "Swap submitted, but no transaction hash was returned. Check your wallet activity to confirm.",
           info: null,
         });
+        scheduleBalancePoll(queryClient);
       }
     } catch (err) {
       const described = describeSwapError(

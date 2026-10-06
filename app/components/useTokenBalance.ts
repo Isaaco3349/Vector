@@ -14,6 +14,7 @@ export function useTokenBalance(symbol: string): {
   formatted: string | null;
   isLoading: boolean;
   arcWalletDesync?: boolean;
+  refetch: () => Promise<void>;
 } {
   const { address, isConnected } = useAccount();
   const arcUsdc = useArcUsdcBalance();
@@ -48,24 +49,46 @@ export function useTokenBalance(symbol: string): {
       formatted: arcUsdc.formatted,
       isLoading: arcUsdc.isLoading,
       arcWalletDesync: arcUsdc.walletBalanceDesync,
+      refetch: arcUsdc.refetch,
     };
   }
 
   if (isErc20) {
-    if (erc20Query.isLoading) return { formatted: null, isLoading: true };
+    if (erc20Query.isLoading) {
+      return {
+        formatted: null,
+        isLoading: true,
+        refetch: async () => {
+          await erc20Query.refetch();
+        },
+      };
+    }
     const results = erc20Query.data;
     const rawBalance = results?.[0]?.result;
     const decimals = results?.[1]?.result;
     if (typeof rawBalance !== "bigint" || typeof decimals !== "number") {
-      return { formatted: null, isLoading: false };
+      return {
+        formatted: null,
+        isLoading: false,
+        refetch: async () => {
+          await erc20Query.refetch();
+        },
+      };
     }
     return {
       formatted: trim(formatUnits(rawBalance, decimals)),
       isLoading: false,
+      refetch: async () => {
+        await erc20Query.refetch();
+      },
     };
   }
 
-  return { formatted: null, isLoading: false };
+  return {
+    formatted: null,
+    isLoading: false,
+    refetch: async () => {},
+  };
 }
 
 function trim(value: string): string {

@@ -1,8 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { parseUnits } from "viem";
 import { useAccount, useSwitchChain } from "wagmi";
+import {
+  refreshBalancesAfterTx,
+  scheduleBalancePoll,
+} from "../lib/balance-refresh";
 import {
   estimateBridge,
   executeBridge,
@@ -91,7 +96,18 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
    */
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
 
+  const queryClient = useQueryClient();
   const balanceFrom = useBridgeBalance(fromChain);
+
+  const syncBalancesAfterBridge = useCallback(
+    async (txHash: string | null) => {
+      const srcChainId = bridgeChainById(fromChain)?.chainId;
+      await refreshBalancesAfterTx(queryClient, txHash, srcChainId);
+      scheduleBalancePoll(queryClient);
+      await balanceFrom.refetch();
+    },
+    [queryClient, fromChain, balanceFrom.refetch],
+  );
   const burnOnArc = isArcBridgeChain(fromChain);
 
   /**
@@ -332,6 +348,11 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       });
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
+      if (result.txHash) {
+        void syncBalancesAfterBridge(result.txHash);
+      } else if (result.state !== "error") {
+        scheduleBalancePoll(queryClient);
+      }
       if (result.state === "error") {
         setError(
           friendlyBridgeFailureMessage(result.failureDetail, {
