@@ -21,6 +21,7 @@ export async function executeSwapViaSequentialTransactions(args: {
     fromSymbol: args.tokenIn,
     toSymbol: args.tokenOut,
     amount: args.amountIn,
+    usdcApprovalStyle: "erc20Approve",
   });
 
   const result = await executeSwapPlan({

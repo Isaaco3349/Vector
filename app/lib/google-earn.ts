@@ -137,6 +137,8 @@ export type BuildEarnPlanArgs = {
   vaultAddress: string;
   /** Human-readable amount, e.g. "100.5". Passed to the service as-is. */
   amount: string;
+  /** OKX-friendly USDC approval (standard ERC-20 approve on 0x3600…). */
+  usdcApprovalStyle?: "increaseAllowance" | "erc20Approve";
 };
 
 /** Circle Earn HTTP `chain` field (CHAIN_TO_API: Arc → "ARC", Arc_Testnet → "ARC-TESTNET"). */
@@ -543,21 +545,24 @@ async function buildEarnPlan(
   if (approvalToken !== undefined && requiredAllowance > BigInt(0)) {
     const approveAmount = requiredAllowance + WARM_SLOT_RESIDUAL;
     const isUsdc = isSameAddress(approvalToken, usdcAddress);
-    const approvePrepared = isUsdc
-      ? await adapter.prepareAction(
-          "usdc.increaseAllowance",
-          { delegate: adapterContract, amount: approveAmount },
-          ctx,
-        )
-      : await adapter.prepareAction(
-          "token.approve",
-          {
-            tokenAddress: approvalToken,
-            delegate: adapterContract,
-            amount: approveAmount,
-          },
-          ctx,
-        );
+    const useErc20Approve =
+      isUsdc && args.usdcApprovalStyle === "erc20Approve";
+    const approvePrepared =
+      isUsdc && !useErc20Approve
+        ? await adapter.prepareAction(
+            "usdc.increaseAllowance",
+            { delegate: adapterContract, amount: approveAmount },
+            ctx,
+          )
+        : await adapter.prepareAction(
+            "token.approve",
+            {
+              tokenAddress: approvalToken,
+              delegate: adapterContract,
+              amount: approveAmount,
+            },
+            ctx,
+          );
     approve = readCallData(approvePrepared, "approve");
   }
 

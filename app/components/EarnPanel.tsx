@@ -14,9 +14,16 @@ import {
   type EarnQuote,
   type EarnVault,
 } from "../lib/earn";
-import { arcBridgeChainId, bridgeChainById } from "../lib/bridge-chains";
+import {
+  arcBridgeChainId,
+  bridgeChainById,
+  explorerTxUrl,
+} from "../lib/bridge-chains";
 import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "../lib/network";
+import { executeEarnViaSequentialTransactions } from "../lib/okx-safe-earn";
+import { isOkxWallet } from "../lib/wallet-brand";
 import { useSendBalance } from "./useSendBalance";
+import { OkxKitContractsNote } from "./OkxKitContractsNote";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 
 /**
@@ -56,8 +63,9 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
   const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { providerRef, ready: providerReady } =
-    useWalletSigningProviderRef(connector);
+  const { providerRef, okxSafePath, ready: providerReady } =
+    useWalletSigningProviderRef(connector, address);
+  const okxWallet = isOkxWallet(connector) || okxSafePath;
 
   // Discover vaults once when the panel opens.
   useEffect(() => {
@@ -172,12 +180,28 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
     setTxHash(null);
     setExplorerUrl(null);
     try {
-      const fn = mode === "deposit" ? executeDeposit : executeWithdraw;
-      const result: EarnExecution = await fn({
-        provider,
-        vaultAddress: selected.vaultAddress,
-        amount: parsedAmount,
-      });
+      let result: EarnExecution;
+      if (okxSafePath && address) {
+        const seq = await executeEarnViaSequentialTransactions({
+          provider,
+          walletAddress: address,
+          vaultAddress: selected.vaultAddress,
+          amount: parsedAmount,
+          action: mode,
+        });
+        result = {
+          txHash: seq.txHash,
+          explorerUrl: explorerTxUrl(arcBridgeChainId(), seq.txHash),
+          raw: { path: "sequential-eth_sendTransaction", ...seq },
+        };
+      } else {
+        const fn = mode === "deposit" ? executeDeposit : executeWithdraw;
+        result = await fn({
+          provider,
+          vaultAddress: selected.vaultAddress,
+          amount: parsedAmount,
+        });
+      }
       setTxHash(result.txHash);
       setExplorerUrl(result.explorerUrl);
       if (!result.txHash) {
@@ -445,9 +469,11 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
                         : "Withdraw USDC"}
                 </button>
 
+                {okxWallet && <OkxKitContractsNote />}
                 <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-                  Runs on {ARC_DISPLAY_NAME} through Circle&apos;s Earn. Gas is paid in
-                  USDC — leave a little for the network fee.
+                  {okxWallet
+                    ? `Earn on ${ARC_DISPLAY_NAME} uses Circle's Adapter contract with standard OKX transaction confirms.`
+                    : `Runs on ${ARC_DISPLAY_NAME} through Circle's Earn. Gas is paid in USDC — leave a little for the network fee.`}
                 </p>
               </>
             )}

@@ -139,10 +139,38 @@ export function createOkxSafeEip1193Provider(
   return wrapped as Eip1193Provider;
 }
 
+async function okxOwnsConnectedAddress(
+  connectedAddress: string,
+): Promise<Eip1193Provider | null> {
+  const okx = okxInjectedEip1193Provider();
+  if (!okx) return null;
+  try {
+    const accounts = (await okx.request({ method: "eth_accounts" })) as unknown;
+    const first = Array.isArray(accounts) ? accounts[0] : null;
+    if (
+      typeof first === "string" &&
+      first.toLowerCase() === connectedAddress.toLowerCase()
+    ) {
+      return okx;
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 /** Resolve + OKX-safe wrap when the signing provider is OKX. */
 export async function resolveSigningProvider(
   connector: WagmiConnectorLike | undefined,
+  connectedAddress?: string | null,
 ): Promise<Eip1193Provider | null> {
+  if (connectedAddress) {
+    const okxForAccount = await okxOwnsConnectedAddress(connectedAddress);
+    if (okxForAccount) {
+      return createOkxSafeEip1193Provider(okxForAccount);
+    }
+  }
+
   const raw = await resolveWalletEip1193Provider(connector);
   if (!raw) return null;
   return createOkxSafeEip1193Provider(raw);

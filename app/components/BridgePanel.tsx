@@ -120,7 +120,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const sourceChainId = bridgeChainById(fromChain)?.chainId ?? null;
 
   const { providerRef, okxSafePath, ready: providerReady } =
-    useWalletSigningProviderRef(connector);
+    useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath;
 
   /**
