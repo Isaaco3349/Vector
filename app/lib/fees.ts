@@ -125,9 +125,30 @@ export function bridgeMaxAmountHumanFromBalance(balanceHuman: string): string | 
   } catch {
     return null;
   }
+  return bridgeMaxAmountHumanFromBalanceBaseUnits(balanceBase);
+}
+
+/** Prefer this when the wallet balance is known in base units (avoids display rounding). */
+export function bridgeMaxAmountHumanFromBalanceBaseUnits(
+  balanceBase: bigint,
+): string | null {
   if (balanceBase <= BigInt(0)) return null;
   const maxBase =
     (balanceBase * BigInt(10_000)) / BigInt(10_000 + BRIDGE_FEE_BPS);
   if (maxBase <= BigInt(0)) return null;
   return formatUnits(maxBase, USDC_DECIMALS);
+}
+
+/** True when amount + Vector bridge fee exceeds on-chain USDC balance (6 dp). */
+export function bridgeAmountExceedsUsdcBalance(
+  amountHuman: string,
+  balanceBase: bigint,
+): boolean {
+  if (balanceBase <= BigInt(0)) return true;
+  try {
+    const required = bridgeTotalUsdcRequiredBaseUnits(amountHuman.trim());
+    return required > balanceBase;
+  } catch {
+    return true;
+  }
 }

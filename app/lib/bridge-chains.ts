@@ -194,6 +194,7 @@ const MAINNET_BRIDGE_CHAINS: BridgeChain[] = [
     chainId: 8453,
     label: "Base",
     usdcKind: "erc20",
+    usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     explorerTx: "https://basescan.org/tx/{hash}",
     explorerAddress: "https://basescan.org/address/{address}",
     forwarderDestination: true,
