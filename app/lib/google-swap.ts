@@ -146,6 +146,11 @@ export type BuildSwapPlanArgs = {
   amount: string;
   /** Optional slippage in basis points; omitted → Circle's service default. */
   slippageBps?: number;
+  /**
+   * Arc USDC input approval style. OKX handles standard ERC-20 `approve` more
+   * reliably than the native `increaseAllowance` predeploy helper.
+   */
+  usdcApprovalStyle?: "increaseAllowance" | "erc20Approve";
 };
 
 /**
@@ -558,21 +563,24 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
   // ERC-20 approve. Both target the input token; delegate = adapter contract.
   // amount is a bigint (token.approve REQUIRES bigint; increaseAllowance accepts it).
   const isUsdcIn = tokenInAddress.toLowerCase() === usdcAddress.toLowerCase();
-  const approvePrepared = isUsdcIn
-    ? await adapter.prepareAction(
-        "usdc.increaseAllowance",
-        { delegate: adapterContract, amount: inputAmount },
-        ctx,
-      )
-    : await adapter.prepareAction(
-        "token.approve",
-        {
-          tokenAddress: tokenInAddress,
-          delegate: adapterContract,
-          amount: inputAmount,
-        },
-        ctx,
-      );
+  const useErc20Approve =
+    isUsdcIn && args.usdcApprovalStyle === "erc20Approve";
+  const approvePrepared =
+    isUsdcIn && !useErc20Approve
+      ? await adapter.prepareAction(
+          "usdc.increaseAllowance",
+          { delegate: adapterContract, amount: inputAmount },
+          ctx,
+        )
+      : await adapter.prepareAction(
+          "token.approve",
+          {
+            tokenAddress: tokenInAddress,
+            delegate: adapterContract,
+            amount: inputAmount,
+          },
+          ctx,
+        );
   const approve = readCallData(approvePrepared, "approve");
 
   // EXECUTE — AdapterContract.execute(executeParams, tokenInputs, signature).

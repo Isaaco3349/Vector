@@ -32,6 +32,7 @@ import { executeSwapViaSequentialTransactions } from "../lib/okx-safe-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import { isOkxWallet } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
+import { OkxKitContractsNote } from "./OkxKitContractsNote";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 
 /**
@@ -321,7 +322,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   // documented, stable way to get it (defined on the Connector type), so we
   // don't have to reach through undocumented client internals.
   const { providerRef, okxSafePath, ready: providerReady } =
-    useWalletSigningProviderRef(connector);
+    useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath;
 
   /**
@@ -965,9 +966,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           </button>
         )}
 
+        {okxWallet && <OkxKitContractsNote />}
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          Swaps run on {ARC_DISPLAY_NAME} through Circle&apos;s App Kit. Estimated
-          output can move slightly before the transaction confirms.
+          {okxWallet
+            ? `Swaps on ${ARC_DISPLAY_NAME} use Circle's Adapter contract with standard OKX transaction confirms (no typed-data batching).`
+            : `Swaps run on ${ARC_DISPLAY_NAME} through Circle's App Kit. Estimated output can move slightly before the transaction confirms.`}
         </p>
       </div>
     </div>

@@ -7,7 +7,10 @@ import { okxSafeTransactionPath } from "../lib/wallet-brand";
 import { resolveSigningProvider } from "../lib/wallet-provider";
 
 /** Ref-based signing provider; `ready` flips when resolution completes. */
-export function useWalletSigningProviderRef(connector: Connector | undefined): {
+export function useWalletSigningProviderRef(
+  connector: Connector | undefined,
+  connectedAddress?: string | null,
+): {
   providerRef: RefObject<Eip1193Provider | null>;
   okxSafePath: boolean;
   ready: boolean;
@@ -23,7 +26,7 @@ export function useWalletSigningProviderRef(connector: Connector | undefined): {
     setOkxSafePath(false);
 
     void (async () => {
-      const p = await resolveSigningProvider(connector);
+      const p = await resolveSigningProvider(connector, connectedAddress);
       if (cancelled) return;
       providerRef.current = p;
       setOkxSafePath(okxSafeTransactionPath(connector, p ?? undefined));
@@ -33,7 +36,7 @@ export function useWalletSigningProviderRef(connector: Connector | undefined): {
     return () => {
       cancelled = true;
     };
-  }, [connector]);
+  }, [connector, connectedAddress]);
 
   return { providerRef, okxSafePath, ready };
 }
