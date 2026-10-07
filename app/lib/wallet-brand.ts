@@ -31,6 +31,16 @@ export function providerIsOkx(provider: unknown): boolean {
   return okx !== undefined && provider === okx;
 }
 
+/** OKX Wallet mobile in-app browser (WebView) — not the desktop Chrome extension. */
+export function okxInAppBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  if (/OKApp/i.test(ua)) return true;
+  return (
+    /OKX/i.test(ua) && /android|iphone|ipad|ipod|mobile/i.test(ua)
+  );
+}
+
 /** Bridge/swap should use plain `eth_sendTransaction` paths for OKX. */
 export function okxSafeTransactionPath(
   connector: WagmiConnectorLike,
@@ -38,10 +48,16 @@ export function okxSafeTransactionPath(
 ): boolean {
   if (process.env.NEXT_PUBLIC_FORCE_SEQUENTIAL_BRIDGE === "true") return true;
   if (isOkxWallet(connector) || providerIsOkx(provider)) return true;
-  if (typeof window !== "undefined") {
+  if (okxInAppBrowser() && connector?.id === "injected") return true;
+  if (
+    connector?.id === "injected" &&
+    typeof window !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
+  ) {
     const w = window as unknown as Record<string, unknown>;
     const okx = w.okxwallet as { ethereum?: unknown } | undefined;
-    if (okx?.ethereum && connector?.id === "injected") return true;
+    if (okx?.ethereum) return true;
   }
   return false;
 }

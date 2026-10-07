@@ -21,7 +21,7 @@ import {
 } from "../lib/bridge-chains";
 import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { executeEarnViaSequentialTransactions } from "../lib/okx-safe-earn";
-import { isOkxWallet } from "../lib/wallet-brand";
+import { isOkxWallet, okxInAppBrowser } from "../lib/wallet-brand";
 import { useSendBalance } from "./useSendBalance";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import { TxSuccessCard } from "./TxSuccessCard";
@@ -68,7 +68,8 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
 
   const { providerRef, okxSafePath, ready: providerReady } =
     useWalletSigningProviderRef(connector, address);
-  const okxWallet = isOkxWallet(connector) || okxSafePath;
+  const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
+  const useOkxSequential = okxSafePath || okxInAppBrowser();
 
   // Discover vaults once when the panel opens.
   useEffect(() => {
@@ -183,7 +184,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
     setExplorerUrl(null);
     try {
       let result: EarnExecution;
-      if (okxSafePath && address) {
+      if (useOkxSequential && address) {
         const seq = await executeEarnViaSequentialTransactions({
           provider,
           walletAddress: address,
@@ -499,7 +500,7 @@ function readableError(err: unknown, fallback: string): string {
     );
   }
   if (/^null$/i.test(blob.trim()) || (blob.trim() === "" && !(err instanceof Error))) {
-    return `${fallback} If OKX mobile still fails, use the OKX extension on desktop or Continue with Google.`;
+    return fallback;
   }
   if (err instanceof Error && err.message) {
     if (/reject|denied|user cancel|user rejected/i.test(err.message)) {
