@@ -11,6 +11,7 @@ import {
   BRIDGE_CHAINS,
   arcBridgeChainId,
   bridgeChainById,
+  defaultBridgeToChain,
   explorerAddressUrl,
   explorerTxUrl,
   type BridgeChainId,
@@ -95,7 +96,7 @@ export function GoogleBridgePanel({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [toChain, setToChain] = useState<BridgeChainId>("Base_Sepolia");
+  const [toChain, setToChain] = useState<BridgeChainId>(defaultBridgeToChain());
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   /**
