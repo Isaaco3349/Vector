@@ -2,8 +2,22 @@ import { formatUnits, getAddress, isAddress, parseUnits } from "viem";
 
 const USDC_DECIMALS = 6;
 
-/** Flat Vector platform fee (USDC) — product-approved 2026-03. */
-export const VECTOR_FLAT_FEE_USDC = "0.15";
+/** Flat Vector fee on swap / earn (USDC). */
+export const VECTOR_SWAP_FEE_USDC = "0.15";
+
+/** @deprecated Alias — use VECTOR_SWAP_FEE_USDC. */
+export const VECTOR_FLAT_FEE_USDC = VECTOR_SWAP_FEE_USDC;
+
+/**
+ * Bridge platform fee (USDC). Kept low vs Relay/Jumper-style CCTP UIs — mostly
+ * Circle CCTP + gas; override via NEXT_PUBLIC_VECTOR_BRIDGE_FEE_USDC.
+ */
+export const VECTOR_BRIDGE_FEE_USDC = (() => {
+  const raw = process.env.NEXT_PUBLIC_VECTOR_BRIDGE_FEE_USDC?.trim();
+  if (raw === "0" || raw === "0.0" || raw === "0.00") return "0";
+  if (raw && /^\d+(\.\d+)?$/.test(raw)) return raw;
+  return "0.01";
+})();
 
 /** @deprecated Use flat fee labels; kept for UI that still references bps keys. */
 export const SWAP_FEE_BPS = 25;
@@ -12,7 +26,12 @@ export const SWAP_FEE_BPS = 25;
 export const BRIDGE_FEE_BPS = 10;
 
 export function vectorFlatFeeBaseUnits(): bigint {
-  return parseUnits(VECTOR_FLAT_FEE_USDC as `${number}`, USDC_DECIMALS);
+  return parseUnits(VECTOR_SWAP_FEE_USDC as `${number}`, USDC_DECIMALS);
+}
+
+function bridgeFlatFeeBaseUnits(): bigint {
+  if (VECTOR_BRIDGE_FEE_USDC === "0") return BigInt(0);
+  return parseUnits(VECTOR_BRIDGE_FEE_USDC as `${number}`, USDC_DECIMALS);
 }
 
 const MISSING_RECIPIENT_MSG =
@@ -52,24 +71,27 @@ function parseBridgeAmountHuman(amountHuman: string): bigint {
 }
 
 export function bridgePlatformFeeBaseUnits(_amountHuman?: string): bigint {
-  return vectorFlatFeeBaseUnits();
+  return bridgeFlatFeeBaseUnits();
 }
 
 export function bridgePlatformFeeHuman(_amountHuman?: string): string {
-  return VECTOR_FLAT_FEE_USDC;
+  return VECTOR_BRIDGE_FEE_USDC;
 }
 
 export function bridgeCustomFeeHumanForAppKit(_amountHuman: string) {
+  const fee = bridgeFlatFeeBaseUnits();
+  if (fee <= BigInt(0)) return {};
   return {
     customFee: {
-      value: VECTOR_FLAT_FEE_USDC,
+      value: VECTOR_BRIDGE_FEE_USDC,
       recipientAddress: requirePlatformFeeRecipient(),
     },
   };
 }
 
 export function bridgeCustomFeeBaseForCctpBurn(_amountHuman: string) {
-  const feeBase = vectorFlatFeeBaseUnits();
+  const feeBase = bridgeFlatFeeBaseUnits();
+  if (feeBase <= BigInt(0)) return {};
   return {
     customFee: {
       value: feeBase.toString(),
@@ -80,7 +102,7 @@ export function bridgeCustomFeeBaseForCctpBurn(_amountHuman: string) {
 
 /**
  * Circle swap API requires `customFee.percentageBps` (not `value`). Map the
- * product flat $0.15 fee to bps for the quoted swap size.
+ * product flat swap fee to bps for the quoted swap size.
  */
 export function swapCustomFeeConfig(amountHuman?: string) {
   const recipientAddress = requirePlatformFeeRecipient();
@@ -89,7 +111,7 @@ export function swapCustomFeeConfig(amountHuman?: string) {
   if (trimmed && /^\d+(\.\d+)?$/.test(trimmed)) {
     const amount = Number(trimmed);
     if (Number.isFinite(amount) && amount > 0) {
-      const flat = Number(VECTOR_FLAT_FEE_USDC);
+      const flat = Number(VECTOR_SWAP_FEE_USDC);
       percentageBps = Math.ceil((flat / amount) * 10_000);
       percentageBps = Math.min(Math.max(percentageBps, 1), 10_000);
     }
@@ -103,12 +125,19 @@ export function swapCustomFeeConfig(amountHuman?: string) {
 }
 
 export function formatVectorFeeLabel(_bps?: number): string {
-  return `Includes $${VECTOR_FLAT_FEE_USDC} Vector fee`;
+  return `Includes $${VECTOR_SWAP_FEE_USDC} Vector fee`;
+}
+
+export function formatBridgeFeeLabel(): string {
+  if (VECTOR_BRIDGE_FEE_USDC === "0") {
+    return "No Vector bridge fee — CCTP network fees only";
+  }
+  return `Includes $${VECTOR_BRIDGE_FEE_USDC} Vector bridge fee`;
 }
 
 export function bridgeTotalUsdcRequiredBaseUnits(amountHuman: string): bigint {
   const amountBase = parseBridgeAmountHuman(amountHuman);
-  return amountBase + vectorFlatFeeBaseUnits();
+  return amountBase + bridgeFlatFeeBaseUnits();
 }
 
 export function bridgeMaxAmountHumanFromBalance(balanceHuman: string): string | null {
@@ -126,7 +155,7 @@ export function bridgeMaxAmountHumanFromBalance(balanceHuman: string): string | 
 export function bridgeMaxAmountHumanFromBalanceBaseUnits(
   balanceBase: bigint,
 ): string | null {
-  const fee = vectorFlatFeeBaseUnits();
+  const fee = bridgeFlatFeeBaseUnits();
   if (balanceBase <= fee) return null;
   const maxBase = balanceBase - fee;
   if (maxBase <= BigInt(0)) return null;

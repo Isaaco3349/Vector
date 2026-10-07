@@ -26,8 +26,8 @@ import { ensureArcNetwork } from "../lib/arc-wallet";
 import {
   bridgeAmountExceedsUsdcBalance,
   bridgeMaxAmountHumanFromBalanceBaseUnits,
-  formatVectorFeeLabel,
-  VECTOR_FLAT_FEE_USDC,
+  formatBridgeFeeLabel,
+  VECTOR_BRIDGE_FEE_USDC,
 } from "../lib/fees";
 import { TxSuccessCard } from "./TxSuccessCard";
 import { isOkxWallet } from "../lib/wallet-brand";
@@ -179,7 +179,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     const bal = balanceFrom.formatted ?? "—";
     const max = maxBridgeableHuman;
     if (max) {
-      return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus Vector's $${VECTOR_FLAT_FEE_USDC} fee (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
+      return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus Vector's $${VECTOR_BRIDGE_FEE_USDC} bridge fee (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
     }
     return "Amount exceeds your USDC balance on the source chain (including Vector's bridge fee).";
   }, [
@@ -450,7 +450,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             !balanceFrom.isLoading && (
               <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
                 MAX uses your full USDC balance: Vector&apos;s $
-                {VECTOR_FLAT_FEE_USDC} fee is reserved from it; the
+                {VECTOR_BRIDGE_FEE_USDC} bridge fee is reserved from it; the
                 amount field (up to{" "}
                 <span className="font-mono">{trimBridgeHint(maxBridgeableHuman)}</span>
                 ) is what CCTP sends toward {chainLabel(toChain)}.
@@ -525,7 +525,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         {/* Quote detail */}
         {(quote || amount.trim()) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
-            <div>{formatVectorFeeLabel()}</div>
+            <div>{formatBridgeFeeLabel()}</div>
             {quote?.feeText && <div>Fee: {quote.feeText}</div>}
             {quote?.gasText && <div>Source gas: {quote.gasText}</div>}
           </div>

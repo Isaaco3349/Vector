@@ -40,7 +40,7 @@
  */
 
 import type { Eip1193Provider } from "./appkit";
-import { bridgeCustomFeeHumanForAppKit, formatVectorFeeLabel } from "./fees";
+import { bridgeCustomFeeHumanForAppKit, formatBridgeFeeLabel } from "./fees";
 import { buildBridgePlan } from "./google-bridge";
 import { formatUnits } from "viem";
 import {
@@ -273,7 +273,7 @@ export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
 
   return {
     amount: args.amount,
-    feeText: `${formatVectorFeeLabel()} — plus CCTP provider/forwarder fees from Circle`,
+    feeText: `${formatBridgeFeeLabel()} — plus CCTP provider/relayer fees from Circle`,
     gasText: from
       ? `Source gas on ${from.label} (native token in your wallet)`
       : null,

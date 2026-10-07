@@ -144,6 +144,18 @@ export async function executeBridgeViaSequentialTransactions(
     console.info("[Vector] bridge: skipping approve — USDC allowance already sufficient");
   }
 
+  if (typeof console !== "undefined") {
+    const data = plan.burn.data;
+    const sel =
+      typeof data === "string" && data.length >= 10 ? data.slice(0, 10) : "?";
+    console.info("[Vector] bridge burn", {
+      to: plan.burn.to,
+      selector: sel,
+      fromChain: args.fromChain,
+      toChain: args.toChain,
+    });
+  }
+
   const burnHash = await sendTx(plan.burn);
 
   return {

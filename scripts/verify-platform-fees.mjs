@@ -7,18 +7,19 @@
 import { formatUnits, parseUnits } from "viem";
 
 const USDC_DECIMALS = 6;
-const VECTOR_FLAT_FEE_USDC = "0.15";
+const VECTOR_SWAP_FEE_USDC = "0.15";
+const VECTOR_BRIDGE_FEE_USDC = "0.01";
 
-function vectorFlatFeeBaseUnits() {
-  return parseUnits(VECTOR_FLAT_FEE_USDC, USDC_DECIMALS);
+function swapFlatFeeBaseUnits() {
+  return parseUnits(VECTOR_SWAP_FEE_USDC, USDC_DECIMALS);
 }
 
 function bridgePlatformFeeBaseUnits() {
-  return vectorFlatFeeBaseUnits();
+  return parseUnits(VECTOR_BRIDGE_FEE_USDC, USDC_DECIMALS);
 }
 
 function bridgePlatformFeeHuman() {
-  return VECTOR_FLAT_FEE_USDC;
+  return VECTOR_BRIDGE_FEE_USDC;
 }
 
 /** Bridge Kit: scale human customFee.value to base units (USDC 6 dp). */
@@ -48,7 +49,7 @@ function assertEq(actual, expected, label) {
 
 const amounts = ["0.2", "1", "31", "1000"];
 
-console.log(`=== Bridge fee: flat $${VECTOR_FLAT_FEE_USDC} USDC ===\n`);
+console.log(`=== Bridge fee: flat $${VECTOR_BRIDGE_FEE_USDC} USDC ===\n`);
 console.log("Amount (USDC) | Before fix (kit display) | After fix (kit display) | Base units");
 console.log("-------------|--------------------------|-------------------------|------------");
 
@@ -59,7 +60,7 @@ for (const amount of amounts) {
   const afterDisplay = kitFeeDisplayAfterScale(
     bridgeKitScaleCustomFeeValue(humanFee).toString(),
   );
-  assertEq(humanFee, VECTOR_FLAT_FEE_USDC, `human fee for ${amount} USDC`);
+  assertEq(humanFee, VECTOR_BRIDGE_FEE_USDC, `human fee for ${amount} USDC`);
   assertEq(afterDisplay, humanFee, `scaled kit display for ${amount} USDC`);
   console.log(
     `${amount.padStart(11)} | ${beforeDisplay.padStart(24)} | ${afterDisplay.padStart(23)} | ${base}`,
@@ -69,13 +70,13 @@ for (const amount of amounts) {
 console.log("\n=== Swap fee: percentageBps maps to $0.15 flat per amount ===\n");
 function swapBpsForAmount(amountHuman) {
   const amount = Number(amountHuman);
-  const bps = Math.ceil((Number(VECTOR_FLAT_FEE_USDC) / amount) * 10_000);
+  const bps = Math.ceil((Number(VECTOR_SWAP_FEE_USDC) / amount) * 10_000);
   return Math.min(Math.max(bps, 1), 10_000);
 }
 for (const amountIn of ["100", "31", "0.2"]) {
   const bps = swapBpsForAmount(amountIn);
   const feeHuman = (Number(amountIn) * bps) / 10_000;
-  const target = Number(VECTOR_FLAT_FEE_USDC);
+  const target = Number(VECTOR_SWAP_FEE_USDC);
   if (feeHuman + 1e-9 < target || feeHuman > target * 1.02) {
     console.error(
       `FAIL swap bps fee on ${amountIn} USDC: fee ${feeHuman} outside [${target}, ${target * 1.02}]`,
@@ -86,12 +87,12 @@ for (const amountIn of ["100", "31", "0.2"]) {
   }
 }
 
-console.log("\n=== Google CCTP burn path: protocolFee = flat USDC ===\n");
+console.log("\n=== Google CCTP burn path: protocolFee = bridge flat USDC ===\n");
 for (const amount of amounts) {
   const protocolFee = bridgePlatformFeeBaseUnits();
   assertEq(
     protocolFee.toString(),
-    vectorFlatFeeBaseUnits().toString(),
+    parseUnits(VECTOR_BRIDGE_FEE_USDC, USDC_DECIMALS).toString(),
     `CCTP protocolFee for ${amount}`,
   );
   console.log(
