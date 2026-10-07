@@ -380,7 +380,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
             ) : txHash ? (
               <TxSuccessCard
                 title={
-                  mode === "deposit" ? "Deposit submitted" : "Withdrawal submitted"
+                  mode === "deposit" ? "Deposit successful" : "Withdrawal successful"
                 }
                 txHash={txHash}
                 explorerUrl={

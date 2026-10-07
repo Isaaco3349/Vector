@@ -895,7 +895,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
         {txHash && (
           <TxSuccessCard
-            title="Swap submitted"
+            title="Swap successful"
             txHash={txHash}
             explorerUrl={arcExplorerTxUrl(txHash)}
             onDismiss={() => {
