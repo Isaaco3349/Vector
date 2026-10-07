@@ -117,6 +117,14 @@ export type BuildBridgePlanArgs = {
    * wallet address (self-bridge) when omitted — the common case.
    */
   recipientAddress?: string;
+  /**
+   * ERC-20 `approve` (0x095ea7b3) instead of Circle's USDC `increaseAllowance`
+   * on the source chain. OKX accepts this on swap/earn; inbound bridges from
+   * Base/Ethereum should use it (Arc-native outbound keeps increaseAllowance).
+   */
+  usdcApprovalStyle?: "increaseAllowance" | "erc20Approve";
+  /** Drop Vector customFee from CCTP burn calldata (smaller / fewer OKX flags). */
+  omitPlatformFee?: boolean;
 };
 
 /** USDC is 6 decimals for CCTP everywhere (Arc's native 18 is gas-only). */
@@ -269,6 +277,24 @@ function readCallData(prepared: unknown, label: string): BridgeCall {
   return { to, data, value };
 }
 
+function isArcAppKitChain(id: BridgeChainId): boolean {
+  return id === "Arc" || id === "Arc_Testnet";
+}
+
+function kitBridgeSpender(sourceDef: Record<string, unknown>): string {
+  const kit =
+    sourceDef.kitContracts && typeof sourceDef.kitContracts === "object"
+      ? (sourceDef.kitContracts as { bridge?: string })
+      : null;
+  const bridge = kit?.bridge;
+  if (typeof bridge !== "string" || !bridge.startsWith("0x")) {
+    throw new Error(
+      "Circle kit bridge contract is not configured on the source chain.",
+    );
+  }
+  return bridge;
+}
+
 /**
  * Build the two-call bridge plan (approve → burn) for the Google wallet, using
  * Circle's own CCTP v2 encoder. Loaded via dynamic import so these packages only
@@ -385,17 +411,56 @@ export async function buildBridgePlan(
   // config MUST be a present object (burn reads params.config.customFee without
   // optional chaining). We set FAST and OMIT maxFee, so Circle fetches the true
   // fee live in the browser — we don't fake a fee.
-  const platformFeeMinor = bridgePlatformFeeBaseUnits(amountTrimmed);
+  const platformFeeMinor = args.omitPlatformFee
+    ? BigInt(0)
+    : bridgePlatformFeeBaseUnits(amountTrimmed);
   const config = {
     transferSpeed: "FAST" as const,
-    ...bridgeCustomFeeBaseForCctpBurn(amountTrimmed),
+    ...(args.omitPlatformFee
+      ? {}
+      : bridgeCustomFeeBaseForCctpBurn(amountTrimmed)),
   };
   const approvalAmount = (amountMinorBig + platformFeeMinor).toString();
 
-  // 1) APPROVE. Circle mirrors amount+customFee (executeBatchedApproveAndBurn).
-  //    Target resolves to Arc's USDC token, delegate to the Arc bridge.
-  const approvePrepared = await cctp.approve(source, approvalAmount);
-  const approve = readCallData(approvePrepared, "approve");
+  const defaultErc20Approve =
+    from.usdcKind === "erc20" && !isArcAppKitChain(from.appKitChain);
+  const useErc20Approve =
+    args.usdcApprovalStyle === "erc20Approve" ||
+    (defaultErc20Approve && args.usdcApprovalStyle !== "increaseAllowance");
+
+  // 1) APPROVE — Arc native USDC uses Circle increaseAllowance (outbound OKX path).
+  //    Other chains: standard ERC-20 approve to kit bridge (matches OKX swap/earn).
+  let approve: BridgeCall;
+  if (useErc20Approve) {
+    if (!from.usdcAddress) {
+      throw new Error(`USDC address missing for ${from.label}.`);
+    }
+    const adapterWithPrepare = adapter as {
+      prepareAction: (
+        action: string,
+        params: unknown,
+        ctx: unknown,
+      ) => Promise<unknown>;
+    };
+    if (typeof adapterWithPrepare.prepareAction !== "function") {
+      throw new Error(
+        "Circle viem adapter has no prepareAction() — can't encode ERC-20 approve.",
+      );
+    }
+    const approvePrepared = await adapterWithPrepare.prepareAction(
+      "token.approve",
+      {
+        tokenAddress: from.usdcAddress,
+        delegate: kitBridgeSpender(sourceDef),
+        amount: BigInt(approvalAmount),
+      },
+      { chain: sourceDef },
+    );
+    approve = readCallData(approvePrepared, "approve");
+  } else {
+    const approvePrepared = await cctp.approve(source, approvalAmount);
+    approve = readCallData(approvePrepared, "approve");
+  }
 
   // 2) BURN (Arc → destination, forwarded). Target resolves to the Arc bridge;
   //    mintRecipient(bytes32), maxFee, finality + forwarder hookData all computed

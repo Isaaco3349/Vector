@@ -16,9 +16,13 @@ import {
   type Hex,
 } from "viem";
 import type { BridgeExecution, BridgeArgs } from "./bridge";
-import { bridgeChainById, explorerTxUrl } from "./bridge-chains";
+import { bridgeChainById, explorerTxUrl, type BridgeChainId } from "./bridge-chains";
 import { buildBridgePlan, type BridgeCall } from "./google-bridge";
 import type { Eip1193Provider } from "./appkit";
+
+function isArcAppKitChain(id: BridgeChainId): boolean {
+  return id === "Arc" || id === "Arc_Testnet";
+}
 
 async function resolveWalletAddress(
   provider: Eip1193Provider,
@@ -38,6 +42,7 @@ async function sendLegacyTransaction(
   from: `0x${string}`,
   call: BridgeCall,
   publicClient: ReturnType<typeof createPublicClient>,
+  chainId?: number,
 ): Promise<Hash> {
   const to = call.to as `0x${string}`;
   const data = call.data as Hex;
@@ -52,6 +57,9 @@ async function sendLegacyTransaction(
     data,
     value: value === BigInt(0) ? "0x0" : `0x${value.toString(16)}`,
   };
+  if (chainId !== undefined) {
+    tx.chainId = `0x${chainId.toString(16)}`;
+  }
 
   try {
     const gas = await publicClient.estimateGas({
@@ -99,23 +107,39 @@ export async function executeBridgeViaSequentialTransactions(
   }
 
   const address = await resolveWalletAddress(args.provider);
+  const inboundArc = isArcAppKitChain(args.toChain);
+  const okxStyleSource = fromMeta.usdcKind === "erc20";
   const plan = await buildBridgePlan({
     walletAddress: address,
     fromChain: args.fromChain,
     toChain: args.toChain,
     amount: args.amount,
     recipientAddress: address,
+    usdcApprovalStyle: okxStyleSource ? "erc20Approve" : "increaseAllowance",
+    // OKX often flags customFee recipient bytes inside forwarded burns to Arc.
+    omitPlatformFee: inboundArc && okxStyleSource,
   });
 
   const sourceDefRpc = await resolveSourceRpc(fromMeta.appKitChain);
 
   if (typeof console !== "undefined") {
-    console.info("[Vector] bridge: OKX-safe sequential path (eth_sendTransaction only)");
+    console.info("[Vector] bridge: OKX-safe sequential path (eth_sendTransaction only)", {
+      inboundArc,
+      approval: okxStyleSource ? "erc20Approve" : "increaseAllowance",
+      omitPlatformFee: inboundArc && okxStyleSource,
+    });
   }
 
   const publicClient = createPublicClient({ transport: http(sourceDefRpc) });
+  const sourceChainId = fromMeta.chainId;
   const sendTx = (call: BridgeCall) =>
-    sendLegacyTransaction(args.provider, address, call, publicClient);
+    sendLegacyTransaction(
+      args.provider,
+      address,
+      call,
+      publicClient,
+      okxStyleSource ? sourceChainId : undefined,
+    );
 
   const needsApprove = await usdcAllowanceInsufficient(
     publicClient,
@@ -148,9 +172,15 @@ export async function executeBridgeViaSequentialTransactions(
     const data = plan.burn.data;
     const sel =
       typeof data === "string" && data.length >= 10 ? data.slice(0, 10) : "?";
+    const approveSel =
+      typeof plan.approve.data === "string" && plan.approve.data.length >= 10
+        ? plan.approve.data.slice(0, 10)
+        : "?";
     console.info("[Vector] bridge burn", {
-      to: plan.burn.to,
-      selector: sel,
+      approveTo: plan.approve.to,
+      approveSelector: approveSel,
+      burnTo: plan.burn.to,
+      burnSelector: sel,
       fromChain: args.fromChain,
       toChain: args.toChain,
     });

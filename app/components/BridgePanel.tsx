@@ -26,8 +26,9 @@ import { ensureArcNetwork } from "../lib/arc-wallet";
 import {
   bridgeAmountExceedsUsdcBalance,
   bridgeMaxAmountHumanFromBalanceBaseUnits,
-  formatBridgeFeeLabel,
-  VECTOR_BRIDGE_FEE_USDC,
+  bridgePlatformFeeBaseUnitsForRoute,
+  bridgePlatformFeeHumanForRoute,
+  formatBridgeFeeLabelForRoute,
 } from "../lib/fees";
 import { TxSuccessCard } from "./TxSuccessCard";
 import { isOkxWallet } from "../lib/wallet-brand";
@@ -159,27 +160,43 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   const sameChain = fromChain === toChain;
 
+  const fromMeta = useMemo(() => bridgeChainById(fromChain), [fromChain]);
+  const routePlatformFeeBase = useMemo(
+    () => bridgePlatformFeeBaseUnitsForRoute(fromMeta, toChain),
+    [fromMeta, toChain],
+  );
+  const routePlatformFeeHuman = useMemo(
+    () => bridgePlatformFeeHumanForRoute(fromMeta, toChain),
+    [fromMeta, toChain],
+  );
+
   const maxBridgeableHuman = useMemo(() => {
     if (balanceFrom.balanceBaseUnits === null) return null;
     return bridgeMaxAmountHumanFromBalanceBaseUnits(
       balanceFrom.balanceBaseUnits,
+      routePlatformFeeBase,
     );
-  }, [balanceFrom.balanceBaseUnits]);
+  }, [balanceFrom.balanceBaseUnits, routePlatformFeeBase]);
 
   const insufficient = useMemo(() => {
     if (!amount.trim() || balanceFrom.balanceBaseUnits === null) return false;
     return bridgeAmountExceedsUsdcBalance(
       amount,
       balanceFrom.balanceBaseUnits,
+      routePlatformFeeBase,
     );
-  }, [amount, balanceFrom.balanceBaseUnits]);
+  }, [amount, balanceFrom.balanceBaseUnits, routePlatformFeeBase]);
 
   const insufficientMessage = useMemo(() => {
     if (!insufficient) return null;
     const bal = balanceFrom.formatted ?? "—";
     const max = maxBridgeableHuman;
     if (max) {
-      return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus Vector's $${VECTOR_BRIDGE_FEE_USDC} bridge fee (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
+      const feeLine =
+        routePlatformFeeHuman === "0"
+          ? "no Vector bridge fee on this route"
+          : `Vector's $${routePlatformFeeHuman} bridge fee`;
+      return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus ${feeLine} (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
     }
     return "Amount exceeds your USDC balance on the source chain (including Vector's bridge fee).";
   }, [
@@ -187,6 +204,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     balanceFrom.formatted,
     maxBridgeableHuman,
     fromChain,
+    routePlatformFeeHuman,
   ]);
 
   // Only claim the wallet is on the wrong chain once it has actually told us.
@@ -439,6 +457,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
                 ? () => {
                     const max = bridgeMaxAmountHumanFromBalanceBaseUnits(
                       balanceFrom.balanceBaseUnits as bigint,
+                      routePlatformFeeBase,
                     );
                     if (max) setAmount(trimBridgeHint(max));
                   }
@@ -449,8 +468,14 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             balanceFrom.formatted &&
             !balanceFrom.isLoading && (
               <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
-                MAX uses your full USDC balance: Vector&apos;s $
-                {VECTOR_BRIDGE_FEE_USDC} bridge fee is reserved from it; the
+                MAX uses your full USDC balance
+                {routePlatformFeeHuman !== "0" && (
+                  <>
+                    : Vector&apos;s ${routePlatformFeeHuman} bridge fee is
+                    reserved from it
+                  </>
+                )}
+                ; the
                 amount field (up to{" "}
                 <span className="font-mono">{trimBridgeHint(maxBridgeableHuman)}</span>
                 ) is what CCTP sends toward {chainLabel(toChain)}.
@@ -525,7 +550,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         {/* Quote detail */}
         {(quote || amount.trim()) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
-            <div>{formatBridgeFeeLabel()}</div>
+            <div>{formatBridgeFeeLabelForRoute(fromMeta, toChain)}</div>
             {quote?.feeText && <div>Fee: {quote.feeText}</div>}
             {quote?.gasText && <div>Source gas: {quote.gasText}</div>}
           </div>

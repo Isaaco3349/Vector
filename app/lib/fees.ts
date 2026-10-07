@@ -1,4 +1,5 @@
 import { formatUnits, getAddress, isAddress, parseUnits } from "viem";
+import type { BridgeChain, BridgeChainId } from "./bridge-chains";
 
 const USDC_DECIMALS = 6;
 
@@ -72,6 +73,45 @@ function parseBridgeAmountHuman(amountHuman: string): bigint {
 
 export function bridgePlatformFeeBaseUnits(_amountHuman?: string): bigint {
   return bridgeFlatFeeBaseUnits();
+}
+
+/**
+ * Inbound Arc from an ERC-20 source chain: OKX-safe path omits on-chain
+ * customFee (see bridge-sequential-tx). Balance checks must match execution.
+ */
+export function isOkxStyleInboundArcRoute(
+  from: BridgeChain | undefined,
+  toChain: BridgeChainId,
+): boolean {
+  if (!from) return false;
+  const inboundArc = toChain === "Arc" || toChain === "Arc_Testnet";
+  return inboundArc && from.usdcKind === "erc20";
+}
+
+export function bridgePlatformFeeBaseUnitsForRoute(
+  from: BridgeChain | undefined,
+  toChain: BridgeChainId,
+): bigint {
+  if (isOkxStyleInboundArcRoute(from, toChain)) return BigInt(0);
+  return bridgePlatformFeeBaseUnits();
+}
+
+export function bridgePlatformFeeHumanForRoute(
+  from: BridgeChain | undefined,
+  toChain: BridgeChainId,
+): string {
+  if (isOkxStyleInboundArcRoute(from, toChain)) return "0";
+  return bridgePlatformFeeHuman();
+}
+
+export function formatBridgeFeeLabelForRoute(
+  from: BridgeChain | undefined,
+  toChain: BridgeChainId,
+): string {
+  if (isOkxStyleInboundArcRoute(from, toChain)) {
+    return "No Vector bridge fee on this route — CCTP network fees only";
+  }
+  return formatBridgeFeeLabel();
 }
 
 export function bridgePlatformFeeHuman(_amountHuman?: string): string {
@@ -154,8 +194,9 @@ export function bridgeMaxAmountHumanFromBalance(balanceHuman: string): string | 
 
 export function bridgeMaxAmountHumanFromBalanceBaseUnits(
   balanceBase: bigint,
+  platformFeeBase?: bigint,
 ): string | null {
-  const fee = bridgeFlatFeeBaseUnits();
+  const fee = platformFeeBase ?? bridgeFlatFeeBaseUnits();
   if (balanceBase <= fee) return null;
   const maxBase = balanceBase - fee;
   if (maxBase <= BigInt(0)) return null;
@@ -165,11 +206,13 @@ export function bridgeMaxAmountHumanFromBalanceBaseUnits(
 export function bridgeAmountExceedsUsdcBalance(
   amountHuman: string,
   balanceBase: bigint,
+  platformFeeBase?: bigint,
 ): boolean {
   if (balanceBase <= BigInt(0)) return true;
   try {
-    const required = bridgeTotalUsdcRequiredBaseUnits(amountHuman.trim());
-    return required > balanceBase;
+    const amountBase = parseBridgeAmountHuman(amountHuman.trim());
+    const fee = platformFeeBase ?? bridgeFlatFeeBaseUnits();
+    return amountBase + fee > balanceBase;
   } catch {
     return true;
   }

@@ -40,7 +40,10 @@
  */
 
 import type { Eip1193Provider } from "./appkit";
-import { bridgeCustomFeeHumanForAppKit, formatBridgeFeeLabel } from "./fees";
+import {
+  bridgeCustomFeeHumanForAppKit,
+  formatBridgeFeeLabelForRoute,
+} from "./fees";
 import { buildBridgePlan } from "./google-bridge";
 import { formatUnits } from "viem";
 import {
@@ -262,18 +265,24 @@ async function walletAddressFromProvider(
  */
 export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
   const from = bridgeChainById(args.fromChain);
+  const to = bridgeChainById(args.toChain);
   const address = await walletAddressFromProvider(args.provider);
+  const okxStyleSource = from?.usdcKind === "erc20";
+  const inboundArc =
+    args.toChain === "Arc" || args.toChain === "Arc_Testnet";
   await buildBridgePlan({
     walletAddress: address,
     fromChain: args.fromChain,
     toChain: args.toChain,
     amount: args.amount,
     recipientAddress: address,
+    usdcApprovalStyle: okxStyleSource ? "erc20Approve" : "increaseAllowance",
+    omitPlatformFee: inboundArc && okxStyleSource,
   });
 
   return {
     amount: args.amount,
-    feeText: `${formatBridgeFeeLabel()} — plus CCTP provider/relayer fees from Circle`,
+    feeText: `${formatBridgeFeeLabelForRoute(from, args.toChain)} — plus CCTP provider/relayer fees from Circle`,
     gasText: from
       ? `Source gas on ${from.label} (native token in your wallet)`
       : null,
