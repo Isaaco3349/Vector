@@ -267,7 +267,7 @@ export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
   const from = bridgeChainById(args.fromChain);
   const to = bridgeChainById(args.toChain);
   const address = await walletAddressFromProvider(args.provider);
-  const okxStyleSource = from?.usdcKind === "erc20";
+  const erc20Source = from?.usdcKind === "erc20";
   const inboundArc =
     args.toChain === "Arc" || args.toChain === "Arc_Testnet";
   await buildBridgePlan({
@@ -276,8 +276,8 @@ export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
     toChain: args.toChain,
     amount: args.amount,
     recipientAddress: address,
-    usdcApprovalStyle: okxStyleSource ? "erc20Approve" : "increaseAllowance",
-    omitPlatformFee: inboundArc && okxStyleSource,
+    usdcApprovalStyle: "erc20Approve",
+    omitPlatformFee: inboundArc && erc20Source,
   });
 
   return {

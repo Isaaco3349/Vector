@@ -108,16 +108,16 @@ export async function executeBridgeViaSequentialTransactions(
 
   const address = await resolveWalletAddress(args.provider);
   const inboundArc = isArcAppKitChain(args.toChain);
-  const okxStyleSource = fromMeta.usdcKind === "erc20";
+  const erc20Source = fromMeta.usdcKind === "erc20";
   const plan = await buildBridgePlan({
     walletAddress: address,
     fromChain: args.fromChain,
     toChain: args.toChain,
     amount: args.amount,
     recipientAddress: address,
-    usdcApprovalStyle: okxStyleSource ? "erc20Approve" : "increaseAllowance",
-    // OKX often flags customFee recipient bytes inside forwarded burns to Arc.
-    omitPlatformFee: inboundArc && okxStyleSource,
+    // Same as OKX swap/earn: standard ERC-20 approve on every chain (including Arc native USDC).
+    usdcApprovalStyle: "erc20Approve",
+    omitPlatformFee: inboundArc && erc20Source,
   });
 
   const sourceDefRpc = await resolveSourceRpc(fromMeta.appKitChain);
@@ -125,8 +125,8 @@ export async function executeBridgeViaSequentialTransactions(
   if (typeof console !== "undefined") {
     console.info("[Vector] bridge: OKX-safe sequential path (eth_sendTransaction only)", {
       inboundArc,
-      approval: okxStyleSource ? "erc20Approve" : "increaseAllowance",
-      omitPlatformFee: inboundArc && okxStyleSource,
+      approval: "erc20Approve",
+      omitPlatformFee: inboundArc && erc20Source,
     });
   }
 
@@ -138,7 +138,7 @@ export async function executeBridgeViaSequentialTransactions(
       address,
       call,
       publicClient,
-      okxStyleSource ? sourceChainId : undefined,
+      sourceChainId,
     );
 
   const needsApprove = await usdcAllowanceInsufficient(

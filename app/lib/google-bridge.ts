@@ -277,10 +277,6 @@ function readCallData(prepared: unknown, label: string): BridgeCall {
   return { to, data, value };
 }
 
-function isArcAppKitChain(id: BridgeChainId): boolean {
-  return id === "Arc" || id === "Arc_Testnet";
-}
-
 function kitBridgeSpender(sourceDef: Record<string, unknown>): string {
   const kit =
     sourceDef.kitContracts && typeof sourceDef.kitContracts === "object"
@@ -422,11 +418,7 @@ export async function buildBridgePlan(
   };
   const approvalAmount = (amountMinorBig + platformFeeMinor).toString();
 
-  const defaultErc20Approve =
-    from.usdcKind === "erc20" && !isArcAppKitChain(from.appKitChain);
-  const useErc20Approve =
-    args.usdcApprovalStyle === "erc20Approve" ||
-    (defaultErc20Approve && args.usdcApprovalStyle !== "increaseAllowance");
+  const useErc20Approve = args.usdcApprovalStyle !== "increaseAllowance";
 
   // 1) APPROVE — Arc native USDC uses Circle increaseAllowance (outbound OKX path).
   //    Other chains: standard ERC-20 approve to kit bridge (matches OKX swap/earn).

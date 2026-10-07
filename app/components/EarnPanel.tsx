@@ -23,7 +23,6 @@ import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "../lib
 import { executeEarnViaSequentialTransactions } from "../lib/okx-safe-earn";
 import { isOkxWallet } from "../lib/wallet-brand";
 import { useSendBalance } from "./useSendBalance";
-import { OkxKitContractsNote } from "./OkxKitContractsNote";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import { TxSuccessCard } from "./TxSuccessCard";
 import { VectorModalShell } from "./VectorModalShell";
@@ -479,11 +478,9 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
                         : "Withdraw USDC"}
                 </button>
 
-                {okxWallet && <OkxKitContractsNote />}
                 <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-                  {okxWallet
-                    ? `Earn on ${ARC_DISPLAY_NAME} uses Circle's Adapter contract with standard OKX transaction confirms.`
-                    : `Runs on ${ARC_DISPLAY_NAME} through Circle's Earn. Gas is paid in USDC — leave a little for the network fee.`}
+                  Runs on {ARC_DISPLAY_NAME} through Circle&apos;s Earn. Gas is
+                  paid in USDC — leave a little for the network fee.
                 </p>
               </>
             )}
