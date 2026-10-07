@@ -26,9 +26,10 @@ import { ensureArcNetwork } from "../lib/arc-wallet";
 import {
   bridgeAmountExceedsUsdcBalance,
   bridgeMaxAmountHumanFromBalanceBaseUnits,
-  BRIDGE_FEE_BPS,
   formatVectorFeeLabel,
+  VECTOR_FLAT_FEE_USDC,
 } from "../lib/fees";
+import { TxSuccessCard } from "./TxSuccessCard";
 import { isOkxWallet } from "../lib/wallet-brand";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import {
@@ -36,6 +37,7 @@ import {
   friendlyWalletError,
 } from "../lib/wallet-errors";
 import { useBridgeBalance } from "./useBridgeBalance";
+import { VectorModalShell } from "./VectorModalShell";
 
 function isArcBridgeChain(id: BridgeChainId): boolean {
   return id === "Arc" || id === "Arc_Testnet";
@@ -176,7 +178,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     const bal = balanceFrom.formatted ?? "—";
     const max = maxBridgeableHuman;
     if (max) {
-      return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus Vector's ${(BRIDGE_FEE_BPS / 100).toFixed(2)}% fee (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
+      return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus Vector's $${VECTOR_FLAT_FEE_USDC} fee (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
     }
     return "Amount exceeds your USDC balance on the source chain (including Vector's bridge fee).";
   }, [
@@ -197,8 +199,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   // Debounced quoting whenever inputs settle.
   useEffect(() => {
-    setTxHash(null);
-    setTxUrl(null);
+    if (txHash) return;
     setPendingNote(null);
     setActivityUrl(null);
     if (sameChain) {
@@ -259,6 +260,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     insufficient,
     insufficientMessage,
     providerReady,
+    txHash,
   ]);
 
   /**
@@ -344,6 +346,8 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
       if (result.txHash) {
+        setError(null);
+        setAmount("");
         void syncBalancesAfterBridge(result.txHash);
       } else if (result.state !== "error") {
         scheduleBalancePoll(queryClient);
@@ -398,24 +402,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[17px] font-semibold">Bridge USDC</span>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
-            Close
-          </button>
-        </div>
-
+    <VectorModalShell title="Bridge USDC" onClose={onClose}>
         {/* From chain + amount */}
         <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-1">
           <div className="flex items-center justify-between mb-2">
@@ -449,8 +436,8 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             balanceFrom.formatted &&
             !balanceFrom.isLoading && (
               <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
-                MAX uses your full USDC balance: Vector&apos;s{" "}
-                {(BRIDGE_FEE_BPS / 100).toFixed(2)}% fee is reserved from it; the
+                MAX uses your full USDC balance: Vector&apos;s $
+                {VECTOR_FLAT_FEE_USDC} fee is reserved from it; the
                 amount field (up to{" "}
                 <span className="font-mono">{trimBridgeHint(maxBridgeableHuman)}</span>
                 ) is what CCTP sends toward {chainLabel(toChain)}.
@@ -525,17 +512,35 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         {/* Quote detail */}
         {(quote || amount.trim()) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
-            <div>{formatVectorFeeLabel(BRIDGE_FEE_BPS)}</div>
+            <div>{formatVectorFeeLabel()}</div>
             {quote?.feeText && <div>Fee: {quote.feeText}</div>}
             {quote?.gasText && <div>Source gas: {quote.gasText}</div>}
           </div>
         )}
 
-        {error && (
+        {txHash && !error && (
+          <TxSuccessCard
+            title="Bridge burn submitted"
+            txHash={txHash}
+            explorerUrl={txUrl}
+            subtitle={
+              pendingNote ??
+              "Circle's relayer completes the mint on the destination chain — usually within a few minutes."
+            }
+            onDismiss={() => {
+              setTxHash(null);
+              setTxUrl(null);
+              setPendingNote(null);
+              setActivityUrl(null);
+            }}
+          />
+        )}
+
+        {error && !txHash && (
           <p className="text-[13px] text-[var(--vector-pink)] font-mono mb-4">{error}</p>
         )}
 
-        {pendingNote && (
+        {pendingNote && !txHash && (
           <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed">
             {pendingNote}
           </p>
@@ -549,17 +554,6 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             className="block text-[13px] text-[var(--vector-pink)] font-mono mb-4 underline break-all"
           >
             View your wallet on the {chainLabel(fromChain)} explorer ↗
-          </a>
-        )}
-
-        {txHash && txUrl && (
-          <a
-            href={txUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-[13px] text-[var(--vector-pink)] font-mono mb-4 underline break-all"
-          >
-            Burn sent — view on explorer ↗
           </a>
         )}
 
@@ -618,8 +612,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
           Circle&apos;s relayer completes the mint on {chainLabel(toChain)}, so no
           switch is needed on the destination side.
         </p>
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }
 

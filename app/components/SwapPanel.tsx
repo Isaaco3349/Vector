@@ -25,7 +25,9 @@ import {
   type SwapResult,
 } from "../lib/appkit";
 import { ensureArcNetwork } from "../lib/arc-wallet";
-import { formatVectorFeeLabel, SWAP_FEE_BPS } from "../lib/fees";
+import { formatVectorFeeLabel } from "../lib/fees";
+import { errorTextBlob, isEmptyErrorDetail } from "../lib/wallet-errors";
+import { TxSuccessCard } from "./TxSuccessCard";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { executeSwapViaSequentialTransactions } from "../lib/okx-safe-swap";
@@ -34,6 +36,7 @@ import { isOkxWallet } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
 import { OkxKitContractsNote } from "./OkxKitContractsNote";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
+import { VectorModalShell } from "./VectorModalShell";
 
 /**
  * Looser slippage tolerances offered — only ever after Circle has said the
@@ -716,24 +719,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[17px] font-semibold">Swap</span>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
-            Close
-          </button>
-        </div>
-
+    <VectorModalShell title="Swap" onClose={onClose}>
         {/* From */}
         <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-1">
           <div className="flex items-center justify-between mb-2">
@@ -827,7 +813,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         {quote && (quote.rate || quote.feeText) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
             {quote.rate && <div>Rate: {quote.rate}</div>}
-            <div>{formatVectorFeeLabel(SWAP_FEE_BPS)}</div>
+            <div>{formatVectorFeeLabel()}</div>
             {quote.feeText && <div>Fee: {quote.feeText}</div>}
             {slippageBps !== null && (
               <div>Slippage tolerance: {formatBps(slippageBps)} (you raised this)</div>
@@ -847,7 +833,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               {fallbackPlan.fromSymbol} → ~{fallbackPlan.estimatedAmount}{" "}
               {fallbackPlan.toSymbol}
             </div>
-            <div>{formatVectorFeeLabel(SWAP_FEE_BPS)}</div>
+            <div>{formatVectorFeeLabel()}</div>
             <div>
               This route takes two confirmations in your wallet — an approval,
               then the swap. Nothing moves until you confirm the second one.
@@ -855,13 +841,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {error && (
+        {error && !txHash && (
           <div className="mb-4">
             <p className="text-[13px] text-[var(--vector-pink)] font-mono">{error}</p>
             {/* Circle's own words and error code, kept visible. Paraphrasing
                 alone is how a wrong diagnosis goes unnoticed for weeks; with the
                 code on screen, the next report is one line instead of a guess. */}
-            {errorInfo?.detail && errorInfo.kind !== "user-cancelled" && (
+            {errorInfo?.detail &&
+              !isEmptyErrorDetail(errorInfo.detail) &&
+              errorInfo.kind !== "user-cancelled" && (
               <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)] font-mono break-words">
                 Circle reported: {errorInfo.detail}
                 {errorInfo.name && (
@@ -906,14 +894,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         )}
 
         {txHash && (
-          <a
-            href={arcExplorerTxUrl(txHash)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-[13px] text-[var(--vector-pink)] font-mono mb-4 underline break-all"
-          >
-            Swap sent — view on ArcScan ↗
-          </a>
+          <TxSuccessCard
+            title="Swap submitted"
+            txHash={txHash}
+            explorerUrl={arcExplorerTxUrl(txHash)}
+            onDismiss={() => {
+              setTxHash(null);
+              setErrorState(null);
+            }}
+          />
         )}
 
         {/* Said up front, before an amount is typed, once BOTH of Circle's
@@ -972,8 +961,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             ? `Swaps on ${ARC_DISPLAY_NAME} use Circle's Adapter contract with standard OKX transaction confirms (no typed-data batching).`
             : `Swaps run on ${ARC_DISPLAY_NAME} through Circle's App Kit. Estimated output can move slightly before the transaction confirms.`}
         </p>
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }
 
@@ -1057,6 +1045,7 @@ function describeSwapError(
   ctx: { tokenIn: string; tokenOut: string; slippageBps: number },
 ): { text: string; info: SwapErrorInfo } {
   const info = classifySwapError(err);
+  const message = errorTextBlob(err);
   const pair = `${ctx.tokenIn} → ${ctx.tokenOut}`;
 
   const text = ((): string => {
@@ -1122,7 +1111,16 @@ function describeSwapError(
 
       case "unknown":
       default:
-        return info.detail ?? fallback;
+        if (info.detail && !isEmptyErrorDetail(info.detail)) {
+          return info.detail;
+        }
+        if (/risky|signature type|blocked to protect/i.test(message)) {
+          return (
+            "Your wallet blocked this as a security precaution (common with OKX on mobile). " +
+            "Use the OKX Chrome extension, MetaMask, or Continue with Google — nothing was sent."
+          );
+        }
+        return fallback;
     }
   })();
 

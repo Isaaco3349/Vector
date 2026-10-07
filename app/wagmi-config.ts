@@ -20,6 +20,7 @@ import {
 import { injected, walletConnect } from "wagmi/connectors";
 import { isMainnet, rpcUrl as arcRpcUrl } from "./lib/network";
 import { arcViemChain } from "./lib/viem-arc-chain";
+import { inkViemChain } from "./lib/viem-ink-chain";
 
 const testnetChains = [
   arcViemChain,
@@ -31,6 +32,7 @@ const testnetChains = [
   polygonAmoy,
   unichainSepolia,
   lineaSepolia,
+  inkViemChain,
 ] as const;
 
 const mainnetChains = [
@@ -43,6 +45,7 @@ const mainnetChains = [
   polygon,
   unichain,
   linea,
+  inkViemChain,
 ] as const;
 
 const chains = isMainnet ? mainnetChains : testnetChains;

@@ -1,7 +1,7 @@
 "use client";
 
 import type { Eip1193Provider } from "./appkit";
-import { providerIsOkx } from "./wallet-brand";
+import { isOkxWallet, providerIsOkx } from "./wallet-brand";
 
 /** OKX Wallet EIP-6963 reverse-DNS id (current extension). */
 export const OKX_WALLET_RDNS = "com.okx.wallet";
@@ -44,10 +44,16 @@ export function okxInjectedEip1193Provider(): Eip1193Provider | null {
  * Discover OKX via EIP-6963 when wagmi did not bind the right provider
  * (common with multiple extensions fighting over `window.ethereum`).
  */
+function eip6963DiscoveryTimeoutMs(): number {
+  if (typeof navigator === "undefined") return 400;
+  return /android|iphone|ipad|mobile/i.test(navigator.userAgent) ? 900 : 400;
+}
+
 export async function discoverEip6963Provider(
   rdns: string,
-  timeoutMs = 400,
+  timeoutMs?: number,
 ): Promise<Eip1193Provider | null> {
+  const wait = timeoutMs ?? eip6963DiscoveryTimeoutMs();
   if (typeof window === "undefined") return null;
   return new Promise((resolve) => {
     let settled = false;
@@ -69,8 +75,16 @@ export async function discoverEip6963Provider(
 
     window.addEventListener("eip6963:announceProvider", onAnnounce);
     window.dispatchEvent(new Event("eip6963:requestProvider"));
-    setTimeout(() => finish(null), timeoutMs);
+    setTimeout(() => finish(null), wait);
   });
+}
+
+/** OKX in-app browser often reports a generic `injected` connector. */
+function okxInAppBrowserHint(): boolean {
+  if (typeof window === "undefined") return false;
+  if (okxInjectedEip1193Provider()) return true;
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  return /OKX|OKApp/i.test(ua);
 }
 
 /**
@@ -139,18 +153,30 @@ export function createOkxSafeEip1193Provider(
   return wrapped as Eip1193Provider;
 }
 
+function accountListIncludes(
+  accounts: unknown,
+  connectedAddress: string,
+): boolean {
+  if (!Array.isArray(accounts)) return false;
+  const want = connectedAddress.toLowerCase();
+  return accounts.some(
+    (a) => typeof a === "string" && a.toLowerCase() === want,
+  );
+}
+
 async function okxOwnsConnectedAddress(
   connectedAddress: string,
 ): Promise<Eip1193Provider | null> {
   const okx = okxInjectedEip1193Provider();
   if (!okx) return null;
   try {
-    const accounts = (await okx.request({ method: "eth_accounts" })) as unknown;
-    const first = Array.isArray(accounts) ? accounts[0] : null;
-    if (
-      typeof first === "string" &&
-      first.toLowerCase() === connectedAddress.toLowerCase()
-    ) {
+    let accounts = (await okx.request({ method: "eth_accounts" })) as unknown;
+    if (!accountListIncludes(accounts, connectedAddress)) {
+      accounts = (await okx.request({
+        method: "eth_requestAccounts",
+      })) as unknown;
+    }
+    if (accountListIncludes(accounts, connectedAddress)) {
       return okx;
     }
   } catch {
@@ -168,6 +194,17 @@ export async function resolveSigningProvider(
     const okxForAccount = await okxOwnsConnectedAddress(connectedAddress);
     if (okxForAccount) {
       return createOkxSafeEip1193Provider(okxForAccount);
+    }
+  }
+
+  if (
+    connectedAddress &&
+    okxInAppBrowserHint() &&
+    (isOkxWallet(connector) || connector?.id === "injected")
+  ) {
+    const okx = okxInjectedEip1193Provider();
+    if (okx) {
+      return createOkxSafeEip1193Provider(okx);
     }
   }
 

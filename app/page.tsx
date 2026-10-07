@@ -18,6 +18,7 @@ import { GoogleBridgePanel } from "./components/GoogleBridgePanel";
 import { GoogleSwapPanel } from "./components/GoogleSwapPanel";
 import { ReceivePanel } from "./components/ReceivePanel";
 import { EarnPanel } from "./components/EarnPanel";
+import { DigitalMarquee } from "./components/DigitalMarquee";
 import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { useTokenBalance } from "./components/useTokenBalance";
@@ -742,6 +743,8 @@ export default function HomePage() {
         </div>
       </header>
 
+      {!connected && <DigitalMarquee />}
+
       <section className="flex-1 w-full mx-auto max-w-[var(--vector-max-content)] px-6 py-10 md:py-14 lg:py-16">
         <div
           className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-12 lg:gap-16 ${
@@ -760,12 +763,6 @@ export default function HomePage() {
             <div className="lg:flex lg:flex-col lg:flex-1 lg:min-h-[520px]">
               <div className="mb-8 lg:hidden">
                 <LandingHero compact />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 mb-8 lg:hidden">
-                <FeaturePill label="Swap" />
-                <FeaturePill label="Bridge" />
-                <FeaturePill label="Earn" />
               </div>
 
               <p className="text-[12px] text-[var(--vector-text-dim)] mb-4 uppercase tracking-wide">
@@ -1446,8 +1443,6 @@ function LandingHero({ compact }: { compact?: boolean }) {
             : "text-[40px] lg:text-[44px] leading-[1.1] font-semibold tracking-tight mb-4"
         }
       >
-        Swap. Bridge. Earn.
-        <br />
         <span className="text-[var(--vector-pink)]">All on Arc.</span>
       </h1>
       <p
@@ -1523,16 +1518,6 @@ function FeatureBlurb({ title, body }: { title: string; body: string }) {
         {body}
       </p>
     </article>
-  );
-}
-
-function FeaturePill({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface)] py-2.5 text-center">
-      <span className="text-[12px] text-[var(--vector-text-dim)]">
-        {label}
-      </span>
-    </div>
   );
 }
 

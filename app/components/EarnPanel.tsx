@@ -25,6 +25,9 @@ import { isOkxWallet } from "../lib/wallet-brand";
 import { useSendBalance } from "./useSendBalance";
 import { OkxKitContractsNote } from "./OkxKitContractsNote";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
+import { TxSuccessCard } from "./TxSuccessCard";
+import { VectorModalShell } from "./VectorModalShell";
+import { errorTextBlob } from "../lib/wallet-errors";
 
 /**
  * Earn panel for external (injected) wallets — deposit USDC into an Arc yield vault.
@@ -209,6 +212,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
           `${mode === "deposit" ? "Deposit" : "Withdrawal"} submitted, but no transaction hash came back. Check your wallet activity to confirm.`,
         );
       } else {
+        setError(null);
         setAmount("");
         void refreshPosition();
       }
@@ -230,42 +234,36 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
     onArc && !!selected && !!parsedAmount && !overMax && !submitting && !quoting;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6 max-h-[88vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
+    <VectorModalShell
+      onClose={onClose}
+      header={
+        <>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {selected && (
               <button
+                type="button"
                 onClick={() => {
                   setSelected(null);
                   setAmount("");
                   setQuote(null);
                   setError(null);
                 }}
-                className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
+                className="shrink-0 min-h-[44px] px-2 text-[var(--vector-text-dim)] text-[13px] font-semibold hover:text-[var(--vector-text)]"
                 aria-label="Back to vaults"
               >
                 ‹ Vaults
               </button>
             )}
-            <span className="text-[17px] font-semibold">
+            <span className="text-[17px] font-semibold truncate">
               {selected ? "Earn" : "Earn — Arc vaults"}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
+          <button type="button" onClick={onClose} className="vector-modal-close">
             Close
           </button>
-        </div>
-
+        </>
+      }
+    >
         {!selected ? (
           // ---- Vault list ----
           <div>
@@ -437,22 +435,24 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
                   </p>
                 )}
 
-                {error && (
+                {txHash && explorerUrl && (
+                  <TxSuccessCard
+                    title={
+                      mode === "deposit" ? "Deposit submitted" : "Withdrawal submitted"
+                    }
+                    txHash={txHash}
+                    explorerUrl={explorerUrl}
+                    onDismiss={() => {
+                      setTxHash(null);
+                      setExplorerUrl(null);
+                    }}
+                  />
+                )}
+
+                {error && !txHash && (
                   <p className="text-[13px] text-[var(--vector-pink)] font-mono mb-4">
                     {error}
                   </p>
-                )}
-
-                {txHash && explorerUrl && (
-                  <a
-                    href={explorerUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-[13px] text-[var(--vector-pink)] font-mono mb-4 underline break-all"
-                  >
-                    {mode === "deposit" ? "Deposited" : "Withdrawn"} ✓ — view on
-                    ArcScan ↗
-                  </a>
                 )}
 
                 <button
@@ -479,12 +479,21 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
             )}
           </div>
         )}
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }
 
 function readableError(err: unknown, fallback: string): string {
+  const blob = errorTextBlob(err);
+  if (/risky|signature type|blocked to protect/i.test(blob)) {
+    return (
+      "Your wallet blocked this as a security precaution (common with OKX on mobile). " +
+      "Try the OKX Chrome extension, MetaMask, or Continue with Google — nothing was sent."
+    );
+  }
+  if (/^null$/i.test(blob.trim()) || (blob.trim() === "" && !(err instanceof Error))) {
+    return `${fallback} If OKX mobile still fails, use the OKX extension on desktop or Continue with Google.`;
+  }
   if (err instanceof Error && err.message) {
     if (/reject|denied|user cancel|user rejected/i.test(err.message)) {
       return "You cancelled the request in your wallet.";

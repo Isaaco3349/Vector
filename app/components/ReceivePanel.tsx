@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { VectorModalShell } from "./VectorModalShell";
 
 /**
  * Receive panel — shows the wallet address as text + QR so funds can be sent in.
@@ -34,24 +35,7 @@ export function ReceivePanel({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[17px] font-semibold">Receive USDC</span>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
-            Close
-          </button>
-        </div>
-
+    <VectorModalShell title="Receive USDC" onClose={onClose}>
         <div className="flex flex-col items-center">
           <div className="bg-white p-4 rounded-2xl mb-5">
             <QRCodeSVG
@@ -89,7 +73,6 @@ export function ReceivePanel({
           Only send USDC on {networkLabel} to this address. Sending other assets
           or using the wrong network can lose funds.
         </p>
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }

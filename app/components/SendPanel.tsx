@@ -16,6 +16,7 @@ import {
   vectorRouterAddress,
 } from "../lib/vector-router";
 import { useSendBalance } from "./useSendBalance";
+import { VectorModalShell } from "./VectorModalShell";
 
 /**
  * Send USDC panel for external (injected) wallets.
@@ -157,24 +158,7 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
   if (!isConnected || !address) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[17px] font-semibold">Send USDC</span>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
-            Close
-          </button>
-        </div>
-
+    <VectorModalShell title="Send USDC" onClose={onClose}>
         {!chain ? (
           // Connected to a network Vector doesn't support — never guess how to
           // move funds there. Offer a switch to Arc instead.
@@ -315,8 +299,7 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
             )}
           </>
         )}
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }
 

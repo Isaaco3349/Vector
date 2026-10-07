@@ -441,8 +441,11 @@ export function classifySwapError(err: unknown): SwapErrorInfo {
     name,
     code,
     recoverability,
-    detail:
-      message.length > 0 ? sanitizeWalletDetail(message.split("\n")[0] ?? message) : null,
+    detail: (() => {
+      if (message.length === 0) return null;
+      const cleaned = sanitizeWalletDetail(message.split("\n")[0] ?? message);
+      return cleaned.length > 0 ? cleaned : null;
+    })(),
     ...readAmountBounds(rec?.cause),
   };
 }

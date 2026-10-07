@@ -16,7 +16,8 @@ import {
   type BridgeChainId,
 } from "../lib/bridge-chains";
 import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
-import { BRIDGE_FEE_BPS, formatVectorFeeLabel } from "../lib/fees";
+import { formatVectorFeeLabel } from "../lib/fees";
+import { VectorModalShell } from "./VectorModalShell";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
@@ -253,24 +254,7 @@ export function GoogleBridgePanel({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[17px] font-semibold">Bridge USDC</span>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
-            Close
-          </button>
-        </div>
-
+    <VectorModalShell title="Bridge USDC" onClose={onClose}>
         {done ? (
           <div className="text-center py-6">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-pink)]">
@@ -385,7 +369,7 @@ export function GoogleBridgePanel({
             </div>
 
             <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 px-1">
-              {formatVectorFeeLabel(BRIDGE_FEE_BPS)}
+              {formatVectorFeeLabel()}
             </p>
 
             {/* Recipient on the destination chain */}
@@ -475,7 +459,6 @@ export function GoogleBridgePanel({
             </p>
           </>
         )}
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }

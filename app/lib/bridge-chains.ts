@@ -4,6 +4,9 @@
  * Arc row (chain id, appKit id, explorers) comes from app/lib/network.ts.
  * Testnet USDC addresses are SDK-verified literals. Mainnet USDC (and Arc EURC)
  * are merged from App Kit `getSupportedChains("bridge")` via kit-bridge-chains.ts.
+ *
+ * BNB Chain and Robinhood are not in Circle CCTP / App Kit bridge yet — do not
+ * add them here until `getSupportedChains("bridge")` lists them.
  */
 
 import {
@@ -28,7 +31,8 @@ export type TestnetBridgeChainId =
   | "Optimism_Sepolia"
   | "Polygon_Amoy_Testnet"
   | "Unichain_Sepolia"
-  | "Linea_Sepolia";
+  | "Linea_Sepolia"
+  | "Ink_Testnet";
 
 /** App Kit bridge identifiers — mainnet set (Arc uses `Arc` per product; not in SDK 1.12 enum). */
 export type MainnetBridgeChainId =
@@ -40,7 +44,8 @@ export type MainnetBridgeChainId =
   | "Optimism"
   | "Polygon"
   | "Unichain"
-  | "Linea";
+  | "Linea"
+  | "Ink";
 
 export type BridgeChainId = TestnetBridgeChainId | MainnetBridgeChainId;
 
@@ -62,7 +67,9 @@ export type BridgeChainNumericId =
   | 11155420
   | 80002
   | 1301
-  | 59141;
+  | 59141
+  | 57073
+  | 763373;
 
 export type BridgeChain = {
   appKitChain: BridgeChainId;
@@ -168,6 +175,17 @@ const TESTNET_BRIDGE_CHAINS: BridgeChain[] = [
     explorerAddress: "https://sepolia.lineascan.build/address/{address}",
     forwarderDestination: true,
   },
+  {
+    appKitChain: "Ink_Testnet",
+    chainId: 763373,
+    label: "Ink Sepolia",
+    usdcKind: "erc20",
+    usdcAddress: "0xFabab97dCE620294D2B0b0e46C68964e326300Ac",
+    explorerTx: "https://explorer-sepolia.inkonchain.com/tx/{hash}",
+    explorerAddress:
+      "https://explorer-sepolia.inkonchain.com/address/{address}",
+    forwarderDestination: true,
+  },
 ];
 
 const MAINNET_BRIDGE_CHAINS: BridgeChain[] = [
@@ -251,6 +269,16 @@ const MAINNET_BRIDGE_CHAINS: BridgeChain[] = [
     usdcKind: "erc20",
     explorerTx: "https://lineascan.build/tx/{hash}",
     explorerAddress: "https://lineascan.build/address/{address}",
+    forwarderDestination: true,
+  },
+  {
+    appKitChain: "Ink",
+    chainId: 57073,
+    label: "Ink",
+    usdcKind: "erc20",
+    usdcAddress: "0x2D270e6886d130D724215A266106e6832161EAEd",
+    explorerTx: "https://explorer.inkonchain.com/tx/{hash}",
+    explorerAddress: "https://explorer.inkonchain.com/address/{address}",
     forwarderDestination: true,
   },
 ];

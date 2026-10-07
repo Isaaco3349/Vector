@@ -17,6 +17,7 @@ import {
 } from "../lib/bridge-chains";
 import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
+import { VectorModalShell } from "./VectorModalShell";
 
 /**
  * Earn panel for the Google-login (Circle user-controlled / W3S) wallet.
@@ -280,18 +281,14 @@ export function GoogleEarnPanel({
   })();
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6 max-h-[88vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
+    <VectorModalShell
+      onClose={onClose}
+      header={
+        <>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {selected && (
               <button
+                type="button"
                 onClick={() => {
                   setSelected(null);
                   setAmount("");
@@ -299,24 +296,22 @@ export function GoogleEarnPanel({
                   setError(null);
                 }}
                 disabled={submitting}
-                className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)] disabled:opacity-40"
+                className="shrink-0 min-h-[44px] px-2 text-[var(--vector-text-dim)] text-[13px] font-semibold hover:text-[var(--vector-text)] disabled:opacity-40"
                 aria-label="Back to vaults"
               >
                 ‹ Vaults
               </button>
             )}
-            <span className="text-[17px] font-semibold">
+            <span className="text-[17px] font-semibold truncate">
               {selected ? "Earn" : "Earn — Arc vaults"}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
+          <button type="button" onClick={onClose} className="vector-modal-close">
             Close
           </button>
-        </div>
-
+        </>
+      }
+    >
         {done ? (
           // ---- Success ----
           <div className="text-center py-6">
@@ -550,8 +545,7 @@ export function GoogleEarnPanel({
             </p>
           </div>
         )}
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }
 

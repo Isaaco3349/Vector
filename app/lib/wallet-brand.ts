@@ -37,5 +37,11 @@ export function okxSafeTransactionPath(
   provider?: unknown,
 ): boolean {
   if (process.env.NEXT_PUBLIC_FORCE_SEQUENTIAL_BRIDGE === "true") return true;
-  return isOkxWallet(connector) || providerIsOkx(provider);
+  if (isOkxWallet(connector) || providerIsOkx(provider)) return true;
+  if (typeof window !== "undefined") {
+    const w = window as unknown as Record<string, unknown>;
+    const okx = w.okxwallet as { ethereum?: unknown } | undefined;
+    if (okx?.ethereum && connector?.id === "injected") return true;
+  }
+  return false;
 }

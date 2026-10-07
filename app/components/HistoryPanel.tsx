@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { VectorModalShell } from "./VectorModalShell";
 import {
   BRIDGE_CHAINS,
   arcBridgeChainId,
@@ -88,24 +89,7 @@ export function HistoryPanel({
   }, [isCircle, walletAddress, numericChainId]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6 max-h-[88vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[17px] font-semibold">Activity</span>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
-            Close
-          </button>
-        </div>
-
+    <VectorModalShell title="Activity" onClose={onClose}>
         {isCircle ? (
           <>
             {loading && (
@@ -166,8 +150,7 @@ export function HistoryPanel({
             )}
           </div>
         )}
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }
 
