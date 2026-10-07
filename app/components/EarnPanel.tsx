@@ -136,8 +136,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
 
   // Debounced quote whenever amount / mode / vault settles.
   useEffect(() => {
-    setTxHash(null);
-    setExplorerUrl(null);
+    if (txHash) return;
     if (!selected || !parsedAmount || overMax) {
       setQuote(null);
       return;
@@ -173,7 +172,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [selected, parsedAmount, mode, overMax, providerReady]);
+  }, [selected, parsedAmount, mode, overMax, providerReady, txHash]);
 
   async function handleSubmit() {
     const provider = providerRef.current;
@@ -378,6 +377,21 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
                   {switching ? "Switching…" : `Switch to ${ARC_DISPLAY_NAME}`}
                 </button>
               </div>
+            ) : txHash ? (
+              <TxSuccessCard
+                title={
+                  mode === "deposit" ? "Deposit submitted" : "Withdrawal submitted"
+                }
+                txHash={txHash}
+                explorerUrl={
+                  explorerUrl ??
+                  (txHash ? explorerTxUrl(arcBridgeChainId(), txHash) : null)
+                }
+                onDismiss={() => {
+                  setTxHash(null);
+                  setExplorerUrl(null);
+                }}
+              />
             ) : (
               <>
                 {/* Amount */}
@@ -435,21 +449,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
                   </p>
                 )}
 
-                {txHash && explorerUrl && (
-                  <TxSuccessCard
-                    title={
-                      mode === "deposit" ? "Deposit submitted" : "Withdrawal submitted"
-                    }
-                    txHash={txHash}
-                    explorerUrl={explorerUrl}
-                    onDismiss={() => {
-                      setTxHash(null);
-                      setExplorerUrl(null);
-                    }}
-                  />
-                )}
-
-                {error && !txHash && (
+                {error && (
                   <p className="text-[13px] text-[var(--vector-pink)] font-mono mb-4">
                     {error}
                   </p>

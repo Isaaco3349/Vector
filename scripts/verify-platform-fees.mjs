@@ -66,11 +66,24 @@ for (const amount of amounts) {
   );
 }
 
-console.log("\n=== Swap fee: flat customFee.value (no amount scaling) ===\n");
+console.log("\n=== Swap fee: percentageBps maps to $0.15 flat per amount ===\n");
+function swapBpsForAmount(amountHuman) {
+  const amount = Number(amountHuman);
+  const bps = Math.ceil((Number(VECTOR_FLAT_FEE_USDC) / amount) * 10_000);
+  return Math.min(Math.max(bps, 1), 10_000);
+}
 for (const amountIn of ["100", "31", "0.2"]) {
-  const feeHuman = VECTOR_FLAT_FEE_USDC;
-  assertEq(feeHuman, VECTOR_FLAT_FEE_USDC, `swap flat fee on ${amountIn} USDC input`);
-  console.log(`Input ${amountIn} USDC → Vector kit fee ${feeHuman} USDC`);
+  const bps = swapBpsForAmount(amountIn);
+  const feeHuman = (Number(amountIn) * bps) / 10_000;
+  const target = Number(VECTOR_FLAT_FEE_USDC);
+  if (feeHuman + 1e-9 < target || feeHuman > target * 1.02) {
+    console.error(
+      `FAIL swap bps fee on ${amountIn} USDC: fee ${feeHuman} outside [${target}, ${target * 1.02}]`,
+    );
+    process.exitCode = 1;
+  } else {
+    console.log(`OK   swap bps fee on ${amountIn} USDC: ${bps} bps → ~${feeHuman} USDC`);
+  }
 }
 
 console.log("\n=== Google CCTP burn path: protocolFee = flat USDC ===\n");

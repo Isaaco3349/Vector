@@ -184,7 +184,7 @@ async function buildKitAndParams(args: SwapArgs) {
     batchTransactions?: boolean;
     customFee: ReturnType<typeof swapCustomFeeConfig>["customFee"];
   } = {
-    customFee: swapCustomFeeConfig().customFee,
+    customFee: swapCustomFeeConfig(args.amountIn).customFee,
   };
   if (kitKey) config.kitKey = kitKey;
   if (args.allowanceStrategy) config.allowanceStrategy = args.allowanceStrategy;

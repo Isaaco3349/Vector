@@ -341,7 +341,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         fromChain,
         toChain,
         amount: String(parsedAmount),
-        useSequentialTransactions: okxSafePath,
+        useSequentialTransactions: true,
       });
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);

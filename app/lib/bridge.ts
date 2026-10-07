@@ -362,8 +362,11 @@ function extractFailureDetail(result: unknown): string | null {
 
 /** Execute the bridge. Returns best-effort source tx + state, plus raw result. */
 export async function executeBridge(args: BridgeArgs): Promise<BridgeExecution> {
+  // App Kit batch/permit paths trigger OKX "risky signature" with no Confirm.
+  // Always burn via plain eth_sendTransaction for injected wallets.
   const sequential =
-    args.useSequentialTransactions || providerIsOkx(args.provider);
+    args.useSequentialTransactions !== false ||
+    providerIsOkx(args.provider);
   if (sequential) {
     const { executeBridgeViaSequentialTransactions } = await import(
       "./bridge-sequential-tx"
