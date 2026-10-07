@@ -35,7 +35,6 @@ import { logVectorActivity } from "../lib/record-vector-activity";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import { isOkxWallet } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
-import { OkxKitContractsNote } from "./OkxKitContractsNote";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import { VectorModalShell } from "./VectorModalShell";
 
@@ -977,11 +976,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           </button>
         )}
 
-        {okxWallet && <OkxKitContractsNote />}
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          {okxWallet
-            ? `Swaps on ${ARC_DISPLAY_NAME} use Circle's Adapter contract with standard OKX transaction confirms (no typed-data batching).`
-            : `Swaps run on ${ARC_DISPLAY_NAME} through Circle's App Kit. Estimated output can move slightly before the transaction confirms.`}
+          Swaps run on {ARC_DISPLAY_NAME} through Circle. Estimated output can
+          move slightly before the transaction confirms.
         </p>
     </VectorModalShell>
   );
