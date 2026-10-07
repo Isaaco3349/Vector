@@ -9,6 +9,7 @@ import {
   type SwapSymbol,
 } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
+import { VectorModalShell } from "./VectorModalShell";
 import {
   arcBridgeChainId,
   explorerAddressUrl,
@@ -240,24 +241,7 @@ export function GoogleSwapPanel({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-t-3xl sm:rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-[17px] font-semibold">Swap</span>
-          <button
-            onClick={onClose}
-            className="text-[var(--vector-text-dim)] text-[13px] hover:text-[var(--vector-text)]"
-          >
-            Close
-          </button>
-        </div>
-
+    <VectorModalShell title="Swap" onClose={onClose}>
         {done ? (
           <div className="text-center py-6">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-pink)]">
@@ -438,8 +422,7 @@ export function GoogleSwapPanel({
             </p>
           </>
         )}
-      </div>
-    </div>
+    </VectorModalShell>
   );
 }
 

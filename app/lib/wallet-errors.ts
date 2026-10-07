@@ -40,8 +40,16 @@ export function isWalletUserRejection(text: string): boolean {
 }
 
 /** Drop viem/ethers-style debug blocks (Request Arguments, hex data, version footers). */
+/** True when SDK/wallet gave no usable message (literal null/undefined strings). */
+export function isEmptyErrorDetail(detail: string | null | undefined): boolean {
+  if (detail == null) return true;
+  const t = detail.trim();
+  return t.length === 0 || t === "null" || t === "undefined";
+}
+
 export function sanitizeWalletDetail(raw: string): string {
   let s = raw.trim();
+  if (s === "null" || s === "undefined") return "";
   const cutPatterns = [
     /\n\nRequest Arguments:[\s\S]*/i,
     /\nRequest Arguments:[\s\S]*/i,
@@ -92,6 +100,12 @@ export function friendlyWalletError(err: unknown, fallback: string): string {
         : "";
   if (fromMessage && !/^(unknown|error)$/i.test(fromMessage)) {
     return `Bridge didn't complete. ${fromMessage}`;
+  }
+  if (/^null$/i.test(blob.trim()) || blob.trim() === "") {
+    return (
+      fallback +
+      " If you use OKX mobile browser, update the app or try the OKX Chrome extension — Vector uses plain transaction confirms only."
+    );
   }
   return fallback;
 }

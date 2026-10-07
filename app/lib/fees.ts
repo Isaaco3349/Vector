@@ -2,19 +2,22 @@ import { formatUnits, getAddress, isAddress, parseUnits } from "viem";
 
 const USDC_DECIMALS = 6;
 
-/** 0.25% — do not change without product approval. */
+/** Flat Vector platform fee (USDC) — product-approved 2026-03. */
+export const VECTOR_FLAT_FEE_USDC = "0.15";
+
+/** @deprecated Use flat fee labels; kept for UI that still references bps keys. */
 export const SWAP_FEE_BPS = 25;
 
-/** 0.10% — do not change without product approval. */
+/** @deprecated Use flat fee labels; kept for UI that still references bps keys. */
 export const BRIDGE_FEE_BPS = 10;
+
+export function vectorFlatFeeBaseUnits(): bigint {
+  return parseUnits(VECTOR_FLAT_FEE_USDC as `${number}`, USDC_DECIMALS);
+}
 
 const MISSING_RECIPIENT_MSG =
   "NEXT_PUBLIC_PLATFORM_FEE_RECIPIENT is not set. Platform fees are required — add it to .env.local (see .env.local.example).";
 
-/**
- * EVM address that receives Vector's share of Circle custom fees (90% per Circle docs).
- * Public env var — safe for client bundles.
- */
 export function requirePlatformFeeRecipient(): `0x${string}` {
   const raw = process.env.NEXT_PUBLIC_PLATFORM_FEE_RECIPIENT?.trim();
   if (!raw) {
@@ -48,37 +51,25 @@ function parseBridgeAmountHuman(amountHuman: string): bigint {
   }
 }
 
-/** Platform fee in USDC base units (6 decimals): amount × BRIDGE_FEE_BPS / 10_000. */
-export function bridgePlatformFeeBaseUnits(amountHuman: string): bigint {
-  const amountBase = parseBridgeAmountHuman(amountHuman);
-  return (amountBase * BigInt(BRIDGE_FEE_BPS)) / BigInt(10_000);
+export function bridgePlatformFeeBaseUnits(_amountHuman?: string): bigint {
+  return vectorFlatFeeBaseUnits();
 }
 
-/** Human USDC fee string for display / SDK paths that expect decimal amounts. */
-export function bridgePlatformFeeHuman(amountHuman: string): string {
-  return formatUnits(bridgePlatformFeeBaseUnits(amountHuman), USDC_DECIMALS);
+export function bridgePlatformFeeHuman(_amountHuman?: string): string {
+  return VECTOR_FLAT_FEE_USDC;
 }
 
-/**
- * App Kit / Bridge Kit `config.customFee.value` — human-readable USDC decimal string.
- * Bridge Kit scales `amount`, `maxFee`, and `customFee.value` to base units at the
- * kit boundary; passing base units here is interpreted as whole USDC and overscales.
- */
-export function bridgeCustomFeeHumanForAppKit(amountHuman: string) {
+export function bridgeCustomFeeHumanForAppKit(_amountHuman: string) {
   return {
     customFee: {
-      value: bridgePlatformFeeHuman(amountHuman),
+      value: VECTOR_FLAT_FEE_USDC,
       recipientAddress: requirePlatformFeeRecipient(),
     },
   };
 }
 
-/**
- * CCTP v2 provider `burn()` when `amount` is already in minor units — fee must
- * match the same unit (integer string). Used by the Google-wallet encoder path.
- */
-export function bridgeCustomFeeBaseForCctpBurn(amountHuman: string) {
-  const feeBase = bridgePlatformFeeBaseUnits(amountHuman);
+export function bridgeCustomFeeBaseForCctpBurn(_amountHuman: string) {
+  const feeBase = vectorFlatFeeBaseUnits();
   return {
     customFee: {
       value: feeBase.toString(),
@@ -87,35 +78,25 @@ export function bridgeCustomFeeBaseForCctpBurn(amountHuman: string) {
   };
 }
 
-/** App Kit / Stablecoin Service swap `config.customFee` (percentage of swap input). */
+/** App Kit / Stablecoin Service swap — flat USDC fee per swap. */
 export function swapCustomFeeConfig() {
   return {
     customFee: {
-      percentageBps: SWAP_FEE_BPS,
+      value: VECTOR_FLAT_FEE_USDC,
       recipientAddress: requirePlatformFeeRecipient(),
     },
   };
 }
 
-/** Label for review screens — e.g. "Includes 0.25% Vector fee". */
-export function formatVectorFeeLabel(bps: number): string {
-  const pct = bps / 100;
-  return `Includes ${pct.toFixed(2)}% Vector fee`;
+export function formatVectorFeeLabel(_bps?: number): string {
+  return `Includes $${VECTOR_FLAT_FEE_USDC} Vector fee`;
 }
 
-/**
- * USDC (6 dp) the wallet must hold for a bridge: burn amount + Vector kit fee.
- * Circle approves/pulls `amount + customFee` on the source chain.
- */
 export function bridgeTotalUsdcRequiredBaseUnits(amountHuman: string): bigint {
   const amountBase = parseBridgeAmountHuman(amountHuman);
-  return amountBase + bridgePlatformFeeBaseUnits(amountHuman);
+  return amountBase + vectorFlatFeeBaseUnits();
 }
 
-/**
- * Largest human USDC amount bridgeable from a balance without exceeding it
- * after the 0.10% kit fee. Use for MAX instead of the raw balance string.
- */
 export function bridgeMaxAmountHumanFromBalance(balanceHuman: string): string | null {
   const trimmed = balanceHuman.trim();
   if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
@@ -128,18 +109,16 @@ export function bridgeMaxAmountHumanFromBalance(balanceHuman: string): string | 
   return bridgeMaxAmountHumanFromBalanceBaseUnits(balanceBase);
 }
 
-/** Prefer this when the wallet balance is known in base units (avoids display rounding). */
 export function bridgeMaxAmountHumanFromBalanceBaseUnits(
   balanceBase: bigint,
 ): string | null {
-  if (balanceBase <= BigInt(0)) return null;
-  const maxBase =
-    (balanceBase * BigInt(10_000)) / BigInt(10_000 + BRIDGE_FEE_BPS);
+  const fee = vectorFlatFeeBaseUnits();
+  if (balanceBase <= fee) return null;
+  const maxBase = balanceBase - fee;
   if (maxBase <= BigInt(0)) return null;
   return formatUnits(maxBase, USDC_DECIMALS);
 }
 
-/** True when amount + Vector bridge fee exceeds on-chain USDC balance (6 dp). */
 export function bridgeAmountExceedsUsdcBalance(
   amountHuman: string,
   balanceBase: bigint,
