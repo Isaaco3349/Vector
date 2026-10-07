@@ -199,7 +199,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   // Debounced quoting whenever inputs settle.
   useEffect(() => {
-    if (txHash) return;
+    if (txHash || bridging) return;
     setPendingNote(null);
     setActivityUrl(null);
     if (sameChain) {
@@ -261,6 +261,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     insufficientMessage,
     providerReady,
     txHash,
+    bridging,
   ]);
 
   /**
@@ -520,7 +521,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
         {txHash && !error && (
           <TxSuccessCard
-            title="Bridge burn submitted"
+            title="Bridge successful"
             txHash={txHash}
             explorerUrl={txUrl}
             subtitle={

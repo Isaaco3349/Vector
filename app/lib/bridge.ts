@@ -40,8 +40,8 @@
  */
 
 import type { Eip1193Provider } from "./appkit";
-import { bridgeCustomFeeHumanForAppKit } from "./fees";
-import { providerIsOkx } from "./wallet-brand";
+import { bridgeCustomFeeHumanForAppKit, formatVectorFeeLabel } from "./fees";
+import { buildBridgePlan } from "./google-bridge";
 import { formatUnits } from "viem";
 import {
   bridgeChainById,
@@ -245,42 +245,39 @@ function formatSourceGas(
   }
 }
 
-/** Estimate a bridge without executing it. Surfaces fees + gas for confirmation. */
-export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
-  const { kit, bridgeParams } = await buildKitAndParams(args);
-  if (typeof console !== "undefined") {
-    console.log("[Vector] estimateBridge params:", {
-      ...bridgeParams,
-      from: { chain: bridgeParams.from.chain, adapter: "[ViemAdapter]" },
-      to: {
-        chain: bridgeParams.to.chain,
-        adapter: "[ViemAdapter]",
-        useForwarder: (bridgeParams.to as { useForwarder?: boolean }).useForwarder,
-      },
-    });
+async function walletAddressFromProvider(
+  provider: Eip1193Provider,
+): Promise<string> {
+  const accounts = (await provider.request({ method: "eth_accounts" })) as unknown;
+  const first = Array.isArray(accounts) ? accounts[0] : null;
+  if (typeof first !== "string" || !first.startsWith("0x")) {
+    throw new Error("Wallet did not return an account address.");
   }
-  let estimate: unknown;
-  try {
-    estimate = await kit.estimateBridge(bridgeParams);
-  } catch (err) {
-    console.error("[Vector] estimateBridge threw:", err);
-    throw err;
-  }
-  if (typeof console !== "undefined") {
-    console.log("[Vector] estimateBridge raw result:", estimate);
-  }
+  return first;
+}
 
-  const rec =
-    estimate && typeof estimate === "object"
-      ? (estimate as Record<string, unknown>)
-      : null;
-  const amount = typeof rec?.amount === "string" ? rec.amount : null;
+/**
+ * Estimate a bridge without executing it. Uses Circle's offline CCTP encoder only —
+ * never calls App Kit `estimateBridge` through the wallet (OKX treats that as risky).
+ */
+export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
+  const from = bridgeChainById(args.fromChain);
+  const address = await walletAddressFromProvider(args.provider);
+  await buildBridgePlan({
+    walletAddress: address,
+    fromChain: args.fromChain,
+    toChain: args.toChain,
+    amount: args.amount,
+    recipientAddress: address,
+  });
 
   return {
-    amount,
-    feeText: formatBridgeFees(rec?.fees),
-    gasText: formatSourceGas(rec?.gasFees, args.fromChain),
-    raw: estimate,
+    amount: args.amount,
+    feeText: `${formatVectorFeeLabel()} — plus CCTP provider/forwarder fees from Circle`,
+    gasText: from
+      ? `Source gas on ${from.label} (native token in your wallet)`
+      : null,
+    raw: { estimate: "offline-cctp-plan" },
   };
 }
 
@@ -362,42 +359,9 @@ function extractFailureDetail(result: unknown): string | null {
 
 /** Execute the bridge. Returns best-effort source tx + state, plus raw result. */
 export async function executeBridge(args: BridgeArgs): Promise<BridgeExecution> {
-  // App Kit batch/permit paths trigger OKX "risky signature" with no Confirm.
-  // Always burn via plain eth_sendTransaction for injected wallets.
-  const sequential =
-    args.useSequentialTransactions !== false ||
-    providerIsOkx(args.provider);
-  if (sequential) {
-    const { executeBridgeViaSequentialTransactions } = await import(
-      "./bridge-sequential-tx"
-    );
-    return executeBridgeViaSequentialTransactions(args);
-  }
-
-  const { kit, bridgeParams } = await buildKitAndParams(args);
-  const result = await kit.bridge(bridgeParams);
-
-  const { txHash, explorerUrl } = extractSourceTx(result, args.fromChain);
-  const rawState =
-    result && typeof result === "object"
-      ? (result as Record<string, unknown>).state
-      : null;
-  const state =
-    rawState === "pending" || rawState === "success" || rawState === "error"
-      ? rawState
-      : null;
-
-  if (state === "error") {
-    // Keep the whole object in the console: the extractor only knows the fields
-    // it knows, and this is the artifact worth having when it comes back null.
-    console.error("[Vector] bridge reported an error state. Raw result:", result);
-  }
-
-  return {
-    txHash,
-    explorerUrl,
-    state,
-    failureDetail: state === "error" ? extractFailureDetail(result) : null,
-    raw: result,
-  };
+  // Injected wallets always use sequential eth_sendTransaction (never App Kit batch).
+  const { executeBridgeViaSequentialTransactions } = await import(
+    "./bridge-sequential-tx"
+  );
+  return executeBridgeViaSequentialTransactions(args);
 }

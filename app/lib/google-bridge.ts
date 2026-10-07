@@ -270,6 +270,29 @@ function readCallData(prepared: unknown, label: string): BridgeCall {
 }
 
 /**
+ * OKX blocks kit `customBurnWithHook` on many L1/L2 sources when minting on Arc.
+ * Use canonical CCTP TokenMessenger `depositForBurnWithHook` instead (no kit bridge).
+ */
+function sourceChainDefForInboundArc(
+  sourceDef: Record<string, unknown>,
+  fromAppKit: string,
+  toAppKit: string,
+): Record<string, unknown> {
+  const arcIds = new Set(["Arc", "Arc_Testnet"]);
+  const inboundToArc = arcIds.has(toAppKit) && !arcIds.has(fromAppKit);
+  if (!inboundToArc) return sourceDef;
+
+  const kit = (sourceDef as { kitContracts?: Record<string, unknown> })
+    .kitContracts;
+  if (!kit || kit.bridge === undefined) return sourceDef;
+
+  return {
+    ...sourceDef,
+    kitContracts: { ...kit, bridge: undefined },
+  };
+}
+
+/**
  * Build the two-call bridge plan (approve → burn) for the Google wallet, using
  * Circle's own CCTP v2 encoder. Loaded via dynamic import so these packages only
  * enter the bundle when a user actually opens Bridge.
@@ -325,7 +348,7 @@ export async function buildBridgePlan(
   // Resolve the SDK's own chain DEFINITIONS (objects, not strings). approve()
   // computes the spender from source.chain before resolving, so it must be the
   // resolved def — passing the string id would break address resolution.
-  const sourceDef = resolveChainIdentifier(from.appKitChain) as Record<
+  const sourceDefRaw = resolveChainIdentifier(from.appKitChain) as Record<
     string,
     unknown
   >;
@@ -333,6 +356,11 @@ export async function buildBridgePlan(
     string,
     unknown
   >;
+  const sourceDef = sourceChainDefForInboundArc(
+    sourceDefRaw,
+    from.appKitChain,
+    to.appKitChain,
+  );
 
   // Arc RPC + chain id straight from the resolved def (no hardcoding).
   const rpcList = (sourceDef as { rpcEndpoints?: unknown }).rpcEndpoints;

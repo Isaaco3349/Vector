@@ -20,10 +20,6 @@ import { bridgeChainById, explorerTxUrl } from "./bridge-chains";
 import { buildBridgePlan, type BridgeCall } from "./google-bridge";
 import type { Eip1193Provider } from "./appkit";
 
-function hexChainId(chainId: number): `0x${string}` {
-  return `0x${chainId.toString(16)}` as `0x${string}`;
-}
-
 async function resolveWalletAddress(
   provider: Eip1193Provider,
 ): Promise<`0x${string}`> {
@@ -41,19 +37,37 @@ async function sendLegacyTransaction(
   provider: Eip1193Provider,
   from: `0x${string}`,
   call: BridgeCall,
-  chainId: number,
+  publicClient: ReturnType<typeof createPublicClient>,
 ): Promise<Hash> {
+  const to = call.to as `0x${string}`;
+  const data = call.data as Hex;
+  const value =
+    call.value.startsWith("0x") && call.value.length > 2
+      ? BigInt(call.value)
+      : BigInt(call.value || "0");
+
+  const tx: Record<string, string> = {
+    from,
+    to,
+    data,
+    value: value === BigInt(0) ? "0x0" : `0x${value.toString(16)}`,
+  };
+
+  try {
+    const gas = await publicClient.estimateGas({
+      account: from,
+      to,
+      data,
+      value,
+    });
+    tx.gas = `0x${((gas * BigInt(120)) / BigInt(100)).toString(16)}`;
+  } catch {
+    /* wallet may estimate gas */
+  }
+
   const hash = await provider.request({
     method: "eth_sendTransaction",
-    params: [
-      {
-        from,
-        to: call.to,
-        data: call.data,
-        value: call.value.startsWith("0x") ? call.value : "0x0",
-        chainId: hexChainId(chainId),
-      },
-    ],
+    params: [tx],
   });
   if (typeof hash !== "string" || !hash.startsWith("0x")) {
     throw new Error("Wallet did not return a transaction hash.");
@@ -94,13 +108,15 @@ export async function executeBridgeViaSequentialTransactions(
   });
 
   const sourceDefRpc = await resolveSourceRpc(fromMeta.appKitChain);
-  const chainId = fromMeta.chainId;
 
   if (typeof console !== "undefined") {
     console.info("[Vector] bridge: OKX-safe sequential path (eth_sendTransaction only)");
   }
 
   const publicClient = createPublicClient({ transport: http(sourceDefRpc) });
+  const sendTx = (call: BridgeCall) =>
+    sendLegacyTransaction(args.provider, address, call, publicClient);
+
   const needsApprove = await usdcAllowanceInsufficient(
     publicClient,
     plan.approve.to as `0x${string}`,
@@ -112,12 +128,7 @@ export async function executeBridgeViaSequentialTransactions(
   let approveHash: Hash | null = null;
   if (needsApprove) {
     try {
-      approveHash = await sendLegacyTransaction(
-        args.provider,
-        address,
-        plan.approve,
-        chainId,
-      );
+      approveHash = await sendTx(plan.approve);
       await waitForReceipt(sourceDefRpc, approveHash);
     } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -133,12 +144,7 @@ export async function executeBridgeViaSequentialTransactions(
     console.info("[Vector] bridge: skipping approve — USDC allowance already sufficient");
   }
 
-  const burnHash = await sendLegacyTransaction(
-    args.provider,
-    address,
-    plan.burn,
-    chainId,
-  );
+  const burnHash = await sendTx(plan.burn);
 
   return {
     txHash: burnHash,
