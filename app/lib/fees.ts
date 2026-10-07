@@ -78,12 +78,26 @@ export function bridgeCustomFeeBaseForCctpBurn(_amountHuman: string) {
   };
 }
 
-/** App Kit / Stablecoin Service swap — flat USDC fee per swap. */
-export function swapCustomFeeConfig() {
+/**
+ * Circle swap API requires `customFee.percentageBps` (not `value`). Map the
+ * product flat $0.15 fee to bps for the quoted swap size.
+ */
+export function swapCustomFeeConfig(amountHuman?: string) {
+  const recipientAddress = requirePlatformFeeRecipient();
+  let percentageBps = SWAP_FEE_BPS;
+  const trimmed = amountHuman?.trim();
+  if (trimmed && /^\d+(\.\d+)?$/.test(trimmed)) {
+    const amount = Number(trimmed);
+    if (Number.isFinite(amount) && amount > 0) {
+      const flat = Number(VECTOR_FLAT_FEE_USDC);
+      percentageBps = Math.ceil((flat / amount) * 10_000);
+      percentageBps = Math.min(Math.max(percentageBps, 1), 10_000);
+    }
+  }
   return {
     customFee: {
-      value: VECTOR_FLAT_FEE_USDC,
-      recipientAddress: requirePlatformFeeRecipient(),
+      percentageBps,
+      recipientAddress,
     },
   };
 }

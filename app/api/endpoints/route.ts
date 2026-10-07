@@ -513,7 +513,7 @@ export async function POST(request: Request) {
         if (slippageBps != null && Number.isFinite(Number(slippageBps))) {
           swapBody.slippageBps = Number(slippageBps);
         }
-        swapBody.config = swapCustomFeeConfig();
+        swapBody.config = swapCustomFeeConfig(String(amount));
 
         const response = await fetchCircle(
           `${CIRCLE_BASE_URL}/v1/stablecoinKits/swap`,
