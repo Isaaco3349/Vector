@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { erc20Abi, isAddress, parseUnits } from "viem";
 import {
   useAccount,
@@ -17,6 +17,7 @@ import {
 } from "../lib/vector-router";
 import { useSendBalance } from "./useSendBalance";
 import { VectorModalShell } from "./VectorModalShell";
+import { logVectorActivity } from "../lib/record-vector-activity";
 
 /**
  * Send USDC panel for external (injected) wallets.
@@ -66,6 +67,21 @@ export function SendPanel({ onClose }: { onClose: () => void }) {
     chainId: chain?.chainId,
     query: { enabled: !!txHash },
   });
+
+  const loggedSendRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!receipt.isSuccess || !txHash || !address || !chain) return;
+    if (loggedSendRef.current === txHash) return;
+    loggedSendRef.current = txHash;
+    logVectorActivity({
+      walletAddress: address,
+      txHash,
+      kind: "send",
+      chainId: chain.chainId,
+      chainLabel: chain.label,
+      detail: `${amount.trim()} USDC`,
+    });
+  }, [receipt.isSuccess, txHash, address, chain, amount]);
 
   const recipientTrimmed = to.trim();
   const recipientValid = useMemo(

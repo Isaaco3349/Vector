@@ -28,6 +28,7 @@ import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import { TxSuccessCard } from "./TxSuccessCard";
 import { VectorModalShell } from "./VectorModalShell";
 import { errorTextBlob } from "../lib/wallet-errors";
+import { logVectorActivity } from "../lib/record-vector-activity";
 
 /**
  * Earn panel for external (injected) wallets — deposit USDC into an Arc yield vault.
@@ -206,6 +207,15 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
       }
       setTxHash(result.txHash);
       setExplorerUrl(result.explorerUrl);
+      if (result.txHash) {
+        logVectorActivity({
+          walletAddress: address,
+          txHash: result.txHash,
+          kind: mode === "deposit" ? "earn-deposit" : "earn-withdraw",
+          chainId: ARC_CHAIN_ID,
+          detail: `${amount.trim()} USDC`,
+        });
+      }
       if (!result.txHash) {
         setError(
           `${mode === "deposit" ? "Deposit" : "Withdrawal"} submitted, but no transaction hash came back. Check your wallet activity to confirm.`,

@@ -38,6 +38,7 @@ import {
 } from "../lib/wallet-errors";
 import { useBridgeBalance } from "./useBridgeBalance";
 import { VectorModalShell } from "./VectorModalShell";
+import { logVectorActivity } from "../lib/record-vector-activity";
 
 function isArcBridgeChain(id: BridgeChainId): boolean {
   return id === "Arc" || id === "Arc_Testnet";
@@ -347,6 +348,17 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       setTxHash(result.txHash);
       setTxUrl(result.explorerUrl);
       if (result.txHash) {
+        const src = bridgeChainById(fromChain);
+        if (src) {
+          logVectorActivity({
+            walletAddress: address,
+            txHash: result.txHash,
+            kind: "bridge",
+            chainId: src.chainId,
+            chainLabel: chainLabel(fromChain),
+            detail: `${chainLabel(fromChain)} → ${chainLabel(toChain)}`,
+          });
+        }
         setError(null);
         setAmount("");
         void syncBalancesAfterBridge(result.txHash);
