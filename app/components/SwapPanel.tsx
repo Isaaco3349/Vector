@@ -31,6 +31,7 @@ import { TxSuccessCard } from "./TxSuccessCard";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { executeSwapViaSequentialTransactions } from "../lib/okx-safe-swap";
+import { logVectorActivity } from "../lib/record-vector-activity";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import { isOkxWallet } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
@@ -604,6 +605,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           onStage: (stage) => setPlanStage(stage),
         });
         setTxHash(planResult.txHash);
+        logVectorActivity({
+          walletAddress: address,
+          txHash: planResult.txHash,
+          kind: "swap",
+          chainId: ARC_CHAIN_ID,
+          detail: `${tokenIn} → ${tokenOut}`,
+        });
         void syncBalancesAfterSwap(planResult.txHash);
         return;
       }
@@ -637,6 +645,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           onStage: (stage) => setPlanStage(stage),
         });
         setTxHash(planResult.executeTxHash);
+        logVectorActivity({
+          walletAddress: address,
+          txHash: planResult.executeTxHash,
+          kind: "swap",
+          chainId: ARC_CHAIN_ID,
+          detail: `${tokenIn} → ${tokenOut}`,
+        });
         void syncBalancesAfterSwap(planResult.executeTxHash);
         return;
       }
@@ -677,6 +692,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
       setTxHash(result.txHash);
       if (result.txHash) {
+        logVectorActivity({
+          walletAddress: address,
+          txHash: result.txHash,
+          kind: "swap",
+          chainId: ARC_CHAIN_ID,
+          detail: `${tokenIn} → ${tokenOut}`,
+        });
         void syncBalancesAfterSwap(result.txHash);
       } else {
         // Swap returned but no recognisable hash — surface honestly rather
