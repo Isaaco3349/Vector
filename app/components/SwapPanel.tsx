@@ -33,7 +33,7 @@ import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swa
 import { executeSwapViaSequentialTransactions } from "../lib/okx-safe-swap";
 import { logVectorActivity } from "../lib/record-vector-activity";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
-import { isOkxWallet } from "../lib/wallet-brand";
+import { isOkxWallet, okxInAppBrowser } from "../lib/wallet-brand";
 import { useTokenBalance } from "./useTokenBalance";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import { VectorModalShell } from "./VectorModalShell";
@@ -326,7 +326,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   // don't have to reach through undocumented client internals.
   const { providerRef, okxSafePath, ready: providerReady } =
     useWalletSigningProviderRef(connector, address);
-  const okxWallet = isOkxWallet(connector) || okxSafePath;
+  const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
+  const useOkxSequential = okxSafePath || okxInAppBrowser();
 
   /**
    * Re-ask the wallet which chain it is on. Returns the id as well as storing
@@ -430,7 +431,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           tokenOut,
           amountIn: String(parsedAmount),
           ...(slippageBps !== null ? { slippageBps } : {}),
-          ...(okxSafePath
+          ...(useOkxSequential
             ? {
                 allowanceStrategy: "approve" as const,
                 batchTransactions: false as const,
@@ -511,7 +512,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     address,
     recordUnroutablePair,
     providerReady,
-    okxSafePath,
+    useOkxSequential,
   ]);
 
   async function handleSwitch() {
@@ -585,7 +586,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       }
 
       // OKX: always POST /swap plan + sequential eth_sendTransaction (never App Kit permit/batch).
-      if (okxSafePath && address) {
+      if (useOkxSequential && address) {
         const fromSymbol = asSwapSymbol(tokenIn);
         const toSymbol = asSwapSymbol(tokenOut);
         if (!fromSymbol || !toSymbol) {

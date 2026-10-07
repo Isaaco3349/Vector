@@ -1,7 +1,11 @@
 "use client";
 
 import type { Eip1193Provider } from "./appkit";
-import { isOkxWallet, providerIsOkx } from "./wallet-brand";
+import {
+  isOkxWallet,
+  okxInAppBrowser,
+  providerIsOkx,
+} from "./wallet-brand";
 
 /** OKX Wallet EIP-6963 reverse-DNS id (current extension). */
 export const OKX_WALLET_RDNS = "com.okx.wallet";
@@ -79,14 +83,6 @@ export async function discoverEip6963Provider(
   });
 }
 
-/** OKX in-app browser often reports a generic `injected` connector. */
-function okxInAppBrowserHint(): boolean {
-  if (typeof window === "undefined") return false;
-  if (okxInjectedEip1193Provider()) return true;
-  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-  return /OKX|OKApp/i.test(ua);
-}
-
 /**
  * Resolve the EIP-1193 provider that will actually sign for this connection.
  * Prefers wagmi's connector provider, then OKX-specific globals / EIP-6963,
@@ -127,14 +123,20 @@ export async function resolveWalletEip1193Provider(
  */
 export function createOkxSafeEip1193Provider(
   inner: Eip1193Provider,
+  opts?: { force?: boolean },
 ): Eip1193Provider {
-  if (!providerIsOkx(inner)) return inner;
+  const force = opts?.force === true;
+  if (!force && !providerIsOkx(inner)) return inner;
 
   const wrapped = {
     isOkxWallet: true as const,
     request: async (args: { method: string; params?: unknown[] | object }) => {
       const method = args.method;
       if (OKX_BLOCKED_RPC.has(method)) {
+        // OKX mobile in-app browser submits some confirms via wallet_sendTransaction.
+        if (method === "wallet_sendTransaction" && okxInAppBrowser()) {
+          return inner.request(args);
+        }
         throw new Error(
           `[Vector] Blocked ${method} for OKX — use standard transaction confirms only.`,
         );
@@ -190,25 +192,29 @@ export async function resolveSigningProvider(
   connector: WagmiConnectorLike | undefined,
   connectedAddress?: string | null,
 ): Promise<Eip1193Provider | null> {
+  const inOkxApp = okxInAppBrowser();
+
   if (connectedAddress) {
     const okxForAccount = await okxOwnsConnectedAddress(connectedAddress);
     if (okxForAccount) {
-      return createOkxSafeEip1193Provider(okxForAccount);
+      return createOkxSafeEip1193Provider(okxForAccount, { force: true });
     }
   }
 
   if (
     connectedAddress &&
-    okxInAppBrowserHint() &&
+    inOkxApp &&
     (isOkxWallet(connector) || connector?.id === "injected")
   ) {
     const okx = okxInjectedEip1193Provider();
     if (okx) {
-      return createOkxSafeEip1193Provider(okx);
+      return createOkxSafeEip1193Provider(okx, { force: true });
     }
   }
 
   const raw = await resolveWalletEip1193Provider(connector);
   if (!raw) return null;
-  return createOkxSafeEip1193Provider(raw);
+  return createOkxSafeEip1193Provider(raw, {
+    force: inOkxApp || providerIsOkx(raw),
+  });
 }
