@@ -11,6 +11,11 @@ import {
   readSwapInputBalanceForSwap,
 } from "../arc-erc20-read";
 import { waitArcTransactionReceipt } from "../arc-tx-wait";
+import {
+  clearOkxKyberPendingSwap,
+  loadOkxKyberPendingSwap,
+  saveOkxKyberPendingSwap,
+} from "../okx-kyber-pending";
 import { okxInAppBrowser } from "../wallet-brand";
 import { buildKyberSwapTx, fetchKyberRouteSummary } from "./kyber-client";
 import type { SwapRouteExecution } from "./types";
@@ -174,12 +179,58 @@ async function ensureKyberAllowance(
   return existingApproveHash === "0x" ? hash : existingApproveHash;
 }
 
+async function tryOkxKyberResume(
+  provider: Eip1193Provider,
+  from: string,
+  tokenInContract: string,
+  amountInHuman: string,
+  tokenInSymbol: string,
+  tokenOutSymbol: string,
+  onStage?: (s: Stage) => void,
+): Promise<{ txHash: string; approveTxHash: string } | null> {
+  if (!okxInAppBrowser()) return null;
+  const pending = loadOkxKyberPendingSwap(
+    from,
+    tokenInSymbol,
+    tokenOutSymbol,
+    amountInHuman,
+  );
+  if (!pending) return null;
+
+  const allowance = await readErc20Allowance(
+    provider,
+    tokenInContract,
+    from,
+    pending.routerAddress,
+  );
+  const need = BigInt(pending.swapAmountInMinor || "0");
+  if (allowance < need) {
+    clearOkxKyberPendingSwap();
+    return null;
+  }
+
+  onStage?.("executing");
+  const txHash = await sendTx(
+    provider,
+    from,
+    pending.routerAddress,
+    pending.data,
+    pending.transactionValue,
+  );
+  onStage?.("awaiting-execution");
+  await waitArcTransactionReceipt(provider, txHash);
+  clearOkxKyberPendingSwap();
+  return { txHash, approveTxHash: pending.approveTxHash };
+}
+
 async function executeKyber(
   provider: Eip1193Provider,
   from: string,
   routeSummary: unknown,
   slippageBps: number,
   onStage?: (s: Stage) => void,
+  amountInHuman?: string,
+  pairSymbols?: { tokenIn: SwapSymbol; tokenOut: SwapSymbol },
 ): Promise<{ txHash: string; approveTxHash: string }> {
   const tokenIn = kyberTokenAddress(routeSummary, "tokenIn");
   const tokenOut = kyberTokenAddress(routeSummary, "tokenOut");
@@ -187,6 +238,20 @@ async function executeKyber(
   if (!tokenIn || !tokenOut || quotedIn === null) {
     throw new Error("Kyber route is missing token details.");
   }
+
+  const amountKey = amountInHuman ?? quotedIn.toString();
+  const inSym = pairSymbols?.tokenIn ?? "USDC";
+  const outSym = pairSymbols?.tokenOut ?? "EURC";
+  const resumed = await tryOkxKyberResume(
+    provider,
+    from,
+    tokenIn,
+    amountKey,
+    inSym,
+    outSym,
+    onStage,
+  );
+  if (resumed) return resumed;
 
   let prepared = await prepareKyberFromSummary(
     provider,
@@ -216,26 +281,70 @@ async function executeKyber(
       onStage,
       "0x",
     );
-    prepared = await prepareKyberFromSummary(
-      provider,
-      from,
-      tokenIn,
-      tokenOut,
-      prepared.summary,
-      slippageBps,
-    );
+    const afterApprove = prepared;
+    try {
+      prepared = await prepareKyberFromSummary(
+        provider,
+        from,
+        tokenIn,
+        tokenOut,
+        prepared.summary,
+        slippageBps,
+      );
+    } catch {
+      invalidateArcAllowanceReadCache(tokenIn, from, afterApprove.payload.routerAddress);
+      const allowanceAfter = await readErc20Allowance(
+        provider,
+        tokenIn,
+        from,
+        afterApprove.payload.routerAddress,
+      );
+      if (allowanceAfter >= afterApprove.swapAmountIn) {
+        prepared = afterApprove;
+      } else {
+        throw new Error(
+          "Approval confirmed but Kyber could not refresh the route. Tap Swap again to complete the trade.",
+        );
+      }
+    }
+  }
+
+  if (okxInAppBrowser()) {
+    saveOkxKyberPendingSwap({
+      wallet: from,
+      tokenInSymbol: inSym,
+      tokenOutSymbol: outSym,
+      amountInHuman: amountKey,
+      swapAmountInMinor: prepared.swapAmountIn.toString(),
+      routerAddress: prepared.payload.routerAddress,
+      data: prepared.payload.data,
+      transactionValue: prepared.payload.transactionValue,
+      approveTxHash: approveTxHash === "0x" ? "0x" : approveTxHash,
+      savedAt: Date.now(),
+    });
   }
 
   onStage?.("executing");
-  const txHash = await sendTx(
-    provider,
-    from,
-    prepared.payload.routerAddress,
-    prepared.payload.data,
-    prepared.payload.transactionValue,
-  );
-  onStage?.("awaiting-execution");
-  await waitArcTransactionReceipt(provider, txHash);
+  let txHash: string;
+  try {
+    txHash = await sendTx(
+      provider,
+      from,
+      prepared.payload.routerAddress,
+      prepared.payload.data,
+      prepared.payload.transactionValue,
+    );
+    onStage?.("awaiting-execution");
+    await waitArcTransactionReceipt(provider, txHash);
+    clearOkxKyberPendingSwap();
+  } catch (err) {
+    if (okxInAppBrowser() && approveTxHash !== "0x") {
+      throw new Error(
+        `${err instanceof Error ? err.message : "Swap send failed"}. If you already approved, tap Swap again — Vector will submit the swap step only.`,
+      );
+    }
+    throw err;
+  }
   return { txHash, approveTxHash };
 }
 
@@ -329,6 +438,8 @@ export async function executeSwapRoute(args: {
       route.routeSummary,
       args.slippageBps,
       args.onStage,
+      args.amountIn,
+      { tokenIn: args.tokenIn, tokenOut: args.tokenOut },
     );
     return { ...result, provider: "kyber" };
   }

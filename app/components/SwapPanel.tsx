@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
@@ -14,7 +14,7 @@ import {
   isMainnet,
 } from "../lib/network";
 import { fetchSwapRoutesClient } from "../lib/aggregator-swap/fetch-routes-client";
-import type { SwapRouteOffer } from "../lib/aggregator-swap/types";
+import type { SwapRouteExecution, SwapRouteOffer } from "../lib/aggregator-swap/types";
 import type { ClientSwapRoutesResult } from "../lib/aggregator-swap/fetch-routes-client";
 import { executeSwapRoute } from "../lib/aggregator-swap/execute-client";
 import {
@@ -292,6 +292,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
    */
   const [fallbackPlan, setFallbackPlan] = useState<SwapPlan | null>(null);
   const [routeOffers, setRouteOffers] = useState<SwapRouteOffer[] | null>(null);
+  const swapRouteCacheRef = useRef<{
+    key: string;
+    best: SwapRouteExecution | null;
+    offers: SwapRouteOffer[];
+  } | null>(null);
   const [swapViaProvider, setSwapViaProvider] = useState<string | null>(null);
   /**
    * Which of the fallback path's two confirmations is in flight. Purely for the
@@ -508,6 +513,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             setQuote(null);
             setErrorState(null);
             sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
+            if (address) {
+              swapRouteCacheRef.current = {
+                key: `${tokenIn}:${tokenOut}:${parsedAmountForQuote}:${address.toLowerCase()}`,
+                best: routes.best,
+                offers: routes.offers,
+              };
+            }
           }
         } catch {
           if (!cancelled) setRouteOffers(null);
@@ -596,6 +608,18 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     providerReady,
     useOkxSequential,
   ]);
+
+  useEffect(() => {
+    if (!okxInAppBrowser()) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !address) return;
+      void resolveSigningProvider(connector, address).then((p) => {
+        if (p) providerRef.current = p;
+      });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [connector, address, providerRef]);
 
   async function handleSwitch() {
     setErrorState(null);
@@ -694,13 +718,32 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       if (isMainnet && address && aggIn && aggOut && fromSymbol && toSymbol) {
         let routes: ClientSwapRoutesResult | null = null;
         try {
-          routes = await fetchSwapRoutesClient({
-            tokenIn: aggIn,
-            tokenOut: aggOut,
-            amount: String(parsedAmount),
-            fromAddress: address,
-            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
-          });
+          const routeCacheKey = `${tokenIn}:${tokenOut}:${parsedAmount}:${address.toLowerCase()}`;
+          const cached = swapRouteCacheRef.current;
+          if (
+            okxInAppBrowser() &&
+            cached?.key === routeCacheKey &&
+            cached.best
+          ) {
+            routes = {
+              offers: cached.offers,
+              best: cached.best,
+              lifiExecution: null,
+            };
+          } else {
+            routes = await fetchSwapRoutesClient({
+              tokenIn: aggIn,
+              tokenOut: aggOut,
+              amount: String(parsedAmount),
+              fromAddress: address,
+              slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+            });
+            swapRouteCacheRef.current = {
+              key: routeCacheKey,
+              best: routes.best,
+              offers: routes.offers,
+            };
+          }
           if (!routes.best) {
             setErrorState({
               text:

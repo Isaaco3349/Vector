@@ -216,6 +216,14 @@ export async function resolveSigningProvider(
 ): Promise<Eip1193Provider | null> {
   const inOkxApp = okxInAppBrowser();
 
+  // In OKX WebView, wagmi often binds `injected` to the wrong object — use OKX first.
+  if (inOkxApp) {
+    const okx = okxInjectedEip1193Provider();
+    if (okx) {
+      return createOkxSafeEip1193Provider(okx, { force: true });
+    }
+  }
+
   if (connectedAddress) {
     const okxForAccount = await okxOwnsConnectedAddress(connectedAddress);
     if (okxForAccount) {
