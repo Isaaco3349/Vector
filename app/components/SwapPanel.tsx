@@ -1232,8 +1232,10 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
       ? "Could not reach Vector from OKX. Open https://www.vectorprotocol.pro inside OKX (Discover → DApps), check your connection, then try again."
       : blob;
   }
-  if (/origin_not_allowed|vector app origin|www\.vectorprotocol/i.test(blob)) {
-    return "Use https://www.vectorprotocol.pro in the address bar (include www), then retry the swap.";
+  if (/origin_not_allowed|ORIGIN_NOT_ALLOWED|vector app origin/i.test(blob)) {
+    return okx
+      ? "Vector could not reach its swap API from OKX. Close the tab, open Discover → DApps → Vector again, tap Refresh, then retry."
+      : "Open https://vectorprotocol.pro in your wallet browser, tap Refresh, then retry the swap.";
   }
   if (/no balance|insufficient/i.test(blob)) {
     return "Insufficient balance for this swap (including Arc USDC gas). Lower the amount or tap Max.";
