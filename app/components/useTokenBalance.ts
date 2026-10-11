@@ -1,9 +1,15 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import { erc20Abi, formatUnits } from "viem";
-import { useAccount, useReadContracts } from "wagmi";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import {
+  readErc20BalanceViaProvider,
+  verifiedArcTokenDecimals,
+} from "../lib/arc-erc20-read";
 import { chainId as ARC_CHAIN_ID } from "../lib/network";
 import { tokenBySymbol } from "../lib/swap-tokens";
+import { resolveSigningProvider } from "../lib/wallet-provider";
 import { useArcUsdcBalance } from "./useArcUsdcBalance";
 
 /**
@@ -18,16 +24,34 @@ export function useTokenBalance(symbol: string): {
   arcWalletDesync?: boolean;
   refetch: () => Promise<void>;
 } {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, connector } = useAccount();
   const arcUsdc = useArcUsdcBalance();
   const token = tokenBySymbol(symbol);
 
   const isUsdc = token?.symbol === "USDC";
-  const isErc20 = !isUsdc && token?.kind === "erc20" && !!token.address;
+  const verifiedDecimals = verifiedArcTokenDecimals(symbol);
+  const isVerifiedErc20 =
+    !isUsdc && token?.kind === "erc20" && !!token.address && verifiedDecimals !== null;
+  const isLegacyErc20 =
+    !isUsdc &&
+    token?.kind === "erc20" &&
+    !!token.address &&
+    verifiedDecimals === null;
+
+  const balanceQuery = useReadContract({
+    chainId: ARC_CHAIN_ID,
+    address: token?.address,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: address ? [address as `0x${string}`] : undefined,
+    query: {
+      enabled: isConnected && !!address && isVerifiedErc20 && !!token?.address,
+    },
+  });
 
   const erc20Query = useReadContracts({
-    query: { enabled: isConnected && !!address && isErc20 },
-    contracts: isErc20
+    query: { enabled: isConnected && !!address && isLegacyErc20 },
+    contracts: isLegacyErc20
       ? [
           {
             chainId: ARC_CHAIN_ID,
@@ -46,38 +70,124 @@ export function useTokenBalance(symbol: string): {
       : [],
   });
 
+  const [walletRaw, setWalletRaw] = useState<bigint | null>(null);
+  const [walletFetchDone, setWalletFetchDone] = useState(false);
+  const [walletFetchGen, setWalletFetchGen] = useState(0);
+
+  const wagmiRawVerified =
+    typeof balanceQuery.data === "bigint" ? balanceQuery.data : null;
+  const wagmiRawLegacy = (() => {
+    const raw = erc20Query.data?.[0]?.result;
+    return typeof raw === "bigint" ? raw : null;
+  })();
+
+  const needsWalletFallback =
+    isVerifiedErc20 &&
+    !!address &&
+    !!token?.address &&
+    !balanceQuery.isLoading &&
+    wagmiRawVerified === null;
+
+  useEffect(() => {
+    if (!needsWalletFallback) {
+      setWalletRaw(null);
+      setWalletFetchDone(false);
+      return;
+    }
+    let cancelled = false;
+    setWalletFetchDone(false);
+    void (async () => {
+      try {
+        const provider = await resolveSigningProvider(connector, address);
+        if (!provider || cancelled || !token?.address) return;
+        const raw = await readErc20BalanceViaProvider(
+          provider,
+          token.address,
+          address as `0x${string}`,
+        );
+        if (!cancelled) setWalletRaw(raw);
+      } catch {
+        if (!cancelled) setWalletRaw(null);
+      } finally {
+        if (!cancelled) setWalletFetchDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    needsWalletFallback,
+    connector,
+    address,
+    token?.address,
+    walletFetchGen,
+  ]);
+
+  const refetch = useCallback(async () => {
+    await arcUsdc.refetch();
+    await balanceQuery.refetch();
+    await erc20Query.refetch();
+    setWalletFetchGen((g) => g + 1);
+  }, [arcUsdc, balanceQuery, erc20Query]);
+
   if (isUsdc) {
     return {
       formatted: arcUsdc.formatted,
       maxSpendable: arcUsdc.maxSpendable ?? arcUsdc.formatted,
       isLoading: arcUsdc.isLoading,
       arcWalletDesync: arcUsdc.walletBalanceDesync,
-      refetch: arcUsdc.refetch,
+      refetch,
     };
   }
 
-  if (isErc20) {
+  if (isVerifiedErc20 && verifiedDecimals !== null) {
+    const isLoading =
+      balanceQuery.isLoading ||
+      (needsWalletFallback && !walletFetchDone && walletRaw === null);
+    const raw = wagmiRawVerified ?? walletRaw;
+    if (isLoading && raw === null) {
+      return {
+        formatted: null,
+        maxSpendable: null,
+        isLoading: true,
+        refetch,
+      };
+    }
+    if (raw === null) {
+      return {
+        formatted: null,
+        maxSpendable: null,
+        isLoading: false,
+        refetch,
+      };
+    }
+    const maxSpendable = trimTrailingZeros(formatUnits(raw, verifiedDecimals));
+    return {
+      formatted: trim(formatUnits(raw, verifiedDecimals)),
+      maxSpendable,
+      isLoading: false,
+      refetch,
+    };
+  }
+
+  if (isLegacyErc20) {
     if (erc20Query.isLoading) {
       return {
         formatted: null,
         maxSpendable: null,
         isLoading: true,
-        refetch: async () => {
-          await erc20Query.refetch();
-        },
+        refetch,
       };
     }
     const results = erc20Query.data;
     const rawBalance = results?.[0]?.result;
-    const decimals = results?.[1]?.result;
-    if (typeof rawBalance !== "bigint" || typeof decimals !== "number") {
+    const decimals = normalizeDecimals(results?.[1]?.result);
+    if (typeof rawBalance !== "bigint" || decimals === null) {
       return {
         formatted: null,
         maxSpendable: null,
         isLoading: false,
-        refetch: async () => {
-          await erc20Query.refetch();
-        },
+        refetch,
       };
     }
     const maxSpendable = trimTrailingZeros(formatUnits(rawBalance, decimals));
@@ -85,9 +195,7 @@ export function useTokenBalance(symbol: string): {
       formatted: trim(formatUnits(rawBalance, decimals)),
       maxSpendable,
       isLoading: false,
-      refetch: async () => {
-        await erc20Query.refetch();
-      },
+      refetch,
     };
   }
 
@@ -97,6 +205,12 @@ export function useTokenBalance(symbol: string): {
     isLoading: false,
     refetch: async () => {},
   };
+}
+
+function normalizeDecimals(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "bigint") return Number(value);
+  return null;
 }
 
 function trimTrailingZeros(value: string): string {
