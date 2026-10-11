@@ -5,8 +5,10 @@ import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import {
   readErc20BalanceViaProvider,
+  readSwapInputBalancePublic,
   verifiedArcTokenDecimals,
 } from "../lib/arc-erc20-read";
+import { okxInAppBrowser } from "../lib/wallet-brand";
 import { chainId as ARC_CHAIN_ID } from "../lib/network";
 import { tokenBySymbol } from "../lib/swap-tokens";
 import { resolveSigningProvider } from "../lib/wallet-provider";
@@ -100,14 +102,19 @@ export function useTokenBalance(symbol: string): {
     setWalletFetchDone(false);
     void (async () => {
       try {
-        const provider = await resolveSigningProvider(connector, address);
-        if (!provider || cancelled || !token?.address) return;
-        const raw = await readErc20BalanceViaProvider(
-          provider,
-          token.address,
-          address as `0x${string}`,
-        );
-        if (!cancelled) setWalletRaw(raw);
+        if (cancelled || !token?.address) return;
+        const raw = okxInAppBrowser()
+          ? await readSwapInputBalancePublic(token.address, address as `0x${string}`)
+          : await (async () => {
+              const provider = await resolveSigningProvider(connector, address);
+              if (!provider) return null;
+              return readErc20BalanceViaProvider(
+                provider,
+                token.address!,
+                address as `0x${string}`,
+              );
+            })();
+        if (raw !== null && !cancelled) setWalletRaw(raw);
       } catch {
         if (!cancelled) setWalletRaw(null);
       } finally {

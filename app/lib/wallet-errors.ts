@@ -23,7 +23,10 @@ export function errorTextBlob(err: unknown): string {
       cur = cur.cause;
     } else if (typeof cur === "object") {
       const rec = cur as Record<string, unknown>;
-      if (typeof rec.message === "string") parts.push(rec.message);
+      if (typeof rec.message === "string") {
+        const m = rec.message.trim();
+        if (m && m !== "null" && m !== "undefined") parts.push(m);
+      }
       if (typeof rec.details === "string") parts.push(rec.details);
       if (typeof rec.shortMessage === "string") parts.push(rec.shortMessage);
       if (typeof rec.code === "number" || typeof rec.code === "string") {
