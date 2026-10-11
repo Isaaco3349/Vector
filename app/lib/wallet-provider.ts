@@ -1,7 +1,7 @@
 "use client";
 
 import type { Eip1193Provider } from "./appkit";
-import { sendTransactionOkxMobileAware } from "./okx-mobile-tx";
+import { okxMobileProviderRequest } from "./okx-mobile-tx";
 import {
   isOkxWallet,
   okxInAppBrowser,
@@ -136,7 +136,7 @@ export function createOkxSafeEip1193Provider(
       if (OKX_BLOCKED_RPC.has(method)) {
         // OKX mobile in-app browser submits some confirms via wallet_sendTransaction.
         if (method === "wallet_sendTransaction" && okxInAppBrowser()) {
-          return inner.request(args);
+          return okxMobileProviderRequest(inner, args);
         }
         throw new Error(
           `[Vector] Blocked ${method} for OKX — use standard transaction confirms only.`,
@@ -150,8 +150,11 @@ export function createOkxSafeEip1193Provider(
             : "0x0";
         return { [id]: {} };
       }
-      if (method === "eth_sendTransaction") {
-        return sendTransactionOkxMobileAware(inner, args);
+      if (
+        method === "eth_sendTransaction" ||
+        (okxInAppBrowser() && method === "eth_getTransactionReceipt")
+      ) {
+        return okxMobileProviderRequest(inner, args);
       }
       return inner.request(args);
     },

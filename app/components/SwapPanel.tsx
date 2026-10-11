@@ -394,6 +394,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     };
   }, [connector, wagmiChainId, providerReady, providerRef]);
 
+  useEffect(() => {
+    if (!providerReady) return;
+    void balanceIn.refetch();
+    void balanceOut.refetch();
+  }, [tokenIn, tokenOut, providerReady, balanceIn.refetch, balanceOut.refetch]);
+
   const parsedAmount = useMemo(() => {
     const n = Number(amountIn);
     return Number.isFinite(n) && n > 0 ? n : 0;
@@ -410,12 +416,16 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     setTokenIn(next);
     setSlippageBps(null);
     setFallbackPlan(null);
+    void balanceIn.refetch();
+    void balanceOut.refetch();
   }
 
   function changeTokenOut(next: string) {
     setTokenOut(next);
     setSlippageBps(null);
     setFallbackPlan(null);
+    void balanceIn.refetch();
+    void balanceOut.refetch();
   }
 
   /**
