@@ -21,6 +21,8 @@ const OKX_MOBILE_RETRY_METHODS = new Set([
   "eth_sendTransaction",
   "wallet_sendTransaction",
   "eth_getTransactionReceipt",
+  "eth_call",
+  "eth_getBalance",
 ]);
 
 /**

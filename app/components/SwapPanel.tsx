@@ -1243,6 +1243,11 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
       ? "OKX could not read Arc or submit the tx (code -32603). Switch to Arc in OKX, update the app, then retry — or use OKX Chrome extension on desktop."
       : "Wallet RPC internal error (-32603). Switch to Arc and try again.";
   }
+  if (/exceeds defined limit|rate limit|too many requests/i.test(blob)) {
+    return okx
+      ? "Arc balance check was busy. Wait a few seconds, tap Refresh, then try the swap again."
+      : "Arc RPC rate limit — wait a moment and retry.";
+  }
   const short = blob ? sanitizeRouteErrorDetail(blob) : "";
   if (short) return short;
   return okx
@@ -1251,8 +1256,12 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
 }
 
 function sanitizeRouteErrorDetail(raw: string): string {
-  const s = raw.trim();
+  let s = raw.trim();
   if (!s || s === "null" || s === "undefined") return "";
+  if (/exceeds defined limit|rpc\.mainnet\.arc\.io|request body:/i.test(s)) {
+    return "";
+  }
+  s = s.replace(/^kyber:\s*/i, "").trim();
   if (s.length <= 160) return s;
   return `${s.slice(0, 157)}…`;
 }

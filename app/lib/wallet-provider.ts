@@ -152,7 +152,10 @@ export function createOkxSafeEip1193Provider(
       }
       if (
         method === "eth_sendTransaction" ||
-        (okxInAppBrowser() && method === "eth_getTransactionReceipt")
+        (okxInAppBrowser() &&
+          (method === "eth_getTransactionReceipt" ||
+            method === "eth_call" ||
+            method === "eth_getBalance"))
       ) {
         return okxMobileProviderRequest(inner, args);
       }

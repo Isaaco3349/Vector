@@ -6,9 +6,8 @@ import { chainId as ARC_CHAIN_ID } from "../network";
 import { executeSwapPlan } from "../external-swap";
 import { buildSwapPlan, type SwapSymbol } from "../google-swap";
 import {
-  readErc20AllowancePublic,
-  readSwapInputBalancePublic,
-  readSwapInputBalanceViaProvider,
+  readErc20AllowanceForSwap,
+  readSwapInputBalanceForSwap,
 } from "../arc-erc20-read";
 import { okxInAppBrowser } from "../wallet-brand";
 import { buildKyberSwapTx, fetchKyberRouteSummary } from "./kyber-client";
@@ -97,10 +96,9 @@ async function readInputBalance(
   token: string,
   owner: `0x${string}`,
 ): Promise<bigint> {
-  if (okxInAppBrowser()) {
-    return readSwapInputBalancePublic(token, owner);
-  }
-  return readSwapInputBalanceViaProvider(provider, token, owner);
+  return readSwapInputBalanceForSwap(provider, token, owner, {
+    preferWallet: okxInAppBrowser(),
+  });
 }
 
 async function readErc20Allowance(
@@ -109,23 +107,9 @@ async function readErc20Allowance(
   owner: string,
   spender: string,
 ): Promise<bigint> {
-  if (okxInAppBrowser()) {
-    return readErc20AllowancePublic(
-      token as `0x${string}`,
-      owner as `0x${string}`,
-      spender as `0x${string}`,
-    );
-  }
-  const data = encodeFunctionData({
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: [owner as `0x${string}`, spender as `0x${string}`],
+  return readErc20AllowanceForSwap(provider, token, owner, spender, {
+    preferWallet: okxInAppBrowser(),
   });
-  const result = await provider.request({
-    method: "eth_call",
-    params: [{ to: token, data }, "latest"],
-  });
-  return BigInt(result as string);
 }
 
 function parseKyberAmountIn(routeSummary: unknown): bigint | null {
