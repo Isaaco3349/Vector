@@ -5,6 +5,7 @@ import type { Eip1193Provider } from "../appkit";
 import { chainId as ARC_CHAIN_ID } from "../network";
 import { executeSwapPlan } from "../external-swap";
 import { buildSwapPlan, type SwapSymbol } from "../google-swap";
+import { readSwapInputBalanceViaProvider } from "../arc-erc20-read";
 import { buildKyberSwapTx, fetchKyberRouteSummary } from "./kyber-client";
 import type { SwapRouteExecution } from "./types";
 
@@ -86,23 +87,6 @@ function kyberTokenAddress(routeSummary: unknown, key: "tokenIn" | "tokenOut"): 
   return null;
 }
 
-async function readErc20Balance(
-  provider: Eip1193Provider,
-  token: string,
-  owner: string,
-): Promise<bigint> {
-  const data = encodeFunctionData({
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [owner as `0x${string}`],
-  });
-  const result = await provider.request({
-    method: "eth_call",
-    params: [{ to: token, data }, "latest"],
-  });
-  return BigInt(result as string);
-}
-
 async function readErc20Allowance(
   provider: Eip1193Provider,
   token: string,
@@ -147,7 +131,11 @@ async function prepareKyberSwap(
   swapAmountIn: bigint;
 }> {
   for (let attempt = 0; attempt < 4; attempt++) {
-    const balance = await readErc20Balance(provider, tokenIn, from);
+    const balance = await readSwapInputBalanceViaProvider(
+      provider,
+      tokenIn,
+      from as `0x${string}`,
+    );
     if (balance === BigInt(0)) {
       throw new Error("Your wallet has no balance of the token you are swapping.");
     }

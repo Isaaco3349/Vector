@@ -14,7 +14,8 @@ import {
   isMainnet,
 } from "../lib/network";
 import { fetchSwapRoutesClient } from "../lib/aggregator-swap/fetch-routes-client";
-import type { SwapRouteOffer } from "../lib/aggregator-swap/types";
+import type { SwapRouteExecution, SwapRouteOffer } from "../lib/aggregator-swap/types";
+import type { ClientSwapRoutesResult } from "../lib/aggregator-swap/fetch-routes-client";
 import { executeSwapRoute } from "../lib/aggregator-swap/execute-client";
 import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
 import {
@@ -37,8 +38,9 @@ import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { executeSwapViaSequentialTransactions } from "../lib/okx-safe-swap";
 import { logVectorActivity } from "../lib/record-vector-activity";
-import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import { isOkxWallet, okxInAppBrowser } from "../lib/wallet-brand";
+import { resolveSigningProvider } from "../lib/wallet-provider";
+import { TokenPicker } from "./TokenPicker";
 import { useTokenBalance } from "./useTokenBalance";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import { VectorModalShell } from "./VectorModalShell";
@@ -608,8 +610,26 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   }
 
   async function handleSwap() {
-    const provider = providerRef.current;
-    if (!provider || !address || !parsedAmount || sameToken) return;
+    if (!address || !parsedAmount || sameToken) return;
+    let provider: Eip1193Provider | null = providerRef.current;
+    if (!provider) {
+      provider = await resolveSigningProvider(connector, address);
+      providerRef.current = provider;
+    }
+    if (!provider) {
+      setErrorState({
+        text: "Wallet is still connecting in OKX. Wait a moment, tap Refresh, then try again.",
+        info: null,
+      });
+      return;
+    }
+    if (!providerReady) {
+      setErrorState({
+        text: "Wallet provider is not ready yet. Tap Refresh in the header and try again.",
+        info: null,
+      });
+      return;
+    }
     setSwapping(true);
     setErrorState(null);
     setNotice(null);
@@ -651,8 +671,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
       // Arc mainnet: Circle + Kyber + LI.FI — cheapest output, sequential txs only.
       if (isMainnet && address && aggIn && aggOut && fromSymbol && toSymbol) {
+        let routes: ClientSwapRoutesResult | null = null;
         try {
-          const routes = await fetchSwapRoutesClient({
+          routes = await fetchSwapRoutesClient({
             tokenIn: aggIn,
             tokenOut: aggOut,
             amount: String(parsedAmount),
@@ -669,27 +690,42 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             });
             return;
           }
-          const planResult = await executeSwapRoute({
+          const execArgs = {
             provider,
             walletAddress: address,
             tokenIn: fromSymbol,
             tokenOut: toSymbol,
             amountIn: String(parsedAmount),
-            route: routes.best,
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
-            onStage: (stage) => setPlanStage(stage),
-          });
-          setTxHash(planResult.txHash);
-          setSwapViaProvider(planResult.provider);
-          logVectorActivity({
-            walletAddress: address,
-            txHash: planResult.txHash,
-            kind: "swap",
-            chainId: ARC_CHAIN_ID,
-            detail: `${tokenIn} → ${tokenOut} (${planResult.provider})`,
-          });
-          void syncBalancesAfterSwap(planResult.txHash);
-          return;
+            onStage: (stage: "approving" | "awaiting-approval" | "executing" | "awaiting-execution") =>
+              setPlanStage(stage),
+          };
+          const routeAttempts: SwapRouteExecution[] = [routes.best];
+          const circleOffer = routes.offers.find((o) => o.provider === "circle");
+          if (circleOffer && routes.best.provider !== "circle") {
+            routeAttempts.push({ provider: "circle", offer: circleOffer });
+          }
+          let lastErr: unknown = null;
+          for (const route of routeAttempts) {
+            try {
+              const planResult = await executeSwapRoute({ ...execArgs, route });
+              setTxHash(planResult.txHash);
+              setSwapViaProvider(planResult.provider);
+              logVectorActivity({
+                walletAddress: address,
+                txHash: planResult.txHash,
+                kind: "swap",
+                chainId: ARC_CHAIN_ID,
+                detail: `${tokenIn} → ${tokenOut} (${planResult.provider})`,
+              });
+              void syncBalancesAfterSwap(planResult.txHash);
+              return;
+            } catch (attemptErr) {
+              lastErr = attemptErr;
+              if (route.provider === "circle") break;
+            }
+          }
+          throw lastErr ?? new Error("Swap execution failed.");
         } catch (routeErr) {
           if (useOkxSequential) {
             setErrorState({
@@ -872,7 +908,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-1">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] text-[var(--vector-text-dim)]">You pay</span>
-            <TokenSelect
+            <TokenPicker
               value={tokenIn}
               onChange={changeTokenIn}
               noteFor={(symbol) =>
@@ -932,7 +968,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             <span className="text-[12px] text-[var(--vector-text-dim)]">
               You receive (estimated)
             </span>
-            <TokenSelect
+            <TokenPicker
               value={tokenOut}
               onChange={changeTokenOut}
               noteFor={(symbol) =>
@@ -1162,23 +1198,38 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 }
 
 function describeRouteExecutionError(err: unknown, okx: boolean): string {
-  if (err instanceof Error) {
-    const m = err.message.trim();
-    if (m) {
-      if (/failed to fetch|networkerror|load failed|network request failed/i.test(m)) {
-        return okx
-          ? "Could not reach Vector from OKX. Open https://www.vectorprotocol.pro inside OKX (Discover → DApps), check your connection, then try again."
-          : m;
-      }
-      if (/origin_not_allowed|vector app origin|www\.vectorprotocol/i.test(m)) {
-        return "Use https://www.vectorprotocol.pro in the address bar (include www), then retry the swap.";
-      }
-      return m;
-    }
+  const blob = errorTextBlob(err);
+  if (/user rejected|rejected the request|denied|4001/i.test(blob)) {
+    return "You cancelled in your wallet. Nothing was sent.";
   }
+  if (/risky|signature type|blocked to protect/i.test(blob)) {
+    return (
+      "OKX blocked this confirmation. Update OKX, or try Circle route (USDC ↔ EURC) — Vector will fall back automatically when Kyber fails."
+    );
+  }
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(blob)) {
+    return okx
+      ? "Could not reach Vector from OKX. Open https://www.vectorprotocol.pro inside OKX (Discover → DApps), check your connection, then try again."
+      : blob;
+  }
+  if (/origin_not_allowed|vector app origin|www\.vectorprotocol/i.test(blob)) {
+    return "Use https://www.vectorprotocol.pro in the address bar (include www), then retry the swap.";
+  }
+  if (/no balance|insufficient/i.test(blob)) {
+    return "Insufficient balance for this swap (including Arc USDC gas). Lower the amount or tap Max.";
+  }
+  const short = blob ? sanitizeRouteErrorDetail(blob) : "";
+  if (short) return short;
   return okx
-    ? "Swap could not start in OKX. Use www.vectorprotocol.pro and try a slightly smaller amount."
+    ? "Swap could not start in OKX. Confirm Arc network, keep some USDC for gas, and try again — or use a slightly smaller amount."
     : "Network error. You can try again later.";
+}
+
+function sanitizeRouteErrorDetail(raw: string): string {
+  const s = raw.trim();
+  if (!s || s === "null" || s === "undefined") return "";
+  if (s.length <= 160) return s;
+  return `${s.slice(0, 157)}…`;
 }
 
 function BalanceRow({
@@ -1212,38 +1263,6 @@ function BalanceRow({
         </button>
       )}
     </div>
-  );
-}
-
-function TokenSelect({
-  value,
-  onChange,
-  noteFor,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  /** Optional short suffix per symbol, e.g. "no route". */
-  noteFor?: (symbol: string) => string | null;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="bg-[var(--vector-surface)] border border-[var(--vector-line)] rounded-full px-3 py-1.5 text-[13px] font-semibold text-[var(--vector-text)] outline-none hover:border-[var(--vector-pink)] transition-colors cursor-pointer"
-    >
-      {ARC_SWAP_TOKENS.map((t) => {
-        const note = noteFor?.(t.symbol) ?? null;
-        return (
-          <option
-            key={t.symbol}
-            value={t.symbol}
-            className="bg-[var(--vector-surface)]"
-          >
-            {note ? `${t.symbol} — ${note}` : t.symbol}
-          </option>
-        );
-      })}
-    </select>
   );
 }
 
