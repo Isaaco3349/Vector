@@ -247,6 +247,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   // the most evidence behind it. cirBTC is one selection away.
   const [tokenOut, setTokenOut] = useState("EURC");
   const [amountIn, setAmountIn] = useState("");
+  /** Debounced — route/quote fetches only track this, not every keypress. */
+  const [debouncedAmountIn, setDebouncedAmountIn] = useState("");
 
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -401,10 +403,25 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     void balanceOut.refetch();
   }, [tokenIn, tokenOut, providerReady, balanceIn.refetch, balanceOut.refetch]);
 
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedAmountIn(amountIn.trim());
+    }, 480);
+    return () => window.clearTimeout(handle);
+  }, [amountIn]);
+
   const parsedAmount = useMemo(() => {
     const n = Number(amountIn);
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [amountIn]);
+
+  const parsedAmountForQuote = useMemo(() => {
+    const n = Number(debouncedAmountIn);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [debouncedAmountIn]);
+
+  const quoteAmountPending =
+    amountIn.trim() !== debouncedAmountIn && parsedAmount > 0;
 
   const sameToken = tokenIn === tokenOut;
 
@@ -446,16 +463,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const needsChainSwitch =
     walletChainId !== null && walletChainId !== ARC_CHAIN_ID;
 
-  // Debounced quoting whenever the inputs settle.
+  // Quote when debounced amount / pair settles — never on every keypress.
   useEffect(() => {
     setTxHash(null);
-    // Perishable: built for one exact pair and amount. Any input change has to
-    // drop it before a new price lands, or the panel could show one trade while
-    // holding the plan for another.
     setFallbackPlan(null);
-    setRouteOffers(null);
-    if (!parsedAmount || sameToken) {
+
+    if (!parsedAmountForQuote || sameToken) {
       setQuote(null);
+      setRouteOffers(null);
+      setQuoting(false);
       setErrorState(
         sameToken ? { text: "Choose two different tokens.", info: null } : null,
       );
@@ -474,7 +490,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     setQuoting(true);
     setErrorState(null);
-    const handle = setTimeout(async () => {
+
+    void (async () => {
       const aggIn = asAggregatorPair(tokenIn);
       const aggOut = asAggregatorPair(tokenOut);
       if (isMainnet && address && aggIn && aggOut) {
@@ -482,7 +499,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           const routes = await fetchSwapRoutesClient({
             tokenIn: aggIn,
             tokenOut: aggOut,
-            amount: String(parsedAmount),
+            amount: String(parsedAmountForQuote),
             fromAddress: address,
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
           });
@@ -505,7 +522,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           provider,
           tokenIn,
           tokenOut,
-          amountIn: String(parsedAmount),
+          amountIn: String(parsedAmountForQuote),
           ...(slippageBps !== null ? { slippageBps } : {}),
           ...(useOkxSequential
             ? {
@@ -516,9 +533,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         });
         if (!cancelled) {
           setQuote(q);
-          // Circle priced this pair, which is the only evidence that counts as
-          // "this route works". Recorded so a later failure can point at it by
-          // name instead of guessing which pair to recommend.
           sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
         }
       } catch (err) {
@@ -530,18 +544,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
           });
           setErrorState(described);
-          // "Not found" from /quote is not a liquidity verdict — it is the
-          // blanket mapping for any 404 (see `quoteViaSwapEndpoint`). So ask the
-          // other endpoint before believing it, and only remember the pair if
-          // that one declines as well. Everything else — slippage, thin
-          // liquidity, a timeout — can clear on its own and is never recorded.
           if (described.info?.kind === "unsupported-route") {
             const attempt: PlanAttempt = address
               ? await quoteViaSwapEndpoint({
                   walletAddress: address,
                   tokenIn,
                   tokenOut,
-                  amount: String(parsedAmount),
+                  amount: String(parsedAmountForQuote),
                   slippageBps,
                 })
               : {
@@ -552,8 +561,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
             if (attempt.outcome === "plan") {
               setFallbackPlan(attempt.plan);
-              // The route works, so the /quote error is now noise — clear it
-              // rather than show a price and a failure side by side.
               setErrorState(null);
               sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
             } else if (attempt.outcome === "no-estimate") {
@@ -573,14 +580,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       } finally {
         if (!cancelled) setQuoting(false);
       }
-    }, 500);
+    })();
 
     return () => {
       cancelled = true;
-      clearTimeout(handle);
     };
   }, [
-    parsedAmount,
+    parsedAmountForQuote,
     tokenIn,
     tokenOut,
     sameToken,
@@ -994,7 +1000,14 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div className="text-[28px] font-semibold text-[var(--vector-text)]">
-            {quoting ? (
+            {displayAmountOut && (quoting || quoteAmountPending) ? (
+              <>
+                {displayAmountOut}
+                <span className="ml-2 text-[13px] font-normal text-[var(--vector-text-dim)]">
+                  updating…
+                </span>
+              </>
+            ) : quoting ? (
               <span className="text-[var(--vector-text-dim)] text-[20px]">Quoting…</span>
             ) : displayAmountOut ? (
               displayAmountOut
@@ -1196,7 +1209,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <button
             onClick={handleSwap}
             disabled={
-              swapping || quoting || !displayAmountOut || sameToken || !parsedAmount
+              swapping ||
+              quoting ||
+              quoteAmountPending ||
+              !displayAmountOut ||
+              sameToken ||
+              !parsedAmount
             }
             className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
           >
