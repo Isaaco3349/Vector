@@ -48,6 +48,7 @@ import { buildBridgePlan } from "./google-bridge";
 import { formatUnits } from "viem";
 import {
   bridgeChainById,
+  bridgeRouteUsesLifi,
   explorerTxUrl,
   type BridgeChainId,
 } from "./bridge-chains";
@@ -267,6 +268,27 @@ export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
   const from = bridgeChainById(args.fromChain);
   const to = bridgeChainById(args.toChain);
   const address = await walletAddressFromProvider(args.provider);
+
+  if (from && to && bridgeRouteUsesLifi(from, to)) {
+    const { estimateLifiBridge } = await import("./lifi-bridge");
+    const lifi = await estimateLifiBridge({
+      from,
+      to,
+      amount: args.amount,
+      fromAddress: address,
+    });
+    const receive =
+      lifi.estimatedReceive != null
+        ? `Estimated receive ≈ ${lifi.estimatedReceive} USDC`
+        : null;
+    return {
+      amount: args.amount,
+      feeText: receive ? `${lifi.feeText}. ${receive}` : lifi.feeText,
+      gasText: lifi.gasText,
+      raw: lifi.raw,
+    };
+  }
+
   const erc20Source = from?.usdcKind === "erc20";
   const inboundArc =
     args.toChain === "Arc" || args.toChain === "Arc_Testnet";
@@ -368,7 +390,22 @@ function extractFailureDetail(result: unknown): string | null {
 
 /** Execute the bridge. Returns best-effort source tx + state, plus raw result. */
 export async function executeBridge(args: BridgeArgs): Promise<BridgeExecution> {
-  // Injected wallets always use sequential eth_sendTransaction (never App Kit batch).
+  const from = bridgeChainById(args.fromChain);
+  const to = bridgeChainById(args.toChain);
+  const address = await walletAddressFromProvider(args.provider);
+
+  if (from && to && bridgeRouteUsesLifi(from, to)) {
+    const { executeLifiBridge } = await import("./lifi-bridge");
+    return executeLifiBridge({
+      provider: args.provider,
+      from,
+      to,
+      amount: args.amount,
+      fromAddress: address,
+      fromChainId: args.fromChain,
+    });
+  }
+
   const { executeBridgeViaSequentialTransactions } = await import(
     "./bridge-sequential-tx"
   );

@@ -19,6 +19,7 @@ import {
   defaultBridgeFromChain,
   defaultBridgeToChain,
   explorerAddressUrl,
+  bridgeRouteUsesLifi,
   type BridgeChainId,
 } from "../lib/bridge-chains";
 import { getProviderChainId } from "../lib/appkit";
@@ -161,6 +162,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const sameChain = fromChain === toChain;
 
   const fromMeta = useMemo(() => bridgeChainById(fromChain), [fromChain]);
+  const toMeta = useMemo(() => bridgeChainById(toChain), [toChain]);
   const routePlatformFeeBase = useMemo(
     () => bridgePlatformFeeBaseUnitsForRoute(fromMeta, toChain),
     [fromMeta, toChain],
@@ -550,8 +552,15 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         {/* Quote detail */}
         {(quote || amount.trim()) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
-            <div>{formatBridgeFeeLabelForRoute(fromMeta, toChain)}</div>
-            {quote?.feeText && <div>Fee: {quote.feeText}</div>}
+            {bridgeRouteUsesLifi(fromMeta, toMeta) ? (
+              <div>
+                BNB Chain uses LI.FI (not Circle CCTP). Circle CCTP fees do not
+                apply — see LI.FI quote below.
+              </div>
+            ) : (
+              <div>{formatBridgeFeeLabelForRoute(fromMeta, toChain)}</div>
+            )}
+            {quote?.feeText && <div>{quote.feeText}</div>}
             {quote?.gasText && <div>Source gas: {quote.gasText}</div>}
           </div>
         )}

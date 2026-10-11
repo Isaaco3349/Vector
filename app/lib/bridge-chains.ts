@@ -45,7 +45,9 @@ export type MainnetBridgeChainId =
   | "Polygon"
   | "Unichain"
   | "Linea"
-  | "Ink";
+  | "Ink"
+  /** BNB Smart Chain — LI.FI only (not Circle CCTP in App Kit). */
+  | "BNB_Chain";
 
 export type BridgeChainId = TestnetBridgeChainId | MainnetBridgeChainId;
 
@@ -69,7 +71,8 @@ export type BridgeChainNumericId =
   | 1301
   | 59141
   | 57073
-  | 763373;
+  | 763373
+  | 56;
 
 export type BridgeChain = {
   appKitChain: BridgeChainId;
@@ -82,6 +85,8 @@ export type BridgeChain = {
   explorerTx: string;
   explorerAddress: string;
   forwarderDestination: boolean;
+  /** Route uses LI.FI (Across/CCTP mix) when Circle App Kit has no CCTP chain. */
+  lifiBridge?: boolean;
 };
 
 const TESTNET_BRIDGE_CHAINS: BridgeChain[] = [
@@ -281,7 +286,25 @@ const MAINNET_BRIDGE_CHAINS: BridgeChain[] = [
     explorerAddress: "https://explorer.inkonchain.com/address/{address}",
     forwarderDestination: true,
   },
+  {
+    appKitChain: "BNB_Chain",
+    chainId: 56,
+    label: "BNB Chain",
+    usdcKind: "erc20",
+    usdcAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    explorerTx: "https://bscscan.com/tx/{hash}",
+    explorerAddress: "https://bscscan.com/address/{address}",
+    forwarderDestination: false,
+    lifiBridge: true,
+  },
 ];
+
+export function bridgeRouteUsesLifi(
+  from: BridgeChain | undefined,
+  to: BridgeChain | undefined,
+): boolean {
+  return from?.lifiBridge === true || to?.lifiBridge === true;
+}
 
 function asHexAddress(
   value: string | null | undefined,

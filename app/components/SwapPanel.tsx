@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatUnits } from "viem";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
@@ -15,11 +14,9 @@ import {
   isMainnet,
 } from "../lib/network";
 import { fetchSwapRoutesClient } from "../lib/aggregator-swap/fetch-routes-client";
+import type { SwapRouteOffer } from "../lib/aggregator-swap/types";
 import { executeSwapRoute } from "../lib/aggregator-swap/execute-client";
-import {
-  tokenDecimals,
-  type AggregatorPairSymbol,
-} from "../lib/aggregator-swap/tokens";
+import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
 import {
   classifySwapError,
   estimateSwap,
@@ -142,7 +139,9 @@ const SWAP_SYMBOLS: Record<SwapSymbol, true> = {
 };
 
 function asAggregatorPair(symbol: string): AggregatorPairSymbol | null {
-  if (symbol === "USDC" || symbol === "EURC") return symbol;
+  if (symbol === "USDC" || symbol === "EURC" || symbol === "cirBTC") {
+    return symbol;
+  }
   return null;
 }
 
@@ -283,11 +282,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
    * would swap the wrong size.
    */
   const [fallbackPlan, setFallbackPlan] = useState<SwapPlan | null>(null);
-  /** Best of Circle / Kyber / LI.FI on Arc mainnet (when available). */
-  const [routePreview, setRoutePreview] = useState<{
-    provider: string;
-    amountOut: string;
-  } | null>(null);
+  const [routeOffers, setRouteOffers] = useState<SwapRouteOffer[] | null>(null);
+  const [swapViaProvider, setSwapViaProvider] = useState<string | null>(null);
   /**
    * Which of the fallback path's two confirmations is in flight. Purely for the
    * button label, but it matters: two wallet prompts with one generic
@@ -310,7 +306,21 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
    * Never synthesised — if neither returned a number, this stays null and the
    * Swap button stays disabled.
    */
-  const displayAmountOut = quote?.amountOut ?? fallbackPlan?.estimatedAmount ?? null;
+  const bestRouteOffer = useMemo(() => {
+    if (!routeOffers?.length) return null;
+    return routeOffers.reduce((best, cur) =>
+      BigInt(cur.amountOut) > BigInt(best.amountOut) ? cur : best,
+    );
+  }, [routeOffers]);
+
+  const displayAmountOut =
+    bestRouteOffer?.amountOutHuman ??
+    quote?.amountOut ??
+    fallbackPlan?.estimatedAmount ??
+    null;
+
+  const showCircleQuoteDetails =
+    !bestRouteOffer || bestRouteOffer.provider === "circle";
 
   const planStageLabel =
     planStage === "approving"
@@ -421,6 +431,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     // drop it before a new price lands, or the panel could show one trade while
     // holding the plan for another.
     setFallbackPlan(null);
+    setRouteOffers(null);
     if (!parsedAmount || sameToken) {
       setQuote(null);
       setErrorState(
@@ -442,6 +453,31 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     setQuoting(true);
     setErrorState(null);
     const handle = setTimeout(async () => {
+      const aggIn = asAggregatorPair(tokenIn);
+      const aggOut = asAggregatorPair(tokenOut);
+      if (isMainnet && address && aggIn && aggOut) {
+        try {
+          const routes = await fetchSwapRoutesClient({
+            tokenIn: aggIn,
+            tokenOut: aggOut,
+            amount: String(parsedAmount),
+            fromAddress: address,
+            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+          });
+          if (!cancelled && routes.offers.length > 0) {
+            setRouteOffers(routes.offers);
+            setQuote(null);
+            setErrorState(null);
+            sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
+          }
+        } catch {
+          if (!cancelled) setRouteOffers(null);
+        } finally {
+          if (!cancelled) setQuoting(false);
+        }
+        return;
+      }
+
       try {
         const q = await estimateSwap({
           provider,
@@ -531,57 +567,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     recordUnroutablePair,
     providerReady,
     useOkxSequential,
-  ]);
-
-  useEffect(() => {
-    if (!isMainnet || !address || !parsedAmount || sameToken) {
-      setRoutePreview(null);
-      return;
-    }
-    const fromSymbol = asAggregatorPair(tokenIn);
-    const toSymbol = asAggregatorPair(tokenOut);
-    if (!fromSymbol || !toSymbol) {
-      setRoutePreview(null);
-      return;
-    }
-    let cancelled = false;
-    const handle = setTimeout(() => {
-      void (async () => {
-        try {
-          const routes = await fetchSwapRoutesClient({
-            tokenIn: fromSymbol,
-            tokenOut: toSymbol,
-            amount: String(parsedAmount),
-            fromAddress: address,
-            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
-          });
-          if (cancelled || !routes.best) {
-            if (!cancelled) setRoutePreview(null);
-            return;
-          }
-          setRoutePreview({
-            provider: routes.best.offer.label,
-            amountOut: formatUnits(
-              BigInt(routes.best.offer.amountOut),
-              tokenDecimals(toSymbol),
-            ),
-          });
-        } catch {
-          if (!cancelled) setRoutePreview(null);
-        }
-      })();
-    }, 600);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [
-    parsedAmount,
-    tokenIn,
-    tokenOut,
-    sameToken,
-    address,
-    slippageBps,
   ]);
 
   async function handleSwitch() {
@@ -681,6 +666,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               onStage: (stage) => setPlanStage(stage),
             });
             setTxHash(planResult.txHash);
+            setSwapViaProvider(planResult.provider);
             logVectorActivity({
               walletAddress: address,
               txHash: planResult.txHash,
@@ -943,20 +929,39 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Quote detail */}
-        {routePreview && isMainnet && (
-          <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
-            <div>
-              Best route: {routePreview.provider} → ~{routePreview.amountOut}{" "}
-              {tokenOut}
-            </div>
-            <div className="leading-relaxed">
-              Vector compares Circle, KyberSwap, and LI.FI and signs the cheapest
-              quote. Approvals use the exact swap amount, not unlimited.
-            </div>
+        {bestRouteOffer && routeOffers && routeOffers.length > 0 && (
+          <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
+              Swap route (cheapest output)
+            </p>
+            <ul className="space-y-1 text-[12px] font-mono">
+              {[...routeOffers]
+                .sort((a, b) => {
+                  const diff = BigInt(b.amountOut) - BigInt(a.amountOut);
+                  return diff > BigInt(0) ? 1 : diff < BigInt(0) ? -1 : 0;
+                })
+                .map((o) => (
+                  <li
+                    key={o.provider}
+                    className={
+                      o.provider === bestRouteOffer.provider
+                        ? "text-[var(--vector-pink)] font-semibold"
+                        : "text-[var(--vector-text-dim)]"
+                    }
+                  >
+                    {o.provider === bestRouteOffer.provider ? "✓ " : "  "}
+                    {o.label}: ~{o.amountOutHuman} {tokenOut}
+                  </li>
+                ))}
+            </ul>
+            <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
+              You will sign <span className="font-semibold">{bestRouteOffer.label}</span>.
+              Exact USDC approval — not unlimited.
+            </p>
           </div>
         )}
 
-        {quote && (quote.rate || quote.feeText) && (
+        {showCircleQuoteDetails && quote && (quote.rate || quote.feeText) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
             {quote.rate && <div>Rate: {quote.rate}</div>}
             <div>{formatVectorFeeLabel()}</div>
@@ -964,6 +969,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             {slippageBps !== null && (
               <div>Slippage tolerance: {formatBps(slippageBps)} (you raised this)</div>
             )}
+          </div>
+        )}
+
+        {bestRouteOffer && bestRouteOffer.provider !== "circle" && (
+          <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4">
+            {formatVectorFeeLabel()} applies on Circle routes; aggregator routes
+            use {bestRouteOffer.label} network fees on confirm.
           </div>
         )}
 
@@ -1042,11 +1054,19 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         {txHash && (
           <TxSuccessCard
             title="Swap successful"
+            subtitle={
+              swapViaProvider
+                ? `Routed via ${swapViaProvider === "kyber" ? "KyberSwap" : swapViaProvider === "lifi" ? "LI.FI" : "Circle"} — open explorer for on-chain details.`
+                : bestRouteOffer
+                  ? `Routed via ${bestRouteOffer.label}.`
+                  : undefined
+            }
             txHash={txHash}
             explorerUrl={arcExplorerTxUrl(txHash)}
             onDismiss={() => {
               setTxHash(null);
               setErrorState(null);
+              setSwapViaProvider(null);
             }}
           />
         )}
@@ -1102,8 +1122,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         )}
 
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          Swaps run on {ARC_DISPLAY_NAME} through Circle. Estimated output can
-          move slightly before the transaction confirms.
+          Same-chain swaps on {ARC_DISPLAY_NAME}. Vector picks the cheapest of
+          Circle, KyberSwap, and LI.FI on mainnet. Output can move slightly before
+          you confirm.
         </p>
     </VectorModalShell>
   );

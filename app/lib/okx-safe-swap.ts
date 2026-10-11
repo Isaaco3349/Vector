@@ -12,7 +12,7 @@ import { buildSwapPlan } from "./google-swap";
 const DEFAULT_SLIPPAGE_BPS = 300;
 
 function isAggregatorPair(s: SwapSymbol): s is AggregatorPairSymbol {
-  return s === "USDC" || s === "EURC";
+  return s === "USDC" || s === "EURC" || s === "cirBTC";
 }
 
 /**
