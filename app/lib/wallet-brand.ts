@@ -35,10 +35,11 @@ export function providerIsOkx(provider: unknown): boolean {
 export function okxInAppBrowser(): boolean {
   if (typeof window === "undefined") return false;
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-  if (/OKApp/i.test(ua)) return true;
-  return (
-    /OKX/i.test(ua) && /android|iphone|ipad|ipod|mobile/i.test(ua)
-  );
+  const mobile = /android|iphone|ipad|ipod|mobile/i.test(ua);
+  if (!mobile) return false;
+  if (/OKApp|OKX|OKEx/i.test(ua)) return true;
+  const w = window as unknown as { okxwallet?: { ethereum?: unknown } };
+  return w.okxwallet?.ethereum !== undefined;
 }
 
 /** Bridge/swap should use plain `eth_sendTransaction` paths for OKX. */

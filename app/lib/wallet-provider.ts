@@ -1,6 +1,7 @@
 "use client";
 
 import type { Eip1193Provider } from "./appkit";
+import { sendTransactionOkxMobileAware } from "./okx-mobile-tx";
 import {
   isOkxWallet,
   okxInAppBrowser,
@@ -148,6 +149,9 @@ export function createOkxSafeEip1193Provider(
             ? chainId
             : "0x0";
         return { [id]: {} };
+      }
+      if (method === "eth_sendTransaction") {
+        return sendTransactionOkxMobileAware(inner, args);
       }
       return inner.request(args);
     },
