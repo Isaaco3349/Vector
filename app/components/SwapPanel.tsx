@@ -1228,6 +1228,11 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
   if (/no balance|insufficient/i.test(blob)) {
     return "Insufficient balance for this swap (including Arc USDC gas). Lower the amount or tap Max.";
   }
+  if (/-32603|internal error/i.test(blob)) {
+    return okx
+      ? "OKX could not read Arc or submit the tx (code -32603). Switch to Arc in OKX, update the app, then retry — or use OKX Chrome extension on desktop."
+      : "Wallet RPC internal error (-32603). Switch to Arc and try again.";
+  }
   const short = blob ? sanitizeRouteErrorDetail(blob) : "";
   if (short) return short;
   return okx
