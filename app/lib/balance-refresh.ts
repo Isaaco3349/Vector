@@ -51,14 +51,29 @@ export async function refreshBalancesAfterTx(
   await invalidateOnchainBalances(queryClient);
 }
 
+const BALANCE_POLL_DELAYS_MS = [0, 500, 1500, 4000, 8000, 15000] as const;
+
 /** Re-read balances a few times — covers bridge mint lag and non-Arc source txs. */
 export function scheduleBalancePoll(queryClient: QueryClient): void {
   void (async () => {
-    for (const delayMs of [0, 1500, 4000]) {
+    for (const delayMs of BALANCE_POLL_DELAYS_MS) {
       if (delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
       await invalidateOnchainBalances(queryClient);
     }
   })();
+}
+
+/** Wait for Arc confirmation, then poll balances until RPC/indexers catch up (swap success UI). */
+export async function refreshBalancesAfterTxEager(
+  queryClient: QueryClient,
+  txHash?: string | null,
+): Promise<void> {
+  await refreshBalancesAfterTx(queryClient, txHash);
+  for (const delayMs of [400, 1200, 3000]) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await invalidateOnchainBalances(queryClient);
+  }
+  scheduleBalancePoll(queryClient);
 }
