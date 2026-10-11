@@ -5,10 +5,8 @@ import type { Eip1193Provider } from "../appkit";
 import { chainId as ARC_CHAIN_ID } from "../network";
 import { executeSwapPlan } from "../external-swap";
 import { buildSwapPlan, type SwapSymbol } from "../google-swap";
+import { buildKyberSwapTx, fetchKyberRouteSummary } from "./kyber-client";
 import type { SwapRouteExecution } from "./types";
-
-const KYBER_CHAIN = "arc";
-const KYBER_CLIENT_ID = "VectorProtocol";
 
 type Stage = "approving" | "awaiting-approval" | "executing" | "awaiting-execution";
 
@@ -123,33 +121,6 @@ async function readErc20Allowance(
   return BigInt(result as string);
 }
 
-async function fetchKyberRouteSummary(args: {
-  tokenIn: string;
-  tokenOut: string;
-  amountIn: string;
-  to: string;
-}): Promise<unknown> {
-  const url = new URL(
-    `https://aggregator-api.kyberswap.com/${KYBER_CHAIN}/api/v1/routes`,
-  );
-  url.searchParams.set("tokenIn", args.tokenIn);
-  url.searchParams.set("tokenOut", args.tokenOut);
-  url.searchParams.set("amountIn", args.amountIn);
-  url.searchParams.set("to", args.to);
-  const res = await fetch(url.toString(), {
-    headers: { "X-Client-Id": KYBER_CLIENT_ID, accept: "application/json" },
-  });
-  if (!res.ok) {
-    throw new Error("KyberSwap could not refresh this route. Try again.");
-  }
-  const body = (await res.json()) as { data?: { routeSummary?: unknown } };
-  const routeSummary = body.data?.routeSummary;
-  if (!routeSummary) {
-    throw new Error("KyberSwap returned no route for this amount.");
-  }
-  return routeSummary;
-}
-
 function parseKyberAmountIn(routeSummary: unknown): bigint | null {
   const amountIn = (routeSummary as { amountIn?: string })?.amountIn;
   if (!amountIn || !/^\d+$/.test(amountIn)) return null;
@@ -161,52 +132,6 @@ function kyberSpendCap(balance: bigint, quotedIn: bigint): bigint {
   const cap = balance < quotedIn ? balance : quotedIn;
   if (cap >= balance && balance > BigInt(1)) return balance - BigInt(1);
   return cap;
-}
-
-async function buildKyberSwapTx(
-  routeSummary: unknown,
-  from: string,
-  slippageBps: number,
-): Promise<{
-  data: string;
-  routerAddress: string;
-  transactionValue: string;
-  amountIn?: string;
-}> {
-  const buildRes = await fetch(
-    `https://aggregator-api.kyberswap.com/${KYBER_CHAIN}/api/v1/route/build`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Client-Id": KYBER_CLIENT_ID,
-      },
-      body: JSON.stringify({
-        routeSummary,
-        sender: from,
-        recipient: from,
-        slippageTolerance: slippageBps,
-      }),
-    },
-  );
-  const build = (await buildRes.json()) as {
-    data?: {
-      data?: string;
-      routerAddress?: string;
-      transactionValue?: string;
-      amountIn?: string;
-    };
-  };
-  const payload = build.data;
-  if (!payload?.data || !payload.routerAddress) {
-    throw new Error("KyberSwap could not build this route. Try again.");
-  }
-  return {
-    data: payload.data,
-    routerAddress: payload.routerAddress,
-    transactionValue: payload.transactionValue ?? "0",
-    amountIn: payload.amountIn,
-  };
 }
 
 async function prepareKyberSwap(

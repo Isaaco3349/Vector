@@ -85,8 +85,10 @@ export function useTokenBalance(symbol: string): {
     isVerifiedErc20 &&
     !!address &&
     !!token?.address &&
-    !balanceQuery.isLoading &&
-    wagmiRawVerified === null;
+    balanceQuery.isFetched &&
+    !balanceQuery.isFetching &&
+    wagmiRawVerified === null &&
+    (balanceQuery.isError || balanceQuery.data === undefined);
 
   useEffect(() => {
     if (!needsWalletFallback) {
