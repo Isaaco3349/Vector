@@ -35,6 +35,8 @@ export type SwapRouteExecution =
 export type SwapRoutesResponse = {
   offers: SwapRouteOffer[];
   best: SwapRouteExecution | null;
+  /** LI.FI quote payload when LI.FI quoted (for OKX fallback execution). */
+  lifiExecution?: SwapRouteExecution | null;
   /** When Circle plan is best, client builds locally; optional estimate only here. */
   circlePlan?: SwapPlan;
 };

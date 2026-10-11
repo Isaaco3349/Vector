@@ -29,8 +29,17 @@ export async function readErc20BalanceViaProvider(
   return BigInt(result as string);
 }
 
-function isArcUsdcToken(token: string): boolean {
+export function isArcUsdcToken(token: string): boolean {
   return token.toLowerCase() === arcUsdcAddress.toLowerCase();
+}
+
+/** Keep native USDC on Arc for gas when swapping USDC (6-decimal minor units). */
+export const ARC_USDC_GAS_RESERVE_MINOR = BigInt(50_000); // 0.05 USDC
+
+export function applyArcUsdcGasReserve(token: string, balanceMinor: bigint): bigint {
+  if (!isArcUsdcToken(token)) return balanceMinor;
+  if (balanceMinor <= ARC_USDC_GAS_RESERVE_MINOR) return BigInt(0);
+  return balanceMinor - ARC_USDC_GAS_RESERVE_MINOR;
 }
 
 /**
@@ -53,5 +62,6 @@ export async function readSwapInputBalanceViaProvider(
     params: [owner, "latest"],
   });
   const fromNative = arcUsdcNativeToErc20Minor(BigInt(nativeHex as string));
-  return erc20Minor > fromNative ? erc20Minor : fromNative;
+  const combined = erc20Minor > fromNative ? erc20Minor : fromNative;
+  return applyArcUsdcGasReserve(token, combined);
 }
