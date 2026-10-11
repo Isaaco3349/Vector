@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
-  refreshBalancesAfterTx,
+  refreshBalancesAfterTxEager,
   scheduleBalancePoll,
 } from "../lib/balance-refresh";
 import {
@@ -339,8 +339,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   const syncBalancesAfterSwap = useCallback(
     async (txHash: string | null) => {
-      await refreshBalancesAfterTx(queryClient, txHash);
-      scheduleBalancePoll(queryClient);
+      await refreshBalancesAfterTxEager(queryClient, txHash);
       await Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
     },
     [queryClient, balanceIn.refetch, balanceOut.refetch],
@@ -674,7 +673,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               chainId: ARC_CHAIN_ID,
               detail: `${tokenIn} → ${tokenOut} (${planResult.provider})`,
             });
-            void syncBalancesAfterSwap(planResult.txHash);
+            await syncBalancesAfterSwap(planResult.txHash);
             return;
           }
         } catch (routeErr) {
@@ -709,7 +708,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           chainId: ARC_CHAIN_ID,
           detail: `${tokenIn} → ${tokenOut}`,
         });
-        void syncBalancesAfterSwap(planResult.txHash);
+        await syncBalancesAfterSwap(planResult.txHash);
         return;
       }
 
@@ -749,7 +748,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           chainId: ARC_CHAIN_ID,
           detail: `${tokenIn} → ${tokenOut}`,
         });
-        void syncBalancesAfterSwap(planResult.executeTxHash);
+        await syncBalancesAfterSwap(planResult.executeTxHash);
         return;
       }
 
@@ -796,7 +795,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           chainId: ARC_CHAIN_ID,
           detail: `${tokenIn} → ${tokenOut}`,
         });
-        void syncBalancesAfterSwap(result.txHash);
+        await syncBalancesAfterSwap(result.txHash);
       } else {
         // Swap returned but no recognisable hash — surface honestly rather
         // than claim success.
