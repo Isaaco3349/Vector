@@ -41,13 +41,10 @@
  *    `describeSwapError` in appkit.ts is the single place that interprets them.
  */
 
+import { waitArcTransactionReceipt } from "./arc-tx-wait";
 import { getProviderChainId, type Eip1193Provider } from "./appkit";
 import type { SwapCall, SwapPlan } from "./google-swap";
 import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "./network";
-
-/** How long to wait for a receipt before giving up, and how often to ask. */
-const RECEIPT_TIMEOUT_MS = 180_000;
-const RECEIPT_POLL_MS = 2_000;
 
 export type ExternalSwapResult = {
   /** Hash of the approval transaction. */
@@ -107,57 +104,6 @@ async function sendCall(
 }
 
 /**
- * Poll until the transaction has a receipt, then require `status === 0x1`.
- *
- * A mined-but-reverted transaction is the dangerous case: it looks like success
- * to anything that only checks "did we get a receipt". Arc reports status the
- * standard way, so we read it and fail loudly.
- */
-async function waitForSuccess(
-  provider: Eip1193Provider,
-  hash: string,
-  label: string,
-): Promise<void> {
-  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    const receipt = (await provider.request({
-      method: "eth_getTransactionReceipt",
-      params: [hash],
-    })) as { status?: unknown } | null;
-
-    if (receipt && typeof receipt === "object") {
-      const status = receipt.status;
-      // Some nodes answer with a number rather than a hex quantity.
-      const normalised =
-        typeof status === "string"
-          ? status.toLowerCase()
-          : typeof status === "number"
-            ? `0x${status.toString(16)}`
-            : null;
-
-      if (normalised === "0x1") return;
-      if (normalised === "0x0") {
-        throw new Error(
-          `The ${label} transaction was mined but reverted on-chain (${hash}). ` +
-            "No swap took place. This usually means the route moved or the " +
-            "deadline in Circle's quote expired — get a fresh quote and try again.",
-        );
-      }
-      // A receipt with no readable status: treat as unknown, keep waiting.
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, RECEIPT_POLL_MS));
-  }
-
-  throw new Error(
-    `The ${label} transaction (${hash}) hasn't confirmed yet. It may still ` +
-      "land — check your wallet or the Arc explorer before sending it again, so " +
-      "you don't submit it twice.",
-  );
-}
-
-/**
  * Send a SwapPlan from an external wallet: approve, wait, execute, wait.
  *
  * Re-checks the wallet's chain immediately before the first send. The panel
@@ -189,7 +135,7 @@ export async function executeSwapPlan(
   );
 
   onStage?.("awaiting-approval");
-  await waitForSuccess(provider, approveTxHash, "approval");
+  await waitArcTransactionReceipt(provider, approveTxHash);
 
   onStage?.("executing");
   const executeTxHash = await sendCall(
@@ -201,7 +147,7 @@ export async function executeSwapPlan(
   );
 
   onStage?.("awaiting-execution");
-  await waitForSuccess(provider, executeTxHash, "swap");
+  await waitArcTransactionReceipt(provider, executeTxHash);
 
   return { approveTxHash, executeTxHash };
 }

@@ -1,12 +1,32 @@
 "use client";
 
+import { okxInAppBrowser } from "../wallet-brand";
+
+async function fetchKyberApi(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const attempts = okxInAppBrowser() ? 4 : 2;
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetch(input, init);
+    } catch (err) {
+      last = err;
+      if (i === attempts - 1) break;
+      await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+    }
+  }
+  throw last instanceof Error ? last : new Error("Could not reach Vector swap API.");
+}
+
 async function kyberRoutes(args: {
   tokenIn: string;
   tokenOut: string;
   amountIn: string;
   to: string;
 }): Promise<{ data?: { routeSummary?: unknown } }> {
-  const res = await fetch("/api/kyber", {
+  const res = await fetchKyberApi("/api/kyber", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ op: "routes", ...args }),
@@ -44,7 +64,7 @@ export async function buildKyberSwapTx(
   transactionValue: string;
   amountIn?: string;
 }> {
-  const buildRes = await fetch("/api/kyber", {
+  const buildRes = await fetchKyberApi("/api/kyber", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

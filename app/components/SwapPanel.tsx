@@ -18,6 +18,7 @@ import type { SwapRouteOffer } from "../lib/aggregator-swap/types";
 import type { ClientSwapRoutesResult } from "../lib/aggregator-swap/fetch-routes-client";
 import { executeSwapRoute } from "../lib/aggregator-swap/execute-client";
 import {
+  buildOkxMobileSwapRouteAttempts,
   buildSwapRouteAttempts,
   pairIncludesCirBtc,
 } from "../lib/aggregator-swap/route-attempts";
@@ -714,7 +715,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             onStage: (stage: "approving" | "awaiting-approval" | "executing" | "awaiting-execution") =>
               setPlanStage(stage),
           };
-          const routeAttempts = buildSwapRouteAttempts(routes, tokenIn, tokenOut);
+          const routeAttempts = okxInAppBrowser()
+            ? buildOkxMobileSwapRouteAttempts(routes)
+            : buildSwapRouteAttempts(routes, tokenIn, tokenOut);
           const attemptErrors: string[] = [];
           for (const route of routeAttempts) {
             try {
@@ -1227,9 +1230,9 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
       "OKX blocked this confirmation. Update OKX, or try Circle route (USDC ↔ EURC) — Vector will fall back automatically when Kyber fails."
     );
   }
-  if (/failed to fetch|networkerror|load failed|network request failed/i.test(blob)) {
+  if (/failed to fetch|networkerror|load failed|network request failed|could not reach vector/i.test(blob)) {
     return okx
-      ? "Could not reach Vector from OKX. Open https://www.vectorprotocol.pro inside OKX (Discover → DApps), check your connection, then try again."
+      ? "OKX paused the connection while you were signing. If approval already succeeded, tap Swap again for the swap step only. Otherwise tap Refresh and retry once."
       : blob;
   }
   if (/origin_not_allowed|ORIGIN_NOT_ALLOWED|vector app origin/i.test(blob)) {

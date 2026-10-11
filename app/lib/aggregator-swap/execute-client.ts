@@ -6,9 +6,11 @@ import { chainId as ARC_CHAIN_ID } from "../network";
 import { executeSwapPlan } from "../external-swap";
 import { buildSwapPlan, type SwapSymbol } from "../google-swap";
 import {
+  invalidateArcAllowanceReadCache,
   readErc20AllowanceForSwap,
   readSwapInputBalanceForSwap,
 } from "../arc-erc20-read";
+import { waitArcTransactionReceipt } from "../arc-tx-wait";
 import { okxInAppBrowser } from "../wallet-brand";
 import { buildKyberSwapTx, fetchKyberRouteSummary } from "./kyber-client";
 import type { SwapRouteExecution } from "./types";
@@ -40,27 +42,6 @@ async function sendTx(
   return hash;
 }
 
-async function waitReceipt(provider: Eip1193Provider, hash: string): Promise<void> {
-  const deadline = Date.now() + 180_000;
-  while (Date.now() < deadline) {
-    const receipt = (await provider.request({
-      method: "eth_getTransactionReceipt",
-      params: [hash],
-    })) as { status?: string | number } | null;
-    if (receipt && typeof receipt === "object") {
-      const s = receipt.status;
-      const norm =
-        typeof s === "number" ? `0x${s.toString(16)}` : String(s).toLowerCase();
-      if (norm === "0x1") return;
-      if (norm === "0x0") {
-        throw new Error(`Transaction reverted on-chain (${hash}).`);
-      }
-    }
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  throw new Error(`Transaction ${hash} has not confirmed yet.`);
-}
-
 async function approveExact(
   provider: Eip1193Provider,
   from: string,
@@ -77,7 +58,8 @@ async function approveExact(
   });
   const hash = await sendTx(provider, from, token, data, "0");
   onStage?.("awaiting-approval");
-  await waitReceipt(provider, hash);
+  await waitArcTransactionReceipt(provider, hash);
+  invalidateArcAllowanceReadCache(token, from, spender);
   return hash;
 }
 
@@ -125,42 +107,49 @@ function kyberSpendCap(balance: bigint, quotedIn: bigint): bigint {
   return cap;
 }
 
-async function prepareKyberSwap(
+type KyberPrepared = {
+  summary: unknown;
+  payload: Awaited<ReturnType<typeof buildKyberSwapTx>>;
+  swapAmountIn: bigint;
+};
+
+async function prepareKyberFromSummary(
   provider: Eip1193Provider,
   from: string,
   tokenIn: string,
   tokenOut: string,
-  quotedIn: bigint,
+  routeSummary: unknown,
   slippageBps: number,
-): Promise<{
-  summary: unknown;
-  payload: Awaited<ReturnType<typeof buildKyberSwapTx>>;
-  swapAmountIn: bigint;
-}> {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const balance = await readInputBalance(provider, tokenIn, from as `0x${string}`);
-    if (balance === BigInt(0)) {
-      throw new Error("Your wallet has no balance of the token you are swapping.");
-    }
+): Promise<KyberPrepared> {
+  const quotedIn = parseKyberAmountIn(routeSummary);
+  if (quotedIn === null) {
+    throw new Error("Kyber route is missing amountIn.");
+  }
+  const balance = await readInputBalance(provider, tokenIn, from as `0x${string}`);
+  if (balance === BigInt(0)) {
+    throw new Error("Your wallet has no balance of the token you are swapping.");
+  }
 
-    const spend = kyberSpendCap(balance, quotedIn);
-    const summary = await fetchKyberRouteSummary({
+  let summary = routeSummary;
+  const spend = kyberSpendCap(balance, quotedIn);
+  if (spend !== quotedIn) {
+    summary = await fetchKyberRouteSummary({
       tokenIn,
       tokenOut,
       amountIn: spend.toString(),
       to: from,
     });
-    const payload = await buildKyberSwapTx(summary, from, slippageBps);
-    const routeIn = parseKyberAmountIn(summary);
-    const swapAmountIn = payload.amountIn ? BigInt(payload.amountIn) : routeIn;
-    if (!swapAmountIn || swapAmountIn <= balance) {
-      return { summary, payload, swapAmountIn: swapAmountIn ?? spend };
-    }
-    quotedIn = balance > BigInt(1) ? balance - BigInt(1) : balance;
   }
-  throw new Error(
-    "Kyber could not fit this swap to your wallet balance. Try a slightly smaller amount.",
-  );
+
+  const payload = await buildKyberSwapTx(summary, from, slippageBps);
+  const routeIn = parseKyberAmountIn(summary);
+  const swapAmountIn = payload.amountIn ? BigInt(payload.amountIn) : routeIn;
+  if (!swapAmountIn || swapAmountIn > balance) {
+    throw new Error(
+      "Kyber could not fit this swap to your wallet balance. Try a slightly smaller amount.",
+    );
+  }
+  return { summary, payload, swapAmountIn: swapAmountIn ?? spend };
 }
 
 async function ensureKyberAllowance(
@@ -199,12 +188,12 @@ async function executeKyber(
     throw new Error("Kyber route is missing token details.");
   }
 
-  let prepared = await prepareKyberSwap(
+  let prepared = await prepareKyberFromSummary(
     provider,
     from,
     tokenIn,
     tokenOut,
-    quotedIn,
+    routeSummary,
     slippageBps,
   );
 
@@ -227,23 +216,13 @@ async function executeKyber(
       onStage,
       "0x",
     );
-    // Re-quote only after a new approval (checksum + OKX simulation).
-    prepared = await prepareKyberSwap(
+    prepared = await prepareKyberFromSummary(
       provider,
       from,
       tokenIn,
       tokenOut,
-      prepared.swapAmountIn,
+      prepared.summary,
       slippageBps,
-    );
-    approveTxHash = await ensureKyberAllowance(
-      provider,
-      from,
-      tokenIn,
-      prepared.payload.routerAddress,
-      prepared.swapAmountIn,
-      onStage,
-      approveTxHash,
     );
   }
 
@@ -256,7 +235,7 @@ async function executeKyber(
     prepared.payload.transactionValue,
   );
   onStage?.("awaiting-execution");
-  await waitReceipt(provider, txHash);
+  await waitArcTransactionReceipt(provider, txHash);
   return { txHash, approveTxHash };
 }
 
@@ -305,7 +284,7 @@ export async function executeLifiFromQuote(
     txReq.value ?? "0",
   );
   onStage?.("awaiting-execution");
-  await waitReceipt(provider, txHash);
+  await waitArcTransactionReceipt(provider, txHash);
   return { txHash, approveTxHash };
 }
 
