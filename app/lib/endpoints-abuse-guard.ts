@@ -27,6 +27,18 @@ function normalizeOrigin(value: string): string | null {
   }
 }
 
+const VECTOR_HOSTS = new Set([
+  "vectorprotocol.pro",
+  "www.vectorprotocol.pro",
+  "localhost",
+  "127.0.0.1",
+]);
+
+function vectorHostFromRequest(request: Request): string | null {
+  const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
+  return host && VECTOR_HOSTS.has(host) ? host : null;
+}
+
 /**
  * Reject cross-site browser abuse. Same-origin app requests send Origin
  * (or Referer); server-side scripts must set one of these headers.
@@ -39,7 +51,7 @@ export function rejectIfDisallowedOrigin(
   const refererHeader = request.headers.get("referer");
 
   let requestOrigin: string | null = null;
-  if (originHeader) {
+  if (originHeader && originHeader !== "null") {
     requestOrigin = normalizeOrigin(originHeader);
   } else if (refererHeader) {
     requestOrigin = normalizeOrigin(refererHeader);
@@ -49,24 +61,16 @@ export function rejectIfDisallowedOrigin(
     return null;
   }
 
-  // OKX / mobile in-app browsers often omit Origin on fetch; allow same Host.
-  if (!requestOrigin) {
-    const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
-    const allowedHosts = new Set([
-      "vectorprotocol.pro",
-      "www.vectorprotocol.pro",
-      "localhost",
-      "127.0.0.1",
-    ]);
-    if (host && allowedHosts.has(host)) {
-      return null;
-    }
+  // OKX / mobile wallet WebViews load vectorprotocol.pro but often send the
+  // wallet’s Origin on fetch — not our site URL. Same Host means same deployment.
+  if (vectorHostFromRequest(request)) {
+    return null;
   }
 
   return NextResponse.json(
     {
       error:
-        "Open Vector at https://www.vectorprotocol.pro (not a copy or preview URL) and try again.",
+        "Open Vector at https://vectorprotocol.pro inside your wallet app (Discover → DApps), tap Refresh, and try again.",
       code: "ORIGIN_NOT_ALLOWED",
     },
     { status: 403 },
