@@ -1,18 +1,88 @@
 "use client";
 
-import { createPublicClient, encodeFunctionData, erc20Abi, http } from "viem";
+import {
+  createPublicClient,
+  encodeFunctionData,
+  erc20Abi,
+  fallback,
+  http,
+} from "viem";
 import { arcUsdcNativeToErc20Minor } from "./arc-usdc-balance";
 import type { Eip1193Provider } from "./appkit";
+import { errorTextBlob } from "./wallet-errors";
 import { arcUsdcAddress, rpcUrl } from "./network";
 import { arcViemChain } from "./viem-arc-chain";
 
+const ARC_PUBLIC_READ_FALLBACK_RPC = "https://rpc.arc.network/";
+const ARC_READ_CACHE_MS = 5_000;
+
 let arcReadClient: ReturnType<typeof createPublicClient> | null = null;
+
+type CachedBigint = { value: bigint; at: number };
+const bigintReadCache = new Map<string, CachedBigint>();
+
+function arcReadRpcUrls(): string[] {
+  const primary = rpcUrl.trim();
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [primary, ARC_PUBLIC_READ_FALLBACK_RPC]) {
+    const u = raw.trim();
+    if (!u) continue;
+    const key = u.replace(/\/+$/, "").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(u);
+  }
+  return out.length > 0 ? out : [ARC_PUBLIC_READ_FALLBACK_RPC];
+}
+
+function isArcPublicRateLimitError(err: unknown): boolean {
+  const blob = errorTextBlob(err);
+  return /exceeds defined limit|rate limit|too many requests|429/i.test(blob);
+}
+
+async function withPublicReadRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [350, 900] as const;
+  let last: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (!isArcPublicRateLimitError(err) || attempt === delays.length) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, delays[attempt]));
+    }
+  }
+  throw last;
+}
+
+function readCacheGet(key: string): bigint | null {
+  const hit = bigintReadCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > ARC_READ_CACHE_MS) {
+    bigintReadCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function readCacheSet(key: string, value: bigint): void {
+  bigintReadCache.set(key, { value, at: Date.now() });
+}
 
 function arcPublicReadClient() {
   if (!arcReadClient) {
+    const urls = arcReadRpcUrls();
     arcReadClient = createPublicClient({
       chain: arcViemChain,
-      transport: http(rpcUrl),
+      transport:
+        urls.length === 1
+          ? http(urls[0], { retryCount: 2, retryDelay: 350 })
+          : fallback(
+              urls.map((u) => http(u, { retryCount: 1, retryDelay: 400 })),
+            ),
     });
   }
   return arcReadClient;
@@ -79,17 +149,83 @@ export async function readSwapInputBalanceViaProvider(
   return applyArcUsdcGasReserve(token, combined);
 }
 
-/** Arc RPC reads — OKX mobile WebView often returns -32603 on wallet `eth_call`. */
+/** OKX: wallet reads first (retried in OKX provider wrap), public Arc RPC as fallback. */
+export async function readSwapInputBalanceForSwap(
+  provider: Eip1193Provider,
+  token: string,
+  owner: `0x${string}`,
+  opts?: { preferWallet?: boolean },
+): Promise<bigint> {
+  const preferWallet = opts?.preferWallet === true;
+  if (preferWallet) {
+    try {
+      return await readSwapInputBalanceViaProvider(provider, token, owner);
+    } catch {
+      return readSwapInputBalancePublic(token, owner);
+    }
+  }
+  return readSwapInputBalanceViaProvider(provider, token, owner);
+}
+
+export async function readErc20AllowanceForSwap(
+  provider: Eip1193Provider,
+  token: string,
+  owner: string,
+  spender: string,
+  opts?: { preferWallet?: boolean },
+): Promise<bigint> {
+  const preferWallet = opts?.preferWallet === true;
+  if (preferWallet) {
+    try {
+      return await readErc20AllowanceViaProvider(provider, token, owner, spender);
+    } catch {
+      return readErc20AllowancePublic(
+        token as `0x${string}`,
+        owner as `0x${string}`,
+        spender as `0x${string}`,
+      );
+    }
+  }
+  return readErc20AllowanceViaProvider(provider, token, owner, spender);
+}
+
+async function readErc20AllowanceViaProvider(
+  provider: Eip1193Provider,
+  token: string,
+  owner: string,
+  spender: string,
+): Promise<bigint> {
+  const data = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: [owner as `0x${string}`, spender as `0x${string}`],
+  });
+  const result = await provider.request({
+    method: "eth_call",
+    params: [{ to: token, data }, "latest"],
+  });
+  return BigInt(result as string);
+}
+
+/** Arc public RPC — fallback when wallet `eth_call` fails; cached + rate-limit aware. */
 export async function readErc20BalancePublic(
   token: `0x${string}`,
   owner: `0x${string}`,
 ): Promise<bigint> {
-  return arcPublicReadClient().readContract({
-    address: token,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [owner],
-  });
+  const key = `bal:${token}:${owner}`;
+  const cached = readCacheGet(key);
+  if (cached !== null) return cached;
+
+  const value = await withPublicReadRetry(() =>
+    arcPublicReadClient().readContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [owner],
+    }),
+  );
+  readCacheSet(key, value);
+  return value;
 }
 
 export async function readErc20AllowancePublic(
@@ -97,23 +233,42 @@ export async function readErc20AllowancePublic(
   owner: `0x${string}`,
   spender: `0x${string}`,
 ): Promise<bigint> {
-  return arcPublicReadClient().readContract({
-    address: token,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: [owner, spender],
-  });
+  const key = `allow:${token}:${owner}:${spender}`;
+  const cached = readCacheGet(key);
+  if (cached !== null) return cached;
+
+  const value = await withPublicReadRetry(() =>
+    arcPublicReadClient().readContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [owner, spender],
+    }),
+  );
+  readCacheSet(key, value);
+  return value;
 }
 
 export async function readSwapInputBalancePublic(
   token: string,
   owner: `0x${string}`,
 ): Promise<bigint> {
-  const erc20Minor = await readErc20BalancePublic(token as `0x${string}`, owner);
-  if (!isArcUsdcToken(token)) return erc20Minor;
+  const key = `swapIn:${token}:${owner}`;
+  const cached = readCacheGet(key);
+  if (cached !== null) return cached;
 
-  const native = await arcPublicReadClient().getBalance({ address: owner });
+  const erc20Minor = await readErc20BalancePublic(token as `0x${string}`, owner);
+  if (!isArcUsdcToken(token)) {
+    readCacheSet(key, erc20Minor);
+    return erc20Minor;
+  }
+
+  const native = await withPublicReadRetry(() =>
+    arcPublicReadClient().getBalance({ address: owner }),
+  );
   const fromNative = arcUsdcNativeToErc20Minor(native);
   const combined = erc20Minor > fromNative ? erc20Minor : fromNative;
-  return applyArcUsdcGasReserve(token, combined);
+  const spendable = applyArcUsdcGasReserve(token, combined);
+  readCacheSet(key, spendable);
+  return spendable;
 }
