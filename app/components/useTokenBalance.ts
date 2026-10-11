@@ -74,7 +74,15 @@ export function useTokenBalance(symbol: string): {
 
   const [walletRaw, setWalletRaw] = useState<bigint | null>(null);
   const [walletFetchDone, setWalletFetchDone] = useState(false);
+  const [publicRaw, setPublicRaw] = useState<bigint | null>(null);
+  const [publicFetchDone, setPublicFetchDone] = useState(false);
   const [walletFetchGen, setWalletFetchGen] = useState(0);
+
+  const okxPublicRead =
+    okxInAppBrowser() &&
+    isVerifiedErc20 &&
+    !!address &&
+    !!token?.address;
 
   const wagmiRawVerified =
     typeof balanceQuery.data === "bigint" ? balanceQuery.data : null;
@@ -91,6 +99,32 @@ export function useTokenBalance(symbol: string): {
     !balanceQuery.isFetching &&
     wagmiRawVerified === null &&
     (balanceQuery.isError || balanceQuery.data === undefined);
+
+  useEffect(() => {
+    if (!okxPublicRead) {
+      setPublicRaw(null);
+      setPublicFetchDone(false);
+      return;
+    }
+    let cancelled = false;
+    setPublicFetchDone(false);
+    void (async () => {
+      try {
+        const raw = await readSwapInputBalancePublic(
+          token!.address!,
+          address as `0x${string}`,
+        );
+        if (!cancelled) setPublicRaw(raw);
+      } catch {
+        if (!cancelled) setPublicRaw(null);
+      } finally {
+        if (!cancelled) setPublicFetchDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [okxPublicRead, address, token?.address, symbol, walletFetchGen]);
 
   useEffect(() => {
     if (!needsWalletFallback) {
@@ -151,9 +185,14 @@ export function useTokenBalance(symbol: string): {
 
   if (isVerifiedErc20 && verifiedDecimals !== null) {
     const isLoading =
-      balanceQuery.isLoading ||
-      (needsWalletFallback && !walletFetchDone && walletRaw === null);
-    const raw = wagmiRawVerified ?? walletRaw;
+      (okxPublicRead && !publicFetchDone && publicRaw === null) ||
+      (!okxPublicRead &&
+        (balanceQuery.isLoading ||
+          (needsWalletFallback && !walletFetchDone && walletRaw === null)));
+    const raw =
+      okxInAppBrowser() && publicRaw !== null
+        ? publicRaw
+        : wagmiRawVerified ?? walletRaw;
     if (isLoading && raw === null) {
       return {
         formatted: null,
