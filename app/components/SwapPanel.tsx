@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatUnits } from "viem";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
@@ -11,7 +12,14 @@ import {
   arcExplorerTxUrl,
   chainId as ARC_CHAIN_ID,
   displayName as ARC_DISPLAY_NAME,
+  isMainnet,
 } from "../lib/network";
+import { fetchSwapRoutesClient } from "../lib/aggregator-swap/fetch-routes-client";
+import { executeSwapRoute } from "../lib/aggregator-swap/execute-client";
+import {
+  tokenDecimals,
+  type AggregatorPairSymbol,
+} from "../lib/aggregator-swap/tokens";
 import {
   classifySwapError,
   estimateSwap,
@@ -132,6 +140,11 @@ const SWAP_SYMBOLS: Record<SwapSymbol, true> = {
   cirBTC: true,
   EURC: true,
 };
+
+function asAggregatorPair(symbol: string): AggregatorPairSymbol | null {
+  if (symbol === "USDC" || symbol === "EURC") return symbol;
+  return null;
+}
 
 function asSwapSymbol(symbol: string): SwapSymbol | null {
   // The cast is sound: the keys of SWAP_SYMBOLS are exactly SwapSymbol, and the
@@ -270,6 +283,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
    * would swap the wrong size.
    */
   const [fallbackPlan, setFallbackPlan] = useState<SwapPlan | null>(null);
+  /** Best of Circle / Kyber / LI.FI on Arc mainnet (when available). */
+  const [routePreview, setRoutePreview] = useState<{
+    provider: string;
+    amountOut: string;
+  } | null>(null);
   /**
    * Which of the fallback path's two confirmations is in flight. Purely for the
    * button label, but it matters: two wallet prompts with one generic
@@ -515,6 +533,57 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     useOkxSequential,
   ]);
 
+  useEffect(() => {
+    if (!isMainnet || !address || !parsedAmount || sameToken) {
+      setRoutePreview(null);
+      return;
+    }
+    const fromSymbol = asAggregatorPair(tokenIn);
+    const toSymbol = asAggregatorPair(tokenOut);
+    if (!fromSymbol || !toSymbol) {
+      setRoutePreview(null);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      void (async () => {
+        try {
+          const routes = await fetchSwapRoutesClient({
+            tokenIn: fromSymbol,
+            tokenOut: toSymbol,
+            amount: String(parsedAmount),
+            fromAddress: address,
+            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+          });
+          if (cancelled || !routes.best) {
+            if (!cancelled) setRoutePreview(null);
+            return;
+          }
+          setRoutePreview({
+            provider: routes.best.offer.label,
+            amountOut: formatUnits(
+              BigInt(routes.best.offer.amountOut),
+              tokenDecimals(toSymbol),
+            ),
+          });
+        } catch {
+          if (!cancelled) setRoutePreview(null);
+        }
+      })();
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [
+    parsedAmount,
+    tokenIn,
+    tokenOut,
+    sameToken,
+    address,
+    slippageBps,
+  ]);
+
   async function handleSwitch() {
     setErrorState(null);
     let switchError: unknown = null;
@@ -585,23 +654,65 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         return;
       }
 
-      // OKX: always POST /swap plan + sequential eth_sendTransaction (never App Kit permit/batch).
-      if (useOkxSequential && address) {
-        const fromSymbol = asSwapSymbol(tokenIn);
-        const toSymbol = asSwapSymbol(tokenOut);
-        if (!fromSymbol || !toSymbol) {
-          setErrorState({
-            text: "Unsupported token pair for this swap.",
-            info: null,
+      const fromSymbol = asSwapSymbol(tokenIn);
+      const toSymbol = asSwapSymbol(tokenOut);
+      const aggIn = asAggregatorPair(tokenIn);
+      const aggOut = asAggregatorPair(tokenOut);
+
+      // Arc mainnet: Circle + Kyber + LI.FI — cheapest output, sequential txs only.
+      if (isMainnet && address && aggIn && aggOut && fromSymbol && toSymbol) {
+        try {
+          const routes = await fetchSwapRoutesClient({
+            tokenIn: aggIn,
+            tokenOut: aggOut,
+            amount: String(parsedAmount),
+            fromAddress: address,
+            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
           });
-          return;
+          if (routes.best) {
+            const planResult = await executeSwapRoute({
+              provider,
+              walletAddress: address,
+              tokenIn: fromSymbol,
+              tokenOut: toSymbol,
+              amountIn: String(parsedAmount),
+              route: routes.best,
+              slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+              onStage: (stage) => setPlanStage(stage),
+            });
+            setTxHash(planResult.txHash);
+            logVectorActivity({
+              walletAddress: address,
+              txHash: planResult.txHash,
+              kind: "swap",
+              chainId: ARC_CHAIN_ID,
+              detail: `${tokenIn} → ${tokenOut} (${planResult.provider})`,
+            });
+            void syncBalancesAfterSwap(planResult.txHash);
+            return;
+          }
+        } catch (routeErr) {
+          if (useOkxSequential) {
+            setErrorState({
+              text:
+                routeErr instanceof Error && routeErr.message
+                  ? routeErr.message
+                  : "Network error. You can try again later.",
+              info: null,
+            });
+            return;
+          }
         }
+      }
+
+      if (useOkxSequential && address && fromSymbol && toSymbol) {
         const planResult = await executeSwapViaSequentialTransactions({
           provider,
           walletAddress: address,
           tokenIn: fromSymbol,
           tokenOut: toSymbol,
           amountIn: String(parsedAmount),
+          slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
           onStage: (stage) => setPlanStage(stage),
         });
         setTxHash(planResult.txHash);
@@ -832,6 +943,19 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Quote detail */}
+        {routePreview && isMainnet && (
+          <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
+            <div>
+              Best route: {routePreview.provider} → ~{routePreview.amountOut}{" "}
+              {tokenOut}
+            </div>
+            <div className="leading-relaxed">
+              Vector compares Circle, KyberSwap, and LI.FI and signs the cheapest
+              quote. Approvals use the exact swap amount, not unlimited.
+            </div>
+          </div>
+        )}
+
         {quote && (quote.rate || quote.feeText) && (
           <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
             {quote.rate && <div>Rate: {quote.rate}</div>}
