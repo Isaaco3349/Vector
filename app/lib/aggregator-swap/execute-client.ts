@@ -97,7 +97,7 @@ async function readInputBalance(
   owner: `0x${string}`,
 ): Promise<bigint> {
   return readSwapInputBalanceForSwap(provider, token, owner, {
-    preferWallet: okxInAppBrowser(),
+    preferWallet: !okxInAppBrowser(),
   });
 }
 
@@ -108,7 +108,7 @@ async function readErc20Allowance(
   spender: string,
 ): Promise<bigint> {
   return readErc20AllowanceForSwap(provider, token, owner, spender, {
-    preferWallet: okxInAppBrowser(),
+    preferWallet: !okxInAppBrowser(),
   });
 }
 

@@ -1242,7 +1242,7 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
   }
   if (/-32603|internal error/i.test(blob)) {
     return okx
-      ? "OKX could not read Arc or submit the tx (code -32603). Switch to Arc in OKX, update the app, then retry — or use OKX Chrome extension on desktop."
+      ? "OKX lost the connection for a moment. Tap Swap once more. If you already approved in OKX, open Activity there before signing again."
       : "Wallet RPC internal error (-32603). Switch to Arc and try again.";
   }
   if (/exceeds defined limit|rate limit|too many requests/i.test(blob)) {

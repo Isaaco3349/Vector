@@ -1,6 +1,7 @@
 "use client";
 
 import type { Eip1193Provider } from "./appkit";
+import { okxMobileArcPublicRpcRequest } from "./okx-arc-public-rpc";
 import { okxMobileProviderRequest } from "./okx-mobile-tx";
 import {
   isOkxWallet,
@@ -25,6 +26,15 @@ const OKX_BLOCKED_RPC = new Set([
   "eth_signTypedData_v4",
   "wallet_sendCalls",
   "wallet_sendTransaction",
+]);
+
+/** OKX in-app: Arc reads via public RPC; wallet is for signing only. */
+const OKX_MOBILE_PUBLIC_ARC_RPC = new Set([
+  "eth_call",
+  "eth_getBalance",
+  "eth_getTransactionReceipt",
+  "eth_chainId",
+  "eth_blockNumber",
 ]);
 
 function isEip1193Provider(value: unknown): value is Eip1193Provider {
@@ -142,8 +152,13 @@ export function createOkxSafeEip1193Provider(
           `[Vector] Blocked ${method} for OKX — use standard transaction confirms only.`,
         );
       }
+      if (okxInAppBrowser() && OKX_MOBILE_PUBLIC_ARC_RPC.has(method)) {
+        return okxMobileArcPublicRpcRequest(args);
+      }
       if (method === "wallet_getCapabilities") {
-        const chainId = await inner.request({ method: "eth_chainId" });
+        const chainId = okxInAppBrowser()
+          ? await okxMobileArcPublicRpcRequest({ method: "eth_chainId" })
+          : await inner.request({ method: "eth_chainId" });
         const id =
           typeof chainId === "string" && chainId.startsWith("0x")
             ? chainId
@@ -152,10 +167,7 @@ export function createOkxSafeEip1193Provider(
       }
       if (
         method === "eth_sendTransaction" ||
-        (okxInAppBrowser() &&
-          (method === "eth_getTransactionReceipt" ||
-            method === "eth_call" ||
-            method === "eth_getBalance"))
+        (okxInAppBrowser() && method === "wallet_sendTransaction")
       ) {
         return okxMobileProviderRequest(inner, args);
       }

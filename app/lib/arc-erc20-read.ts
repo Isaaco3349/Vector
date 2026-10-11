@@ -72,7 +72,7 @@ function readCacheSet(key: string, value: bigint): void {
   bigintReadCache.set(key, { value, at: Date.now() });
 }
 
-function arcPublicReadClient() {
+export function arcPublicReadClient() {
   if (!arcReadClient) {
     const urls = arcReadRpcUrls();
     arcReadClient = createPublicClient({
