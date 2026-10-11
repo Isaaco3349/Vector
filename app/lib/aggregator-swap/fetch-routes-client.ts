@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchVectorApi } from "../okx-mobile-fetch";
 import type { SwapRouteExecution, SwapRouteOffer } from "./types";
 import type { AggregatorPairSymbol } from "./tokens";
 
@@ -16,7 +17,7 @@ export async function fetchSwapRoutesClient(args: {
   fromAddress: string;
   slippageBps?: number;
 }): Promise<ClientSwapRoutesResult> {
-  const res = await fetch("/api/swap-routes", {
+  const res = await fetchVectorApi("/api/swap-routes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

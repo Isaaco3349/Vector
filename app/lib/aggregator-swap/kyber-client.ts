@@ -1,23 +1,12 @@
 "use client";
 
-import { okxInAppBrowser } from "../wallet-brand";
+import { fetchVectorApi } from "../okx-mobile-fetch";
 
 async function fetchKyberApi(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  const attempts = okxInAppBrowser() ? 4 : 2;
-  let last: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fetch(input, init);
-    } catch (err) {
-      last = err;
-      if (i === attempts - 1) break;
-      await new Promise((r) => setTimeout(r, 350 * (i + 1)));
-    }
-  }
-  throw last instanceof Error ? last : new Error("Could not reach Vector swap API.");
+  return fetchVectorApi(input, init);
 }
 
 async function kyberRoutes(args: {
