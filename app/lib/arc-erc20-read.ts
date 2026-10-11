@@ -249,6 +249,17 @@ export async function readErc20AllowancePublic(
   return value;
 }
 
+export function invalidateArcAllowanceReadCache(
+  token: string,
+  owner: string,
+  spender: string,
+): void {
+  bigintReadCache.delete(
+    `allow:${token}:${owner}:${spender}`.toLowerCase(),
+  );
+  bigintReadCache.delete(`allow:${token}:${owner}:${spender}`);
+}
+
 export async function readSwapInputBalancePublic(
   token: string,
   owner: `0x${string}`,

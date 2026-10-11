@@ -42,3 +42,10 @@ export function buildSwapRouteAttempts(
 
   return attempts;
 }
+
+/** OKX mobile: execute only the quoted best route — no Circle/LI.FI retry wall after wallet steps. */
+export function buildOkxMobileSwapRouteAttempts(
+  routes: ClientSwapRoutesResult,
+): SwapRouteExecution[] {
+  return routes.best ? [routes.best] : [];
+}
