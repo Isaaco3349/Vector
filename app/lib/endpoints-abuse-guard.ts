@@ -45,18 +45,32 @@ export function rejectIfDisallowedOrigin(
     requestOrigin = normalizeOrigin(refererHeader);
   }
 
-  if (!requestOrigin || !allowed.includes(requestOrigin)) {
-    return NextResponse.json(
-      {
-        error:
-          "This API only accepts requests from the Vector app origin. If you are developing locally, use http://localhost:3000.",
-        code: "ORIGIN_NOT_ALLOWED",
-      },
-      { status: 403 },
-    );
+  if (requestOrigin && allowed.includes(requestOrigin)) {
+    return null;
   }
 
-  return null;
+  // OKX / mobile in-app browsers often omit Origin on fetch; allow same Host.
+  if (!requestOrigin) {
+    const host = request.headers.get("host")?.split(":")[0]?.toLowerCase();
+    const allowedHosts = new Set([
+      "vectorprotocol.pro",
+      "www.vectorprotocol.pro",
+      "localhost",
+      "127.0.0.1",
+    ]);
+    if (host && allowedHosts.has(host)) {
+      return null;
+    }
+  }
+
+  return NextResponse.json(
+    {
+      error:
+        "Open Vector at https://www.vectorprotocol.pro (not a copy or preview URL) and try again.",
+      code: "ORIGIN_NOT_ALLOWED",
+    },
+    { status: 403 },
+  );
 }
 
 /** Client IP for rate limiting (Vercel sets x-forwarded-for). */

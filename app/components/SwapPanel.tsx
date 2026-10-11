@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
-  refreshBalancesAfterTxEager,
+  refreshBalancesAfterTx,
   scheduleBalancePoll,
 } from "../lib/balance-refresh";
 import {
@@ -339,11 +339,17 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   const syncBalancesAfterSwap = useCallback(
     async (txHash: string | null) => {
-      await refreshBalancesAfterTxEager(queryClient, txHash);
+      void refreshBalancesAfterTx(queryClient, txHash).then(() =>
+        scheduleBalancePoll(queryClient),
+      );
       await Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
     },
     [queryClient, balanceIn.refetch, balanceOut.refetch],
   );
+
+  const refreshSwapBalances = useCallback(() => {
+    void Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
+  }, [balanceIn.refetch, balanceOut.refetch]);
   const arcWalletDesync =
     tokenIn === "USDC" && balanceIn.arcWalletDesync === true;
 
@@ -381,12 +387,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
     };
   }, [connector, wagmiChainId, providerReady, providerRef]);
-
-  useEffect(() => {
-    if (!providerReady) return;
-    void balanceIn.refetch();
-    void balanceOut.refetch();
-  }, [tokenIn, tokenOut, providerReady, balanceIn.refetch, balanceOut.refetch]);
 
   const parsedAmount = useMemo(() => {
     const n = Number(amountIn);
@@ -659,36 +659,41 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             fromAddress: address,
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
           });
-          if (routes.best) {
-            const planResult = await executeSwapRoute({
-              provider,
-              walletAddress: address,
-              tokenIn: fromSymbol,
-              tokenOut: toSymbol,
-              amountIn: String(parsedAmount),
-              route: routes.best,
-              slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
-              onStage: (stage) => setPlanStage(stage),
+          if (!routes.best) {
+            setErrorState({
+              text:
+                routes.offers.length > 0
+                  ? "No executable route for this amount. Try a slightly different size."
+                  : "No swap route for this pair on Arc right now. Try USDC ↔ EURC or a smaller amount.",
+              info: null,
             });
-            setTxHash(planResult.txHash);
-            setSwapViaProvider(planResult.provider);
-            logVectorActivity({
-              walletAddress: address,
-              txHash: planResult.txHash,
-              kind: "swap",
-              chainId: ARC_CHAIN_ID,
-              detail: `${tokenIn} → ${tokenOut} (${planResult.provider})`,
-            });
-            await syncBalancesAfterSwap(planResult.txHash);
             return;
           }
+          const planResult = await executeSwapRoute({
+            provider,
+            walletAddress: address,
+            tokenIn: fromSymbol,
+            tokenOut: toSymbol,
+            amountIn: String(parsedAmount),
+            route: routes.best,
+            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+            onStage: (stage) => setPlanStage(stage),
+          });
+          setTxHash(planResult.txHash);
+          setSwapViaProvider(planResult.provider);
+          logVectorActivity({
+            walletAddress: address,
+            txHash: planResult.txHash,
+            kind: "swap",
+            chainId: ARC_CHAIN_ID,
+            detail: `${tokenIn} → ${tokenOut} (${planResult.provider})`,
+          });
+          void syncBalancesAfterSwap(planResult.txHash);
+          return;
         } catch (routeErr) {
           if (useOkxSequential) {
             setErrorState({
-              text:
-                routeErr instanceof Error && routeErr.message
-                  ? routeErr.message
-                  : "Network error. You can try again later.",
+              text: describeRouteExecutionError(routeErr, true),
               info: null,
             });
             return;
@@ -714,7 +719,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           chainId: ARC_CHAIN_ID,
           detail: `${tokenIn} → ${tokenOut}`,
         });
-        await syncBalancesAfterSwap(planResult.txHash);
+        void syncBalancesAfterSwap(planResult.txHash);
         return;
       }
 
@@ -754,7 +759,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           chainId: ARC_CHAIN_ID,
           detail: `${tokenIn} → ${tokenOut}`,
         });
-        await syncBalancesAfterSwap(planResult.executeTxHash);
+        void syncBalancesAfterSwap(planResult.executeTxHash);
         return;
       }
 
@@ -801,7 +806,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           chainId: ARC_CHAIN_ID,
           detail: `${tokenIn} → ${tokenOut}`,
         });
-        await syncBalancesAfterSwap(result.txHash);
+        void syncBalancesAfterSwap(result.txHash);
       } else {
         // Swap returned but no recognisable hash — surface honestly rather
         // than claim success.
@@ -843,7 +848,26 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <VectorModalShell title="Swap" onClose={onClose}>
+    <VectorModalShell
+      onClose={onClose}
+      header={
+        <div className="vector-modal-header-row">
+          <span className="text-[17px] font-semibold truncate pr-3">Swap</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={refreshSwapBalances}
+              className="vector-modal-close !min-w-0 px-3"
+            >
+              Refresh
+            </button>
+            <button type="button" onClick={onClose} className="vector-modal-close">
+              Close
+            </button>
+          </div>
+        </div>
+      }
+    >
         {/* From */}
         <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-1">
           <div className="flex items-center justify-between mb-2">
@@ -1135,6 +1159,26 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         </p>
     </VectorModalShell>
   );
+}
+
+function describeRouteExecutionError(err: unknown, okx: boolean): string {
+  if (err instanceof Error) {
+    const m = err.message.trim();
+    if (m) {
+      if (/failed to fetch|networkerror|load failed|network request failed/i.test(m)) {
+        return okx
+          ? "Could not reach Vector from OKX. Open https://www.vectorprotocol.pro inside OKX (Discover → DApps), check your connection, then try again."
+          : m;
+      }
+      if (/origin_not_allowed|vector app origin|www\.vectorprotocol/i.test(m)) {
+        return "Use https://www.vectorprotocol.pro in the address bar (include www), then retry the swap.";
+      }
+      return m;
+    }
+  }
+  return okx
+    ? "Swap could not start in OKX. Use www.vectorprotocol.pro and try a slightly smaller amount."
+    : "Network error. You can try again later.";
 }
 
 function BalanceRow({
