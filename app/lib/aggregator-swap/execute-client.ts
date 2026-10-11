@@ -141,7 +141,7 @@ async function executeKyber(
   return { txHash, approveTxHash };
 }
 
-async function executeLifi(
+export async function executeLifiFromQuote(
   provider: Eip1193Provider,
   from: string,
   quote: Record<string, unknown>,
@@ -235,7 +235,7 @@ export async function executeSwapRoute(args: {
     return { ...result, provider: "kyber" };
   }
 
-  const result = await executeLifi(
+  const result = await executeLifiFromQuote(
     args.provider,
     args.walletAddress,
     route.quote as Record<string, unknown>,

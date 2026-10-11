@@ -103,13 +103,17 @@ const EURC_ADDRESS: `0x${string}` = isMainnet
 const CIRBTC_ARC_TESTNET_ADDRESS =
   "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF" as const;
 
+const CIRBTC_ARC_MAINNET_ADDRESS =
+  "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0" as const;
+
 function cirBtcArcToken(): SwapToken {
   if (isMainnet) {
     return {
       symbol: "cirBTC",
       name: "Circle Bitcoin",
-      kind: "unknown",
-      swappable: false,
+      kind: "erc20",
+      address: CIRBTC_ARC_MAINNET_ADDRESS,
+      swappable: true,
     };
   }
   return {
@@ -117,7 +121,6 @@ function cirBtcArcToken(): SwapToken {
     name: "Circle Bitcoin",
     kind: "erc20",
     address: CIRBTC_ARC_TESTNET_ADDRESS,
-    // Testnet: re-enabled 2026-08-27 after 1003/FATAL was misread as “no route”.
     swappable: true,
   };
 }

@@ -3,7 +3,7 @@
  * Picks the highest `amountOut` for the same tokenIn/amountIn.
  */
 
-import { parseUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { swapCustomFeeConfig } from "../fees";
 import { isMainnet } from "../network";
 import {
@@ -27,9 +27,23 @@ function parseAmountBase(symbol: AggregatorPairSymbol, amountHuman: string): str
   return parseUnits(amountHuman.trim() as `${number}`, dec).toString();
 }
 
+function withHumanOut(
+  offer: Omit<SwapRouteOffer, "amountOutHuman">,
+  tokenOut: AggregatorPairSymbol,
+): SwapRouteOffer {
+  return {
+    ...offer,
+    amountOutHuman: formatUnits(
+      BigInt(offer.amountOut),
+      tokenDecimals(tokenOut),
+    ),
+  };
+}
+
 async function quoteKyber(args: {
   tokenIn: `0x${string}`;
   tokenOut: `0x${string}`;
+  tokenOutSymbol: AggregatorPairSymbol;
   amountIn: string;
   fromAddress: string;
   slippageBps: number;
@@ -52,19 +66,23 @@ async function quoteKyber(args: {
   const amountOut = body.data?.routeSummary?.amountOut;
   if (!amountOut || !/^\d+$/.test(amountOut)) return null;
 
-  return {
-    provider: "kyber",
-    amountOut,
-    tokenInAddress: args.tokenIn,
-    tokenOutAddress: args.tokenOut,
-    amountIn: args.amountIn,
-    label: "KyberSwap",
-  };
+  return withHumanOut(
+    {
+      provider: "kyber",
+      amountOut,
+      tokenInAddress: args.tokenIn,
+      tokenOutAddress: args.tokenOut,
+      amountIn: args.amountIn,
+      label: "KyberSwap",
+    },
+    args.tokenOutSymbol,
+  );
 }
 
 async function quoteLifi(args: {
   tokenIn: `0x${string}`;
   tokenOut: `0x${string}`;
+  tokenOutSymbol: AggregatorPairSymbol;
   amountIn: string;
   fromAddress: string;
   slippageBps: number;
@@ -94,20 +112,24 @@ async function quoteLifi(args: {
 
   return {
     quote,
-    offer: {
-      provider: "lifi",
-      amountOut,
-      tokenInAddress: args.tokenIn,
-      tokenOutAddress: args.tokenOut,
-      amountIn: args.amountIn,
-      label: "LI.FI",
-    },
+    offer: withHumanOut(
+      {
+        provider: "lifi",
+        amountOut,
+        tokenInAddress: args.tokenIn,
+        tokenOutAddress: args.tokenOut,
+        amountIn: args.amountIn,
+        label: "LI.FI",
+      },
+      args.tokenOutSymbol,
+    ),
   };
 }
 
 async function quoteCircle(args: {
   tokenIn: `0x${string}`;
   tokenOut: `0x${string}`;
+  tokenOutSymbol: AggregatorPairSymbol;
   amountIn: string;
   amountHuman: string;
   fromAddress: string;
@@ -137,14 +159,17 @@ async function quoteCircle(args: {
     return null;
   }
 
-  return {
-    provider: "circle",
-    amountOut: rawEstimate,
-    tokenInAddress: args.tokenIn,
-    tokenOutAddress: args.tokenOut,
-    amountIn: args.amountIn,
-    label: "Circle",
-  };
+  return withHumanOut(
+    {
+      provider: "circle",
+      amountOut: rawEstimate,
+      tokenInAddress: args.tokenIn,
+      tokenOutAddress: args.tokenOut,
+      amountIn: args.amountIn,
+      label: "Circle",
+    },
+    args.tokenOutSymbol,
+  );
 }
 
 function pickBest(offers: SwapRouteOffer[]): SwapRouteOffer | null {
@@ -180,6 +205,7 @@ export async function fetchSwapRouteOffers(args: {
     quoteKyber({
       tokenIn: aggIn,
       tokenOut: aggOut,
+      tokenOutSymbol: args.tokenOut,
       amountIn,
       fromAddress: args.fromAddress,
       slippageBps: args.slippageBps,
@@ -187,6 +213,7 @@ export async function fetchSwapRouteOffers(args: {
     quoteLifi({
       tokenIn: aggIn,
       tokenOut: aggOut,
+      tokenOutSymbol: args.tokenOut,
       amountIn,
       fromAddress: args.fromAddress,
       slippageBps: args.slippageBps,
@@ -194,6 +221,7 @@ export async function fetchSwapRouteOffers(args: {
     quoteCircle({
       tokenIn: circleIn,
       tokenOut: circleOut,
+      tokenOutSymbol: args.tokenOut,
       amountIn,
       amountHuman: args.amountHuman,
       fromAddress: args.fromAddress,

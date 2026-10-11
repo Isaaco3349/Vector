@@ -43,9 +43,10 @@ export async function POST(request: Request) {
       ? params.slippageBps
       : DEFAULT_SLIPPAGE_BPS;
 
+  const allowed = new Set(["USDC", "EURC", "cirBTC"]);
   if (
-    (tokenIn !== "USDC" && tokenIn !== "EURC") ||
-    (tokenOut !== "USDC" && tokenOut !== "EURC") ||
+    !allowed.has(tokenIn) ||
+    !allowed.has(tokenOut) ||
     tokenIn === tokenOut
   ) {
     return NextResponse.json({ error: "Unsupported token pair." }, { status: 400 });

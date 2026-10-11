@@ -6,6 +6,8 @@ export type SwapRouteOffer = {
   provider: SwapRouteProvider;
   /** Output amount in token base units (decimal string). */
   amountOut: string;
+  /** Pre-formatted output for UI (same decimals as tokenOut). */
+  amountOutHuman: string;
   tokenOutAddress: string;
   tokenInAddress: string;
   amountIn: string;
