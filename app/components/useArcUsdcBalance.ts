@@ -16,6 +16,7 @@ import { arcUsdcAddress, chainId as ARC_CHAIN_ID } from "../lib/network";
  */
 export function useArcUsdcBalance(): {
   formatted: string | null;
+  maxSpendable: string | null;
   nativeWei: bigint | null;
   erc20Minor: bigint | null;
   walletBalanceDesync: boolean;
@@ -50,6 +51,7 @@ export function useArcUsdcBalance(): {
   if (nativeQuery.isLoading || erc20Query.isLoading) {
     return {
       formatted: null,
+      maxSpendable: null,
       nativeWei: null,
       erc20Minor: null,
       walletBalanceDesync: false,
@@ -67,6 +69,7 @@ export function useArcUsdcBalance(): {
   if (nativeWei === null && erc20Minor === null) {
     return {
       formatted: null,
+      maxSpendable: null,
       nativeWei: null,
       erc20Minor: null,
       walletBalanceDesync: false,
@@ -92,8 +95,16 @@ export function useArcUsdcBalance(): {
     formatted = "0";
   }
 
+  const maxSpendable =
+    native > BigInt(0)
+      ? arcUsdcHumanFromNativeWei(native)
+      : erc20 > BigInt(0)
+        ? formatUnits(erc20, 6)
+        : "0";
+
   return {
     formatted,
+    maxSpendable,
     nativeWei: native,
     erc20Minor: erc20,
     walletBalanceDesync,

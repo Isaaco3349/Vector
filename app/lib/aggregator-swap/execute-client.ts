@@ -78,13 +78,88 @@ async function approveExact(
   return hash;
 }
 
-async function executeKyber(
+function kyberTokenAddress(routeSummary: unknown, key: "tokenIn" | "tokenOut"): string | null {
+  const raw = (routeSummary as Record<string, unknown> | null)?.[key];
+  if (typeof raw === "string" && /^0x[a-fA-F0-9]{40}$/.test(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const addr = (raw as { address?: string }).address;
+    if (typeof addr === "string" && /^0x[a-fA-F0-9]{40}$/.test(addr)) return addr;
+  }
+  return null;
+}
+
+async function readErc20Balance(
   provider: Eip1193Provider,
-  from: string,
+  token: string,
+  owner: string,
+): Promise<bigint> {
+  const data = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [owner as `0x${string}`],
+  });
+  const result = await provider.request({
+    method: "eth_call",
+    params: [{ to: token, data }, "latest"],
+  });
+  return BigInt(result as string);
+}
+
+async function readErc20Allowance(
+  provider: Eip1193Provider,
+  token: string,
+  owner: string,
+  spender: string,
+): Promise<bigint> {
+  const data = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: [owner as `0x${string}`, spender as `0x${string}`],
+  });
+  const result = await provider.request({
+    method: "eth_call",
+    params: [{ to: token, data }, "latest"],
+  });
+  return BigInt(result as string);
+}
+
+async function fetchKyberRouteSummary(args: {
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  to: string;
+}): Promise<unknown> {
+  const url = new URL(
+    `https://aggregator-api.kyberswap.com/${KYBER_CHAIN}/api/v1/routes`,
+  );
+  url.searchParams.set("tokenIn", args.tokenIn);
+  url.searchParams.set("tokenOut", args.tokenOut);
+  url.searchParams.set("amountIn", args.amountIn);
+  url.searchParams.set("to", args.to);
+  const res = await fetch(url.toString(), {
+    headers: { "X-Client-Id": KYBER_CLIENT_ID, accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error("KyberSwap could not refresh this route. Try again.");
+  }
+  const body = (await res.json()) as { data?: { routeSummary?: unknown } };
+  const routeSummary = body.data?.routeSummary;
+  if (!routeSummary) {
+    throw new Error("KyberSwap returned no route for this amount.");
+  }
+  return routeSummary;
+}
+
+async function buildKyberSwapTx(
   routeSummary: unknown,
+  from: string,
   slippageBps: number,
-  onStage?: (s: Stage) => void,
-): Promise<{ txHash: string; approveTxHash: string }> {
+): Promise<{
+  data: string;
+  routerAddress: string;
+  transactionValue: string;
+  amountIn?: string;
+}> {
   const buildRes = await fetch(
     `https://aggregator-api.kyberswap.com/${KYBER_CHAIN}/api/v1/route/build`,
     {
@@ -106,27 +181,91 @@ async function executeKyber(
       data?: string;
       routerAddress?: string;
       transactionValue?: string;
+      amountIn?: string;
     };
   };
   const payload = build.data;
   if (!payload?.data || !payload.routerAddress) {
     throw new Error("KyberSwap could not build this route. Try again.");
   }
+  return {
+    data: payload.data,
+    routerAddress: payload.routerAddress,
+    transactionValue: payload.transactionValue ?? "0",
+    amountIn: payload.amountIn,
+  };
+}
 
-  const tokenIn = (routeSummary as { tokenIn?: string })?.tokenIn;
-  const amountIn = (routeSummary as { amountIn?: string })?.amountIn;
-  if (!tokenIn || !amountIn) {
+async function executeKyber(
+  provider: Eip1193Provider,
+  from: string,
+  routeSummary: unknown,
+  slippageBps: number,
+  onStage?: (s: Stage) => void,
+): Promise<{ txHash: string; approveTxHash: string }> {
+  let summary = routeSummary;
+  let tokenIn = kyberTokenAddress(summary, "tokenIn");
+  let tokenOut = kyberTokenAddress(summary, "tokenOut");
+  let amountInStr = (summary as { amountIn?: string })?.amountIn;
+  if (!tokenIn || !tokenOut || !amountInStr || !/^\d+$/.test(amountInStr)) {
     throw new Error("Kyber route is missing token details.");
   }
 
-  const approveTxHash = await approveExact(
+  let balance = await readErc20Balance(provider, tokenIn, from);
+  if (balance === BigInt(0)) {
+    throw new Error("Your wallet has no balance of the token you are swapping.");
+  }
+
+  let quotedIn = BigInt(amountInStr);
+  if (balance < quotedIn) {
+    summary = await fetchKyberRouteSummary({
+      tokenIn,
+      tokenOut,
+      amountIn: balance.toString(),
+      to: from,
+    });
+    tokenIn = kyberTokenAddress(summary, "tokenIn") ?? tokenIn;
+    tokenOut = kyberTokenAddress(summary, "tokenOut") ?? tokenOut;
+    amountInStr = (summary as { amountIn?: string }).amountIn;
+    if (!amountInStr || !/^\d+$/.test(amountInStr)) {
+      throw new Error("Kyber could not quote your full balance. Try a slightly smaller amount.");
+    }
+    quotedIn = BigInt(amountInStr);
+    balance = await readErc20Balance(provider, tokenIn, from);
+  }
+
+  let payload = await buildKyberSwapTx(summary, from, slippageBps);
+  let approveAmount = payload.amountIn ? BigInt(payload.amountIn) : quotedIn;
+  if (approveAmount > balance) {
+    approveAmount = balance;
+    summary = await fetchKyberRouteSummary({
+      tokenIn,
+      tokenOut,
+      amountIn: approveAmount.toString(),
+      to: from,
+    });
+    payload = await buildKyberSwapTx(summary, from, slippageBps);
+    approveAmount = payload.amountIn ? BigInt(payload.amountIn) : approveAmount;
+    if (approveAmount > balance) approveAmount = balance;
+  }
+
+  let approveTxHash = "0x";
+  const allowance = await readErc20Allowance(
     provider,
-    from,
     tokenIn,
+    from,
     payload.routerAddress,
-    amountIn,
-    onStage,
   );
+  if (allowance < approveAmount) {
+    approveTxHash = await approveExact(
+      provider,
+      from,
+      tokenIn,
+      payload.routerAddress,
+      approveAmount.toString(),
+      onStage,
+    );
+  }
 
   onStage?.("executing");
   const txHash = await sendTx(
@@ -134,7 +273,7 @@ async function executeKyber(
     from,
     payload.routerAddress,
     payload.data,
-    payload.transactionValue ?? "0",
+    payload.transactionValue,
   );
   onStage?.("awaiting-execution");
   await waitReceipt(provider, txHash);

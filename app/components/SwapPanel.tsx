@@ -864,8 +864,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             isLoading={balanceIn.isLoading}
             symbol={tokenIn}
             onMax={
-              balanceIn.formatted
-                ? () => setAmountIn(balanceIn.formatted as string)
+              balanceIn.maxSpendable
+                ? () => setAmountIn(balanceIn.maxSpendable as string)
                 : undefined
             }
           />
@@ -956,7 +956,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             </ul>
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
               You will sign <span className="font-semibold">{bestRouteOffer.label}</span>.
-              Exact USDC approval — not unlimited.
+              First step approves exactly{" "}
+              <span className="font-semibold">{tokenIn}</span> (not unlimited). Arc
+              gas is paid from native USDC in your wallet.
             </p>
           </div>
         )}
