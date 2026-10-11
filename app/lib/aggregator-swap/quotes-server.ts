@@ -188,6 +188,7 @@ export async function fetchSwapRouteOffers(args: {
 }): Promise<{
   offers: SwapRouteOffer[];
   best: SwapRouteExecution | null;
+  lifiExecution?: SwapRouteExecution | null;
   kyberRouteSummary?: unknown;
   lifiQuote?: unknown;
 }> {
@@ -236,7 +237,12 @@ export async function fetchSwapRouteOffers(args: {
   ];
 
   const bestOffer = pickBest(offers);
-  if (!bestOffer) return { offers, best: null };
+  const lifiExecution: SwapRouteExecution | null =
+    lifi != null
+      ? { provider: "lifi", offer: lifi.offer, quote: lifi.quote }
+      : null;
+
+  if (!bestOffer) return { offers, best: null, lifiExecution };
 
   if (bestOffer.provider === "kyber") {
     const url = new URL(
@@ -254,6 +260,7 @@ export async function fetchSwapRouteOffers(args: {
     return {
       offers,
       best: { provider: "kyber", offer: bestOffer, routeSummary },
+      lifiExecution,
     };
   }
 
@@ -261,11 +268,13 @@ export async function fetchSwapRouteOffers(args: {
     return {
       offers,
       best: { provider: "lifi", offer: bestOffer, quote: lifi.quote },
+      lifiExecution,
     };
   }
 
   return {
     offers,
     best: { provider: "circle", offer: bestOffer },
+    lifiExecution,
   };
 }

@@ -14,9 +14,13 @@ import {
   isMainnet,
 } from "../lib/network";
 import { fetchSwapRoutesClient } from "../lib/aggregator-swap/fetch-routes-client";
-import type { SwapRouteExecution, SwapRouteOffer } from "../lib/aggregator-swap/types";
+import type { SwapRouteOffer } from "../lib/aggregator-swap/types";
 import type { ClientSwapRoutesResult } from "../lib/aggregator-swap/fetch-routes-client";
 import { executeSwapRoute } from "../lib/aggregator-swap/execute-client";
+import {
+  buildSwapRouteAttempts,
+  pairIncludesCirBtc,
+} from "../lib/aggregator-swap/route-attempts";
 import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
 import {
   classifySwapError,
@@ -700,11 +704,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             onStage: (stage: "approving" | "awaiting-approval" | "executing" | "awaiting-execution") =>
               setPlanStage(stage),
           };
-          const routeAttempts: SwapRouteExecution[] = [routes.best];
-          const circleOffer = routes.offers.find((o) => o.provider === "circle");
-          if (circleOffer && routes.best.provider !== "circle") {
-            routeAttempts.push({ provider: "circle", offer: circleOffer });
-          }
+          const routeAttempts = buildSwapRouteAttempts(routes, tokenIn, tokenOut);
           let lastErr: unknown = null;
           for (const route of routeAttempts) {
             try {
@@ -722,7 +722,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               return;
             } catch (attemptErr) {
               lastErr = attemptErr;
-              if (route.provider === "circle") break;
             }
           }
           throw lastErr ?? new Error("Swap execution failed.");
@@ -1025,6 +1024,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               <span className="font-semibold">{tokenIn}</span> (not unlimited). Arc
               gas is paid from native USDC in your wallet.
             </p>
+            {pairIncludesCirBtc(tokenIn, tokenOut) && (
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
+                cirBTC on Arc mainnet executes via KyberSwap or LI.FI only. Circle
+                lines are price comparisons — not used when you confirm a cirBTC swap.
+              </p>
+            )}
           </div>
         )}
 

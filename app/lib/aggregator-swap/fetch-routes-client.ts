@@ -6,6 +6,7 @@ import type { AggregatorPairSymbol } from "./tokens";
 export type ClientSwapRoutesResult = {
   offers: SwapRouteOffer[];
   best: SwapRouteExecution | null;
+  lifiExecution?: SwapRouteExecution | null;
 };
 
 export async function fetchSwapRoutesClient(args: {

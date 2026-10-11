@@ -205,35 +205,44 @@ async function executeKyber(
     slippageBps,
   );
 
-  let approveTxHash = await ensureKyberAllowance(
+  const allowanceBefore = await readErc20Allowance(
     provider,
-    from,
     tokenIn,
+    from,
     prepared.payload.routerAddress,
-    prepared.swapAmountIn,
-    onStage,
-    "0x",
   );
+  let approveTxHash = "0x";
+  const needsFreshApprove = allowanceBefore < prepared.swapAmountIn;
 
-  // Re-quote and rebuild after approval — stale Kyber checksums and OKX simulate the swap step only.
-  prepared = await prepareKyberSwap(
-    provider,
-    from,
-    tokenIn,
-    tokenOut,
-    prepared.swapAmountIn,
-    slippageBps,
-  );
-
-  approveTxHash = await ensureKyberAllowance(
-    provider,
-    from,
-    tokenIn,
-    prepared.payload.routerAddress,
-    prepared.swapAmountIn,
-    onStage,
-    approveTxHash,
-  );
+  if (needsFreshApprove) {
+    approveTxHash = await ensureKyberAllowance(
+      provider,
+      from,
+      tokenIn,
+      prepared.payload.routerAddress,
+      prepared.swapAmountIn,
+      onStage,
+      "0x",
+    );
+    // Re-quote only after a new approval (checksum + OKX simulation).
+    prepared = await prepareKyberSwap(
+      provider,
+      from,
+      tokenIn,
+      tokenOut,
+      prepared.swapAmountIn,
+      slippageBps,
+    );
+    approveTxHash = await ensureKyberAllowance(
+      provider,
+      from,
+      tokenIn,
+      prepared.payload.routerAddress,
+      prepared.swapAmountIn,
+      onStage,
+      approveTxHash,
+    );
+  }
 
   onStage?.("executing");
   const txHash = await sendTx(
