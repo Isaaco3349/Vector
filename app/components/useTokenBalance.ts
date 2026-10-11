@@ -5,7 +5,6 @@ import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import {
   readErc20BalanceViaProvider,
-  readSwapInputBalanceForSwap,
   readSwapInputBalancePublic,
   verifiedArcTokenDecimals,
 } from "../lib/arc-erc20-read";
@@ -116,26 +115,10 @@ export function useTokenBalance(symbol: string): {
     setPublicFetchDone(false);
     void (async () => {
       try {
-        let raw: bigint | null = null;
-        const provider = await resolveSigningProvider(connector, address);
-        if (provider) {
-          try {
-            raw = await readSwapInputBalanceForSwap(
-              provider,
-              token!.address!,
-              address as `0x${string}`,
-              { preferWallet: true },
-            );
-          } catch {
-            raw = null;
-          }
-        }
-        if (raw === null) {
-          raw = await readSwapInputBalancePublic(
-            token!.address!,
-            address as `0x${string}`,
-          );
-        }
+        const raw = await readSwapInputBalancePublic(
+          token!.address!,
+          address as `0x${string}`,
+        );
         if (!cancelled) setPublicRaw(raw);
       } catch {
         if (!cancelled) setPublicRaw(null);

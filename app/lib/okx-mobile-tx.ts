@@ -15,14 +15,11 @@ export function isRetryableOkxRpcError(err: unknown): boolean {
   return false;
 }
 
-const OKX_TX_RETRY_DELAYS_MS = [400, 900, 1600] as const;
+const OKX_TX_RETRY_DELAYS_MS = [600, 1200, 2200, 3500, 5000] as const;
 
 const OKX_MOBILE_RETRY_METHODS = new Set([
   "eth_sendTransaction",
   "wallet_sendTransaction",
-  "eth_getTransactionReceipt",
-  "eth_call",
-  "eth_getBalance",
 ]);
 
 /**
