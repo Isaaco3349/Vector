@@ -705,7 +705,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               setPlanStage(stage),
           };
           const routeAttempts = buildSwapRouteAttempts(routes, tokenIn, tokenOut);
-          let lastErr: unknown = null;
+          const attemptErrors: string[] = [];
           for (const route of routeAttempts) {
             try {
               const planResult = await executeSwapRoute({ ...execArgs, route });
@@ -721,10 +721,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               void syncBalancesAfterSwap(planResult.txHash);
               return;
             } catch (attemptErr) {
-              lastErr = attemptErr;
+              const line = describeRouteExecutionError(attemptErr, useOkxSequential);
+              attemptErrors.push(`${route.provider}: ${line}`);
             }
           }
-          throw lastErr ?? new Error("Swap execution failed.");
+          throw new Error(
+            attemptErrors.length > 0
+              ? attemptErrors.join(" · ")
+              : "Swap execution failed.",
+          );
         } catch (routeErr) {
           if (useOkxSequential) {
             setErrorState({

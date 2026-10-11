@@ -26,6 +26,10 @@ export function errorTextBlob(err: unknown): string {
       if (typeof rec.message === "string") parts.push(rec.message);
       if (typeof rec.details === "string") parts.push(rec.details);
       if (typeof rec.shortMessage === "string") parts.push(rec.shortMessage);
+      if (typeof rec.code === "number" || typeof rec.code === "string") {
+        parts.push(`code ${rec.code}`);
+      }
+      if (typeof rec.reason === "string") parts.push(rec.reason);
       cur = rec.cause;
     } else {
       break;
