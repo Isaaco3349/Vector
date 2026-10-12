@@ -383,10 +383,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const refreshWalletChain = useCallback(async () => {
     const provider = providerRef.current;
     if (!provider) return null;
-    const id = await getProviderChainId(provider);
+    const id = await getProviderChainId(provider, wagmiChainId);
     setWalletChainId(id);
     return id;
-  }, []);
+  }, [wagmiChainId]);
 
   useEffect(() => {
     if (!providerReady) return;
@@ -394,7 +394,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     if (!provider) return;
     let cancelled = false;
     void (async () => {
-      const id = await getProviderChainId(provider);
+      const id = await getProviderChainId(provider, wagmiChainId);
       if (!cancelled) setWalletChainId(id);
     })();
     return () => {
@@ -685,7 +685,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       // another chain rejects it. Ask the wallet where it is right now — not
       // when the panel opened — and refuse rather than raise a request that
       // could only fail.
-      const liveChainId = await getProviderChainId(provider);
+      const liveChainId = await getProviderChainId(provider, wagmiChainId);
       setWalletChainId(liveChainId);
       if (liveChainId !== ARC_CHAIN_ID) {
         setErrorState({

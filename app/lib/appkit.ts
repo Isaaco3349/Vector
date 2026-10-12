@@ -227,6 +227,7 @@ async function buildKitAndParams(args: SwapArgs) {
  */
 export async function getProviderChainId(
   provider: Eip1193Provider,
+  wagmiChainIdFallback?: number | null,
 ): Promise<number | null> {
   try {
     const raw = await provider.request({ method: "eth_chainId" });
@@ -240,6 +241,9 @@ export async function getProviderChainId(
     return null;
   } catch (err) {
     console.error("[Vector] eth_chainId request failed:", err);
+    if (wagmiChainIdFallback != null && Number.isFinite(wagmiChainIdFallback)) {
+      return wagmiChainIdFallback;
+    }
     return null;
   }
 }

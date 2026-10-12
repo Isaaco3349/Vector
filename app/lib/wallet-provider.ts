@@ -29,11 +29,11 @@ const OKX_BLOCKED_RPC = new Set([
 ]);
 
 /** OKX in-app: Arc reads via public RPC; wallet is for signing only. */
+/** Arc state reads only — never eth_chainId (bridge needs the wallet's real network). */
 const OKX_MOBILE_PUBLIC_ARC_RPC = new Set([
   "eth_call",
   "eth_getBalance",
   "eth_getTransactionReceipt",
-  "eth_chainId",
   "eth_blockNumber",
 ]);
 
@@ -156,9 +156,7 @@ export function createOkxSafeEip1193Provider(
         return okxMobileArcPublicRpcRequest(args);
       }
       if (method === "wallet_getCapabilities") {
-        const chainId = okxInAppBrowser()
-          ? await okxMobileArcPublicRpcRequest({ method: "eth_chainId" })
-          : await inner.request({ method: "eth_chainId" });
+        const chainId = await inner.request({ method: "eth_chainId" });
         const id =
           typeof chainId === "string" && chainId.startsWith("0x")
             ? chainId
