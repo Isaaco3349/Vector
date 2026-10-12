@@ -15,11 +15,6 @@ export async function okxMobileArcPublicRpcRequest(args: {
   const params = Array.isArray(args.params) ? args.params : [];
   const client = arcPublicReadClient();
 
-  if (method === "eth_chainId") {
-    const id = await client.getChainId();
-    return `0x${id.toString(16)}`;
-  }
-
   if (method === "eth_call") {
     const tx = params[0] as { to?: string; data?: string } | undefined;
     const block = (params[1] as string | undefined) ?? "latest";

@@ -135,10 +135,10 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const refreshWalletChain = useCallback(async () => {
     const provider = providerRef.current;
     if (!provider) return null;
-    const id = await getProviderChainId(provider);
+    const id = await getProviderChainId(provider, wagmiChainId);
     setWalletChainId(id);
     return id;
-  }, []);
+  }, [wagmiChainId]);
 
   useEffect(() => {
     if (!providerReady) return;
@@ -146,13 +146,18 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     if (!provider) return;
     let cancelled = false;
     void (async () => {
-      const id = await getProviderChainId(provider);
+      const id = await getProviderChainId(provider, wagmiChainId);
       if (!cancelled) setWalletChainId(id);
     })();
     return () => {
       cancelled = true;
     };
   }, [connector, wagmiChainId, providerReady, providerRef]);
+
+  useEffect(() => {
+    if (!providerReady) return;
+    void refreshWalletChain();
+  }, [fromChain, providerReady, refreshWalletChain]);
 
   const parsedAmount = useMemo(() => {
     const n = Number(amount);
@@ -326,6 +331,13 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   async function handleBridge() {
     const provider = providerRef.current;
     if (!provider || !parsedAmount || sameChain || insufficient) return;
+    if (
+      sourceChainId !== null &&
+      walletChainId !== null &&
+      walletChainId !== sourceChainId
+    ) {
+      return;
+    }
     setBridging(true);
     setError(null);
     setTxHash(null);
@@ -338,14 +350,10 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       // not when the panel opened — and refuse rather than raise a request that
       // could only fail. This is the check whose absence made a non-Arc bridge
       // fail with "Circle reported the bridge didn't go through".
-      const liveChainId = await getProviderChainId(provider);
+      const liveChainId = await getProviderChainId(provider, wagmiChainId);
       setWalletChainId(liveChainId);
       if (liveChainId !== sourceChainId) {
-        setError(
-          liveChainId === null
-            ? "Couldn't confirm which network your wallet is on, so nothing was sent. Reconnect the wallet and try again."
-            : `Your wallet is on chain ${liveChainId}, but this bridge burns on ${chainLabel(fromChain)} (${sourceChainId}). Switch networks and try again — nothing was sent.`,
-        );
+        setError(null);
         return;
       }
       if (burnOnArc) {
@@ -607,9 +615,14 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         {needsChainSwitch ? (
           <div>
             <p className="text-[12px] text-[var(--vector-text-dim)] leading-relaxed mb-3 text-center">
-              This bridge burns on {chainLabel(fromChain)}, and your wallet is on{" "}
-              <span className="font-mono">chain {walletChainId}</span>. Switch
-              networks to continue — nothing has been sent.
+              CCTP burns USDC on <span className="font-semibold">{chainLabel(fromChain)}</span> first.
+              Your wallet is still on{" "}
+              {walletChainId === 5042 || walletChainId === 5042002 ? (
+                <span className="font-semibold">Arc</span>
+              ) : (
+                <span className="font-mono">chain {walletChainId}</span>
+              )}
+              . Tap below to switch to {chainLabel(fromChain)} — nothing has been sent yet.
             </p>
             <button
               onClick={handleSwitch}
