@@ -676,13 +676,6 @@ export default function HomePage() {
     return named.length > 0 ? named : connectors;
   })();
 
-  useEffect(() => {
-    console.log(
-      "[Vector] detected wallet connectors:",
-      connectors.map((c) => ({ name: c.name, type: c.type, uid: c.uid })),
-    );
-  }, [connectors]);
-
   const appNav =
     connected
       ? {

@@ -188,12 +188,16 @@ function accountListIncludes(
 
 async function okxOwnsConnectedAddress(
   connectedAddress: string,
+  opts?: { allowRequestAccounts?: boolean },
 ): Promise<Eip1193Provider | null> {
   const okx = okxInjectedEip1193Provider();
   if (!okx) return null;
   try {
     let accounts = (await okx.request({ method: "eth_accounts" })) as unknown;
-    if (!accountListIncludes(accounts, connectedAddress)) {
+    if (
+      !accountListIncludes(accounts, connectedAddress) &&
+      opts?.allowRequestAccounts === true
+    ) {
       accounts = (await okx.request({
         method: "eth_requestAccounts",
       })) as unknown;
@@ -205,6 +209,16 @@ async function okxOwnsConnectedAddress(
     /* fall through */
   }
   return null;
+}
+
+function shouldProbeOkxForSigning(
+  connector: WagmiConnectorLike | undefined,
+): boolean {
+  if (!connector) return false;
+  if (okxInAppBrowser()) return true;
+  if (isOkxWallet(connector)) return true;
+  // Generic injected only — never poke OKX when wagmi bound a named wallet.
+  return connector.id === "injected";
 }
 
 /** Resolve + OKX-safe wrap when the signing provider is OKX. */
@@ -222,8 +236,11 @@ export async function resolveSigningProvider(
     }
   }
 
-  if (connectedAddress) {
-    const okxForAccount = await okxOwnsConnectedAddress(connectedAddress);
+  if (connectedAddress && shouldProbeOkxForSigning(connector)) {
+    const okxForAccount = await okxOwnsConnectedAddress(connectedAddress, {
+      allowRequestAccounts:
+        isOkxWallet(connector) || okxInAppBrowser(),
+    });
     if (okxForAccount) {
       return createOkxSafeEip1193Provider(okxForAccount, { force: true });
     }

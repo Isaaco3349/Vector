@@ -8,7 +8,7 @@ import { formatUnits, parseUnits } from "viem";
 
 const USDC_DECIMALS = 6;
 const VECTOR_SWAP_FEE_USDC = "0.15";
-const VECTOR_BRIDGE_FEE_USDC = "0.01";
+const VECTOR_BRIDGE_FEE_USDC = "0.15";
 
 function swapFlatFeeBaseUnits() {
   return parseUnits(VECTOR_SWAP_FEE_USDC, USDC_DECIMALS);
