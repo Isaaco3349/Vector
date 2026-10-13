@@ -13,7 +13,20 @@ export function isStableUsdcEurcPair(tokenIn: string, tokenOut: string): boolean
   );
 }
 
-/** OKX + stables: skip Kyber/LI.FI compare — Circle only (fast, one wallet flow). */
+/**
+ * External-wallet SwapPanel: USDC ↔ EURC skips Kyber/LI.FI compare on Arc mainnet.
+ * Aggregator quotes were freezing browsers and delaying wallet popups; Circle
+ * executes this pair reliably via approve → swap.
+ */
+export function externalStableCircleFastPath(
+  mainnet: boolean,
+  tokenIn: string,
+  tokenOut: string,
+): boolean {
+  return mainnet && isStableUsdcEurcPair(tokenIn, tokenOut);
+}
+
+/** @deprecated Use externalStableCircleFastPath — OKX-only gate missed Binance/MetaMask. */
 export function okxPrefersCircleOnlySwap(
   tokenIn: string,
   tokenOut: string,
