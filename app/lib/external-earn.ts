@@ -1,15 +1,19 @@
 "use client";
 
+import { waitArcTransactionReceipt } from "./arc-tx-wait";
 import { getProviderChainId, type Eip1193Provider } from "./appkit";
 import type { EarnCall, EarnPlan } from "./google-earn";
 import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "./network";
-
-const RECEIPT_TIMEOUT_MS = 180_000;
-const RECEIPT_POLL_MS = 2_000;
+import { okxInAppBrowser, providerIsOkx } from "./wallet-brand";
+import { withWalletRequestTimeout } from "./wallet-request-timeout";
 
 function toHexQuantity(value: string): string {
   const asBigInt = value.startsWith("0x") ? BigInt(value) : BigInt(value || "0");
   return `0x${asBigInt.toString(16)}`;
+}
+
+function walletConfirmTimeoutMs(provider: Eip1193Provider): number {
+  return okxInAppBrowser() || providerIsOkx(provider) ? 120_000 : 180_000;
 }
 
 async function sendCall(
@@ -19,7 +23,7 @@ async function sendCall(
   label: string,
   chainId: number,
 ): Promise<string> {
-  const hash = await provider.request({
+  const request = provider.request({
     method: "eth_sendTransaction",
     params: [
       {
@@ -31,46 +35,19 @@ async function sendCall(
       },
     ],
   });
+  const hash = await withWalletRequestTimeout(
+    request,
+    walletConfirmTimeoutMs(provider),
+    providerIsOkx(provider) || okxInAppBrowser()
+      ? "OKX did not respond to the earn prompt in time. Open the OKX extension, approve or reject, then try again."
+      : "Your wallet did not respond in time. Approve or reject in the wallet, then try again.",
+  );
   if (typeof hash !== "string" || !hash.startsWith("0x")) {
     throw new Error(
       `Your wallet didn't return a transaction hash for the ${label} step.`,
     );
   }
   return hash;
-}
-
-async function waitForSuccess(
-  provider: Eip1193Provider,
-  hash: string,
-  label: string,
-): Promise<void> {
-  const deadline = Date.now() + RECEIPT_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const receipt = (await provider.request({
-      method: "eth_getTransactionReceipt",
-      params: [hash],
-    })) as { status?: unknown } | null;
-
-    if (receipt && typeof receipt === "object") {
-      const status = receipt.status;
-      const normalised =
-        typeof status === "string"
-          ? status.toLowerCase()
-          : typeof status === "number"
-            ? `0x${status.toString(16)}`
-            : null;
-      if (normalised === "0x1") return;
-      if (normalised === "0x0") {
-        throw new Error(
-          `The ${label} transaction reverted on-chain (${hash}). No earn action completed.`,
-        );
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, RECEIPT_POLL_MS));
-  }
-  throw new Error(
-    `The ${label} transaction (${hash}) hasn't confirmed yet. Check your wallet before retrying.`,
-  );
 }
 
 export type ExternalEarnResult = {
@@ -106,7 +83,7 @@ export async function executeEarnPlan(args: {
       ARC_CHAIN_ID,
     );
     onStage?.("awaiting-approval");
-    await waitForSuccess(provider, approveTxHash, "approval");
+    await waitArcTransactionReceipt(provider, approveTxHash);
   }
 
   onStage?.("executing");
@@ -118,7 +95,17 @@ export async function executeEarnPlan(args: {
     ARC_CHAIN_ID,
   );
   onStage?.("awaiting-execution");
-  await waitForSuccess(provider, executeTxHash, plan.action);
+  try {
+    await waitArcTransactionReceipt(provider, executeTxHash);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/has not confirmed yet/i.test(msg)) {
+      throw new Error(
+        `${msg} Your deposit may still land — check Arc explorer for ${executeTxHash.slice(0, 10)}… before sending again.`,
+      );
+    }
+    throw err;
+  }
 
   return { approveTxHash, executeTxHash };
 }
