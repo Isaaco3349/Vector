@@ -1,30 +1,31 @@
 "use client";
 
+import type { Hash } from "viem";
 import type { Eip1193Provider } from "./appkit";
+import { arcPublicReadClient } from "./arc-erc20-read";
 import { okxInAppBrowser } from "./wallet-brand";
 
-/** Arc confirms quickly — OKX mobile should not sit on 2s receipt polls. */
+/**
+ * Wait for Arc confirmation via public RPC — not the wallet extension.
+ * OKX/MetaMask often hang or rate-limit `eth_getTransactionReceipt` while a
+ * confirm dialog is open, which made the whole page feel frozen on "Swapping…".
+ */
 export async function waitArcTransactionReceipt(
-  provider: Eip1193Provider,
+  _provider: Eip1193Provider,
   hash: string,
 ): Promise<void> {
+  const client = arcPublicReadClient();
+  const txHash = hash as Hash;
   const inOkx = okxInAppBrowser();
-  const pollMs = inOkx ? 400 : 1_000;
-  const timeoutMs = inOkx ? 75_000 : 180_000;
+  const pollMs = inOkx ? 400 : 800;
+  const timeoutMs = inOkx ? 75_000 : 120_000;
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    const receipt = (await provider.request({
-      method: "eth_getTransactionReceipt",
-      params: [hash],
-    })) as { status?: string | number } | null;
-
-    if (receipt && typeof receipt === "object") {
-      const s = receipt.status;
-      const norm =
-        typeof s === "number" ? `0x${s.toString(16)}` : String(s).toLowerCase();
-      if (norm === "0x1" || norm === "success") return;
-      if (norm === "0x0" || norm === "reverted") {
+    const receipt = await client.getTransactionReceipt({ hash: txHash });
+    if (receipt) {
+      if (receipt.status === "success") return;
+      if (receipt.status === "reverted") {
         throw new Error(`Transaction reverted on-chain (${hash}).`);
       }
     }
@@ -32,6 +33,6 @@ export async function waitArcTransactionReceipt(
   }
 
   throw new Error(
-    `Transaction ${hash} has not confirmed yet. Check OKX Activity or the Arc explorer before sending again.`,
+    `Transaction ${hash} has not confirmed yet. Check your wallet activity or the Arc explorer before sending again.`,
   );
 }

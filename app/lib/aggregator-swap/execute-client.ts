@@ -8,7 +8,9 @@ import { buildSwapPlan, type SwapSymbol } from "../google-swap";
 import {
   invalidateArcAllowanceReadCache,
   readErc20AllowanceForSwap,
+  readErc20AllowancePublic,
   readSwapInputBalanceForSwap,
+  readSwapInputBalancePublic,
 } from "../arc-erc20-read";
 import { waitArcTransactionReceipt } from "../arc-tx-wait";
 import {
@@ -16,11 +18,16 @@ import {
   loadOkxKyberPendingSwap,
   saveOkxKyberPendingSwap,
 } from "../okx-kyber-pending";
-import { okxInAppBrowser } from "../wallet-brand";
+import { okxInAppBrowser, providerIsOkx } from "../wallet-brand";
+import { withWalletRequestTimeout } from "../wallet-request-timeout";
 import { buildKyberSwapTx, fetchKyberRouteSummary } from "./kyber-client";
 import type { SwapRouteExecution } from "./types";
 
 type Stage = "approving" | "awaiting-approval" | "executing" | "awaiting-execution";
+
+function walletConfirmTimeoutMs(provider: Eip1193Provider): number {
+  return okxInAppBrowser() || providerIsOkx(provider) ? 120_000 : 180_000;
+}
 
 async function sendTx(
   provider: Eip1193Provider,
@@ -29,7 +36,7 @@ async function sendTx(
   data: string,
   value: string,
 ): Promise<string> {
-  const hash = await provider.request({
+  const request = provider.request({
     method: "eth_sendTransaction",
     params: [
       {
@@ -41,10 +48,21 @@ async function sendTx(
       },
     ],
   });
+  const hash = await withWalletRequestTimeout(
+    request,
+    walletConfirmTimeoutMs(provider),
+    providerIsOkx(provider) || okxInAppBrowser()
+      ? "OKX did not respond to the transaction prompt in time. Open the OKX extension (check for a hidden popup), approve or reject, then tap Swap again."
+      : "Your wallet did not respond to the transaction prompt in time. Approve or reject in the wallet, then try again.",
+  );
   if (typeof hash !== "string" || !hash.startsWith("0x")) {
     throw new Error("Wallet did not return a transaction hash.");
   }
   return hash;
+}
+
+function usePublicArcReads(provider: Eip1193Provider): boolean {
+  return okxInAppBrowser() || providerIsOkx(provider);
 }
 
 async function approveExact(
@@ -83,8 +101,11 @@ async function readInputBalance(
   token: string,
   owner: `0x${string}`,
 ): Promise<bigint> {
+  if (usePublicArcReads(provider)) {
+    return readSwapInputBalancePublic(token, owner);
+  }
   return readSwapInputBalanceForSwap(provider, token, owner, {
-    preferWallet: !okxInAppBrowser(),
+    preferWallet: true,
   });
 }
 
@@ -94,8 +115,15 @@ async function readErc20Allowance(
   owner: string,
   spender: string,
 ): Promise<bigint> {
+  if (usePublicArcReads(provider)) {
+    return readErc20AllowancePublic(
+      token as `0x${string}`,
+      owner as `0x${string}`,
+      spender as `0x${string}`,
+    );
+  }
   return readErc20AllowanceForSwap(provider, token, owner, spender, {
-    preferWallet: !okxInAppBrowser(),
+    preferWallet: true,
   });
 }
 

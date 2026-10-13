@@ -375,6 +375,27 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
   const useOkxSequential = okxSafePath || okxInAppBrowser();
+  /** Bump to abandon an in-flight swap when the user closes the modal. */
+  const swapRunRef = useRef(0);
+
+  const dismissSwapModal = useCallback(() => {
+    swapRunRef.current += 1;
+    setSwapping(false);
+    setPlanStage(null);
+    onClose();
+  }, [onClose]);
+
+  const handleModalClose = useCallback(() => {
+    if (swapping) {
+      swapRunRef.current += 1;
+      setSwapping(false);
+      setPlanStage(null);
+      setNotice(
+        "Swap cancelled in Vector. If OKX still shows a pending confirm, open the extension and approve or reject there before trying again.",
+      );
+    }
+    dismissSwapModal();
+  }, [dismissSwapModal, swapping]);
 
   /**
    * Re-ask the wallet which chain it is on. Returns the id as well as storing
@@ -675,7 +696,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       });
       return;
     }
-    setSwapping(true);
+    const runId = ++swapRunRef.current;
     setErrorState(null);
     setNotice(null);
     setTxHash(null);
@@ -717,6 +738,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       // Arc mainnet: Circle + Kyber + LI.FI — cheapest output, sequential txs only.
       if (isMainnet && address && aggIn && aggOut && fromSymbol && toSymbol) {
         let routes: ClientSwapRoutesResult | null = null;
+        setSwapping(true);
         try {
           const routeCacheKey = `${tokenIn}:${tokenOut}:${parsedAmount}:${address.toLowerCase()}`;
           const cached = swapRouteCacheRef.current;
@@ -769,6 +791,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             : buildSwapRouteAttempts(routes, tokenIn, tokenOut);
           const attemptErrors: string[] = [];
           for (const route of routeAttempts) {
+            if (swapRunRef.current !== runId) return;
             try {
               const planResult = await executeSwapRoute({ ...execArgs, route });
               setTxHash(planResult.txHash);
@@ -793,6 +816,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               : "Swap execution failed.",
           );
         } catch (routeErr) {
+          if (swapRunRef.current !== runId) return;
           if (useOkxSequential) {
             setErrorState({
               text: describeRouteExecutionError(routeErr, true),
@@ -804,6 +828,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       }
 
       if (useOkxSequential && address && fromSymbol && toSymbol) {
+        setSwapping(true);
         const planResult = await executeSwapViaSequentialTransactions({
           provider,
           walletAddress: address,
@@ -831,6 +856,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       // is the last point before real value moves, so confirm the match here
       // rather than trusting that ordering to hold.
       if (fallbackPlan) {
+        setSwapping(true);
         if (
           fallbackPlan.fromSymbol !== tokenIn ||
           fallbackPlan.toSymbol !== tokenOut ||
@@ -876,6 +902,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         ...(slippageBps !== null ? { slippageBps } : {}),
       };
 
+      setSwapping(true);
       let result: SwapResult;
       try {
         result = await executeSwap(swapArgs);
@@ -929,8 +956,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         recordUnroutablePair(tokenIn, tokenOut);
       }
     } finally {
-      setSwapping(false);
-      setPlanStage(null);
+      if (swapRunRef.current === runId) {
+        setSwapping(false);
+        setPlanStage(null);
+      }
     }
   }
 
@@ -951,7 +980,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <VectorModalShell
-      onClose={onClose}
+      onClose={handleModalClose}
       header={
         <div className="vector-modal-header-row">
           <span className="text-[17px] font-semibold truncate pr-3">Swap</span>
@@ -963,7 +992,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             >
               Refresh
             </button>
-            <button type="button" onClick={onClose} className="vector-modal-close">
+            <button type="button" onClick={handleModalClose} className="vector-modal-close">
               Close
             </button>
           </div>
@@ -1290,6 +1319,9 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
     return (
       "OKX blocked this confirmation. Update OKX, or try Circle route (USDC ↔ EURC) — Vector will fall back automatically when Kyber fails."
     );
+  }
+  if (/did not respond to the transaction prompt in time|OKX did not respond/i.test(blob)) {
+    return blob;
   }
   if (/failed to fetch|networkerror|load failed|network request failed|could not reach vector/i.test(blob)) {
     return okx
