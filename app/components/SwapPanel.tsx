@@ -23,7 +23,7 @@ import {
 import {
   buildOkxSwapRouteAttempts,
   buildSwapRouteAttempts,
-  okxPrefersCircleOnlySwap,
+  externalStableCircleFastPath,
   pairIncludesCirBtc,
 } from "../lib/aggregator-swap/route-attempts";
 import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
@@ -397,11 +397,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
   const useOkxSequential = requiresOkxSequentialSwap(connector, okxSafePath);
-  const okxCircleOnlySwap = okxPrefersCircleOnlySwap(
+  const stableCircleFastPath = externalStableCircleFastPath(
+    isMainnet,
     tokenIn,
     tokenOut,
-    useOkxSequential,
   );
+  const vectorBuild =
+    typeof process.env.NEXT_PUBLIC_VECTOR_BUILD === "string"
+      ? process.env.NEXT_PUBLIC_VECTOR_BUILD
+      : "dev";
   /** Bump to abandon an in-flight swap when the user closes the modal. */
   const swapRunRef = useRef(0);
 
@@ -571,7 +575,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       try {
       const aggIn = asAggregatorPair(tokenIn);
       const aggOut = asAggregatorPair(tokenOut);
-      if (isMainnet && address && aggIn && aggOut && !okxCircleOnlySwap) {
+      if (stableCircleFastPath) {
+        setRouteOffers(null);
+      }
+
+      if (isMainnet && address && aggIn && aggOut && !stableCircleFastPath) {
         try {
           const routes = await fetchSwapRoutesClient({
             tokenIn: aggIn,
@@ -695,7 +703,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     recordUnroutablePair,
     providerReady,
     useOkxSequential,
-    okxCircleOnlySwap,
+    stableCircleFastPath,
     providerRef,
   ]);
 
@@ -754,6 +762,57 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     });
   }
 
+  async function runStableCircleExternalSwap(
+    provider: Eip1193Provider,
+    runId: number,
+    fromSymbol: SwapSymbol,
+    toSymbol: SwapSymbol,
+    okxStyleErrors: boolean,
+  ): Promise<void> {
+    setPreparingSwap(false);
+    setSwapping(true);
+    setPlanStage("preparing-route");
+    try {
+      const plan = await buildSwapPlan({
+        walletAddress: address!,
+        fromSymbol,
+        toSymbol,
+        amount: String(parsedAmount),
+        usdcApprovalStyle: "erc20Approve",
+        slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+      });
+      const planResult = await executeSwapPlan({
+        provider,
+        from: address!,
+        plan,
+        onStage: (stage) => setPlanStage(stage),
+      });
+      setTxHash(planResult.executeTxHash);
+      setSwapViaProvider("circle");
+      logVectorActivity({
+        walletAddress: address!,
+        txHash: planResult.executeTxHash,
+        kind: "swap",
+        chainId: ARC_CHAIN_ID,
+        detail: `${tokenIn} → ${tokenOut} (circle)`,
+      });
+      void syncBalancesAfterSwap(planResult.executeTxHash);
+    } catch (err) {
+      if (swapRunRef.current === runId) {
+        setErrorState({
+          text: describeRouteExecutionError(err, okxStyleErrors),
+          info: null,
+        });
+      }
+    } finally {
+      setPreparingSwap(false);
+      if (swapRunRef.current === runId) {
+        setSwapping(false);
+        setPlanStage(null);
+      }
+    }
+  }
+
   async function runOkxSequentialSwap(
     provider: Eip1193Provider,
     runId: number,
@@ -786,49 +845,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    if (okxCircleOnlySwap) {
-      setPreparingSwap(false);
-      setSwapping(true);
-      setPlanStage("preparing-route");
-      try {
-        const plan = await buildSwapPlan({
-          walletAddress: address!,
-          fromSymbol,
-          toSymbol,
-          amount: String(parsedAmount),
-          usdcApprovalStyle: "erc20Approve",
-          slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
-        });
-        const planResult = await executeSwapPlan({
-          provider,
-          from: address!,
-          plan,
-          onStage: (stage) => setPlanStage(stage),
-        });
-        setTxHash(planResult.executeTxHash);
-        setSwapViaProvider("circle");
-        logVectorActivity({
-          walletAddress: address!,
-          txHash: planResult.executeTxHash,
-          kind: "swap",
-          chainId: ARC_CHAIN_ID,
-          detail: `${tokenIn} → ${tokenOut} (circle)`,
-        });
-        void syncBalancesAfterSwap(planResult.executeTxHash);
-      } catch (err) {
-        if (swapRunRef.current === runId) {
-          setErrorState({
-            text: describeRouteExecutionError(err, true),
-            info: null,
-          });
-        }
-      } finally {
-        setPreparingSwap(false);
-        if (swapRunRef.current === runId) {
-          setSwapping(false);
-          setPlanStage(null);
-        }
-      }
+    if (stableCircleFastPath) {
+      await runStableCircleExternalSwap(provider, runId, fromSymbol, toSymbol, true);
       return;
     }
 
@@ -999,6 +1017,17 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       const toSymbol = asSwapSymbol(tokenOut);
       const aggIn = asAggregatorPair(tokenIn);
       const aggOut = asAggregatorPair(tokenOut);
+
+      if (stableCircleFastPath && fromSymbol && toSymbol) {
+        await runStableCircleExternalSwap(
+          provider,
+          runId,
+          fromSymbol,
+          toSymbol,
+          false,
+        );
+        return;
+      }
 
       // Arc mainnet: Circle + Kyber + LI.FI — cheapest output, sequential txs only.
       if (isMainnet && address && aggIn && aggOut && fromSymbol && toSymbol) {
@@ -1366,22 +1395,22 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Quote detail */}
-        {okxCircleOnlySwap && quote?.amountOut && (
+        {stableCircleFastPath && quote?.amountOut && (
           <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
-              Swap route (OKX fast path)
+              Swap route (Circle fast path)
             </p>
             <p className="text-[12px] font-mono text-[var(--vector-pink)] font-semibold">
               ✓ Circle: ~{quote.amountOut} {tokenOut}
             </p>
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
-              USDC ↔ EURC on OKX skips Kyber/LI.FI comparison so the wallet popup
-              opens sooner. You will sign Circle (approve, then swap).
+              USDC ↔ EURC skips Kyber/LI.FI on external wallets so quotes load faster
+              and your wallet popup opens sooner (approve, then swap).
             </p>
           </div>
         )}
 
-        {!okxCircleOnlySwap && bestRouteOffer && routeOffers && routeOffers.length > 0 && (
+        {!stableCircleFastPath && bestRouteOffer && routeOffers && routeOffers.length > 0 && (
           <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
               Swap route (cheapest output)
@@ -1604,9 +1633,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         )}
 
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          Same-chain swaps on {ARC_DISPLAY_NAME}. Vector picks the cheapest of
-          Circle, KyberSwap, and LI.FI on mainnet. Output can move slightly before
-          you confirm.
+          Same-chain swaps on {ARC_DISPLAY_NAME}.{" "}
+          {stableCircleFastPath
+            ? "USDC ↔ EURC uses Circle only on this wallet path."
+            : "Vector compares Circle, KyberSwap, and LI.FI on mainnet."}{" "}
+          Output can move slightly before you confirm.
+        </p>
+        <p className="mt-1 text-[10px] text-center text-[var(--vector-text-dim)] opacity-70">
+          Build {vectorBuild}. USDC ↔ EURC should show Circle fast path — if you still
+          see Kyber, hard-refresh (Ctrl+Shift+R) or try incognito.
         </p>
     </VectorModalShell>
   );

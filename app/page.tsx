@@ -10,8 +10,13 @@ import {
   useConnect,
   useDisconnect,
 } from "wagmi";
-import { SwapPanel } from "./components/SwapPanel";
+import dynamic from "next/dynamic";
 import { BridgePanel } from "./components/BridgePanel";
+
+const SwapPanel = dynamic(
+  () => import("./components/SwapPanel").then((m) => m.SwapPanel),
+  { ssr: false },
+);
 import { SendPanel } from "./components/SendPanel";
 import { GoogleSendPanel } from "./components/GoogleSendPanel";
 import { GoogleBridgePanel } from "./components/GoogleBridgePanel";
