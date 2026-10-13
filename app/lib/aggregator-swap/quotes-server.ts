@@ -214,6 +214,29 @@ function pickBest(offers: SwapRouteOffer[]): SwapRouteOffer | null {
   );
 }
 
+/** Server-only Circle quote — no wallet App Kit, no Kyber. Used for USDC ↔ EURC fast path. */
+export async function fetchCircleOnlyQuote(args: {
+  tokenIn: AggregatorPairSymbol;
+  tokenOut: AggregatorPairSymbol;
+  amountHuman: string;
+  fromAddress: string;
+  slippageBps: number;
+}): Promise<SwapRouteOffer | null> {
+  const circleIn = circleTokenAddress(args.tokenIn);
+  const circleOut = circleTokenAddress(args.tokenOut);
+  if (!circleIn || !circleOut) return null;
+  const amountIn = parseAmountBase(args.tokenIn, args.amountHuman);
+  return quoteCircle({
+    tokenIn: circleIn,
+    tokenOut: circleOut,
+    tokenOutSymbol: args.tokenOut,
+    amountIn,
+    amountHuman: args.amountHuman,
+    fromAddress: args.fromAddress,
+    slippageBps: args.slippageBps,
+  });
+}
+
 export async function fetchSwapRouteOffers(args: {
   tokenIn: AggregatorPairSymbol;
   tokenOut: AggregatorPairSymbol;

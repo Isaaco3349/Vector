@@ -13,7 +13,10 @@ import {
   displayName as ARC_DISPLAY_NAME,
   isMainnet,
 } from "../lib/network";
-import { fetchSwapRoutesClient } from "../lib/aggregator-swap/fetch-routes-client";
+import {
+  fetchCircleQuoteClient,
+  fetchSwapRoutesClient,
+} from "../lib/aggregator-swap/fetch-routes-client";
 import type { SwapRouteExecution, SwapRouteOffer } from "../lib/aggregator-swap/types";
 import type { ClientSwapRoutesResult } from "../lib/aggregator-swap/fetch-routes-client";
 import {
@@ -575,8 +578,46 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       try {
       const aggIn = asAggregatorPair(tokenIn);
       const aggOut = asAggregatorPair(tokenOut);
-      if (stableCircleFastPath) {
+      if (stableCircleFastPath && address && aggIn && aggOut) {
         setRouteOffers(null);
+        try {
+          const offer = await fetchCircleQuoteClient({
+            tokenIn: aggIn,
+            tokenOut: aggOut,
+            amount: String(parsedAmountForQuote),
+            fromAddress: address,
+            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+          });
+          if (cancelled) return;
+          if (offer?.amountOutHuman) {
+            setQuote({
+              amountOut: offer.amountOutHuman,
+              rate: null,
+              feeText: null,
+              raw: offer,
+            });
+            setErrorState(null);
+            sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
+          } else {
+            setQuote(null);
+            setErrorState({
+              text: "Circle didn't return a price for this amount. Try Refresh or a slightly different size.",
+              info: null,
+            });
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setQuote(null);
+            setErrorState({
+              text:
+                err instanceof Error
+                  ? err.message
+                  : "Couldn't reach Circle for a quote. Check your connection and Refresh.",
+              info: null,
+            });
+          }
+        }
+        return;
       }
 
       if (isMainnet && address && aggIn && aggOut && !stableCircleFastPath) {
@@ -704,7 +745,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     providerReady,
     useOkxSequential,
     stableCircleFastPath,
-    providerRef,
   ]);
 
   useEffect(() => {

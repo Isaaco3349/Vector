@@ -11,6 +11,25 @@ export type ClientSwapRoutesResult = {
 };
 
 const SWAP_ROUTES_TIMEOUT_MS = 25_000;
+const CIRCLE_QUOTE_TIMEOUT_MS = 22_000;
+
+async function postSwapRoutesApi(
+  body: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchVectorApi("/api/swap-routes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function fetchSwapRoutesClient(args: {
   tokenIn: AggregatorPairSymbol;
@@ -19,22 +38,18 @@ export async function fetchSwapRoutesClient(args: {
   fromAddress: string;
   slippageBps?: number;
 }): Promise<ClientSwapRoutesResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SWAP_ROUTES_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetchVectorApi("/api/swap-routes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    res = await postSwapRoutesApi(
+      {
         tokenIn: args.tokenIn,
         tokenOut: args.tokenOut,
         amount: args.amount,
         fromAddress: args.fromAddress,
         ...(args.slippageBps != null ? { slippageBps: args.slippageBps } : {}),
-      }),
-      signal: controller.signal,
-    });
+      },
+      SWAP_ROUTES_TIMEOUT_MS,
+    );
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error(
@@ -42,8 +57,6 @@ export async function fetchSwapRoutesClient(args: {
       );
     }
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
   const data = await res.json();
   if (!res.ok) {
@@ -52,4 +65,41 @@ export async function fetchSwapRoutesClient(args: {
     );
   }
   return data as ClientSwapRoutesResult;
+}
+
+export async function fetchCircleQuoteClient(args: {
+  tokenIn: AggregatorPairSymbol;
+  tokenOut: AggregatorPairSymbol;
+  amount: string;
+  fromAddress: string;
+  slippageBps?: number;
+}): Promise<SwapRouteOffer | null> {
+  let res: Response;
+  try {
+    res = await postSwapRoutesApi(
+      {
+        tokenIn: args.tokenIn,
+        tokenOut: args.tokenOut,
+        amount: args.amount,
+        fromAddress: args.fromAddress,
+        circleOnly: true,
+        ...(args.slippageBps != null ? { slippageBps: args.slippageBps } : {}),
+      },
+      CIRCLE_QUOTE_TIMEOUT_MS,
+    );
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        "Circle quote timed out. This is usually Circle's API or your network — tap Refresh once.",
+      );
+    }
+    throw err;
+  }
+  const data = (await res.json()) as { offer?: SwapRouteOffer | null; error?: string };
+  if (!res.ok) {
+    throw new Error(
+      typeof data?.error === "string" ? data.error : "Could not fetch Circle quote.",
+    );
+  }
+  return data.offer ?? null;
 }
