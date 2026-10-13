@@ -14,6 +14,10 @@ export function buildSwapRouteAttempts(
   tokenIn: string,
   tokenOut: string,
 ): SwapRouteExecution[] {
+  const stable =
+    (tokenIn === "USDC" && tokenOut === "EURC") ||
+    (tokenIn === "EURC" && tokenOut === "USDC");
+
   const attempts: SwapRouteExecution[] = [];
   const seen = new Set<string>();
 
@@ -24,6 +28,13 @@ export function buildSwapRouteAttempts(
     seen.add(key);
     attempts.push(route);
   };
+
+  if (stable) {
+    const circleOffer = routes.offers.find((o) => o.provider === "circle");
+    if (circleOffer) {
+      push({ provider: "circle", offer: circleOffer });
+    }
+  }
 
   push(routes.best);
 

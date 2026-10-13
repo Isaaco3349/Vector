@@ -7,6 +7,20 @@ import {
 
 const KYBER_CHAIN = "arc";
 const KYBER_CLIENT_ID = "VectorProtocol";
+const KYBER_UPSTREAM_TIMEOUT_MS = 20_000;
+
+async function fetchKyberUpstream(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), KYBER_UPSTREAM_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function POST(request: Request) {
   const originBlock = rejectIfDisallowedOrigin(request);
@@ -53,7 +67,7 @@ export async function POST(request: Request) {
       url.searchParams.set("tokenOut", tokenOut);
       url.searchParams.set("amountIn", amountIn);
       url.searchParams.set("to", to);
-      const res = await fetch(url.toString(), {
+      const res = await fetchKyberUpstream(url.toString(), {
         headers: { "X-Client-Id": KYBER_CLIENT_ID, accept: "application/json" },
       });
       const data = await res.json();
@@ -73,7 +87,7 @@ export async function POST(request: Request) {
       ) {
         return NextResponse.json({ error: "Invalid build params." }, { status: 400 });
       }
-      const res = await fetch(
+      const res = await fetchKyberUpstream(
         `https://aggregator-api.kyberswap.com/${KYBER_CHAIN}/api/v1/route/build`,
         {
           method: "POST",

@@ -38,7 +38,10 @@ import {
   type SwapQuote,
   type SwapResult,
 } from "../lib/appkit";
-import { ensureArcNetwork } from "../lib/arc-wallet";
+import {
+  switchConnectedWalletToArc,
+  walletReportsArc,
+} from "../lib/switch-to-arc";
 import { formatVectorFeeLabel } from "../lib/fees";
 import { errorTextBlob, isEmptyErrorDetail } from "../lib/wallet-errors";
 import { TxSuccessCard } from "./TxSuccessCard";
@@ -246,7 +249,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     connector,
     chainId: wagmiChainId,
   } = useAccount();
-  const { switchChainAsync, isPending: switching } = useSwitchChain();
+  const { isPending: wagmiSwitching } = useSwitchChain();
+  const [switchingArc, setSwitchingArc] = useState(false);
+  const switching = wagmiSwitching || switchingArc;
 
   const [tokenIn, setTokenIn] = useState("USDC");
   // USDC → EURC. cirBTC was the original default, was pulled from the selector
@@ -307,6 +312,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     key: string;
     best: SwapRouteExecution | null;
     offers: SwapRouteOffer[];
+    lifiExecution?: SwapRouteExecution | null;
   } | null>(null);
   const [swapViaProvider, setSwapViaProvider] = useState<string | null>(null);
   /**
@@ -499,12 +505,43 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     setUnroutable(new Set(sessionUnroutablePairs));
   }, []);
 
-  // Only claim the wallet is on the wrong chain once it has actually told us.
-  // A null answer means "unknown", which is not the same as "wrong" — the
-  // pre-flight check in handleSwap refuses to sign on an unknown chain anyway,
-  // so an unreadable provider can't turn into a misleading prompt here.
+  const onArcNetwork =
+    walletReportsArc(wagmiChainId) || walletReportsArc(walletChainId);
+
   const needsChainSwitch =
-    walletChainId !== null && walletChainId !== ARC_CHAIN_ID;
+    isConnected &&
+    !onArcNetwork &&
+    wagmiChainId !== undefined &&
+    wagmiChainId !== null;
+
+  useEffect(() => {
+    if (walletReportsArc(wagmiChainId)) {
+      setWalletChainId(ARC_CHAIN_ID);
+    }
+  }, [wagmiChainId]);
+
+  useEffect(() => {
+    if (!onArcNetwork || !providerReady || parsedAmount <= 0) return;
+    setDebouncedAmountIn((prev) => {
+      const next = amountIn.trim();
+      return prev === next ? prev : next;
+    });
+  }, [onArcNetwork, providerReady, amountIn, parsedAmount]);
+
+  const swapDisabledReason = useMemo(() => {
+    if (!parsedAmount || needsChainSwitch) return null;
+    if (quoteAmountPending || quoting) return "Updating quote…";
+    if (!swapQuoteReady) {
+      return "Quote not ready — wait a few seconds or tap Refresh in the header.";
+    }
+    return null;
+  }, [
+    parsedAmount,
+    needsChainSwitch,
+    quoteAmountPending,
+    quoting,
+    swapQuoteReady,
+  ]);
 
   // Quote when debounced amount / pair settles — never on every keypress.
   useEffect(() => {
@@ -547,6 +584,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               key: `${tokenIn}:${tokenOut}:${parsedAmountForQuote}:${address.toLowerCase()}`,
               best: routes.best,
               offers: routes.offers,
+              lifiExecution: routes.lifiExecution ?? null,
             };
             return;
           }
@@ -668,33 +706,39 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   async function handleSwitch() {
     setErrorState(null);
-    let switchError: unknown = null;
-    try {
-      // wagmi's injected connector asks the wallet to switch and, if the wallet
-      // doesn't know Arc yet, offers to add it from viem's own chain definition
-      // — so no RPC URL or chain id is hand-written into this prompt.
-      await switchChainAsync({ chainId: ARC_CHAIN_ID });
-      const p = providerRef.current;
-      if (p) await ensureArcNetwork(p);
-    } catch (err) {
-      switchError = err;
+    const provider = providerRef.current;
+    if (!provider) {
+      setErrorState({
+        text: "Wallet still connecting — tap Refresh in the header, then try Switch again.",
+        info: null,
+      });
+      return;
     }
-    // Judge success by what the wallet now reports, not by whether the call
-    // resolved. Some wallets resolve the request and stay put.
+    setSwitchingArc(true);
+    try {
+      await switchConnectedWalletToArc(provider);
+    } catch (err) {
+      setErrorState({
+        text:
+          err instanceof Error
+            ? err.message
+            : `Couldn't switch to ${ARC_DISPLAY_NAME}. Try switching manually in Binance Wallet.`,
+        info: null,
+      });
+    } finally {
+      setSwitchingArc(false);
+    }
     const id = await refreshWalletChain();
-    if (id === ARC_CHAIN_ID) return;
-    if (switchError) {
-      setErrorState(
-        describeSwapError(
-          switchError,
-          `Couldn't switch networks. Switch to ${ARC_DISPLAY_NAME} in your wallet, then try again.`,
-          { tokenIn, tokenOut, slippageBps: effectiveSlippageBps },
-        ),
-      );
+    if (walletReportsArc(id) || walletReportsArc(wagmiChainId)) {
+      setWalletChainId(ARC_CHAIN_ID);
+      if (parsedAmount > 0) {
+        setDebouncedAmountIn(amountIn.trim());
+      }
+      void refreshSwapBalances();
       return;
     }
     setErrorState({
-      text: "Your wallet still reports a different network. If you have more than one wallet extension enabled, switch networks in the one Vector is connected to.",
+      text: `Your wallet hasn't confirmed ${ARC_DISPLAY_NAME} yet. Open Binance Wallet, pick Arc, tap Refresh here, then Swap.`,
       info: null,
     });
   }
@@ -714,17 +758,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           liveChainId === null
             ? "Couldn't confirm which network your wallet is on, so nothing was sent. Reconnect the wallet and try again."
             : `Your wallet is on chain ${liveChainId}, but swaps run on ${ARC_DISPLAY_NAME} (${ARC_CHAIN_ID}). Switch networks and try again — nothing was sent.`,
-        info: null,
-      });
-      return;
-    }
-
-    try {
-      await ensureArcNetwork(provider);
-    } catch {
-      setErrorState({
-        text:
-          "Couldn't switch to Arc in your wallet. Approve adding Arc (USDC gas) in OKX and try again — nothing was sent.",
         info: null,
       });
       return;
@@ -757,7 +790,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       routes = {
         offers: cached.offers,
         best: cached.best,
-        lifiExecution: null,
+        lifiExecution: cached.lifiExecution ?? null,
       };
     } else if (isMainnet && aggIn && aggOut) {
       routes = await fetchSwapRoutesClient({
@@ -771,6 +804,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         key: routeCacheKey,
         best: routes.best,
         offers: routes.offers,
+        lifiExecution: routes.lifiExecution ?? null,
       };
     }
 
@@ -904,17 +938,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         return;
       }
 
-      try {
-        await ensureArcNetwork(provider);
-      } catch {
-        setErrorState({
-          text:
-            "Couldn't switch to Arc in your wallet. If you use OKX or another extension, approve adding the Arc network (USDC gas) and try again — nothing was sent.",
-          info: null,
-        });
-        return;
-      }
-
       const fromSymbol = asSwapSymbol(tokenIn);
       const toSymbol = asSwapSymbol(tokenOut);
       const aggIn = asAggregatorPair(tokenIn);
@@ -928,14 +951,14 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           const routeCacheKey = `${tokenIn}:${tokenOut}:${parsedAmount}:${address.toLowerCase()}`;
           const cached = swapRouteCacheRef.current;
           if (
-            okxInAppBrowser() &&
+            okxReuseQuotedRoutesOnExecute() &&
             cached?.key === routeCacheKey &&
             cached.best
           ) {
             routes = {
               offers: cached.offers,
               best: cached.best,
-              lifiExecution: null,
+              lifiExecution: cached.lifiExecution ?? null,
             };
           } else {
             routes = await fetchSwapRoutesClient({
@@ -949,6 +972,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               key: routeCacheKey,
               best: routes.best,
               offers: routes.offers,
+              lifiExecution: routes.lifiExecution ?? null,
             };
           }
           if (!routes.best) {
@@ -970,7 +994,14 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
             onStage: (stage: SwapRouteStage) => setPlanStage(stage),
           };
-          const routeAttempts = buildSwapRouteAttempts(routes, tokenIn, tokenOut);
+          const routeAttempts = buildSwapRouteAttempts(
+            {
+              ...routes,
+              lifiExecution: routes.lifiExecution ?? null,
+            },
+            tokenIn,
+            tokenOut,
+          );
           const attemptErrors: string[] = [];
           for (const route of routeAttempts) {
             if (swapRunRef.current !== runId) return;
@@ -1455,7 +1486,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-[12px] text-[var(--vector-text-dim)] leading-relaxed mb-3 text-center">
               Swaps run on {ARC_DISPLAY_NAME}, and your wallet is on{" "}
-              <span className="font-mono">chain {walletChainId}</span>. Switch
+              <span className="font-mono">
+                chain {walletChainId ?? wagmiChainId ?? "?"}
+              </span>
+              . Switch
               networks to continue — nothing has been sent.
             </p>
             <button
@@ -1488,6 +1522,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
                   ? "Getting quote…"
                   : `Swap ${tokenIn} → ${tokenOut}`}
           </button>
+        )}
+
+        {swapDisabledReason && !needsChainSwitch && (
+          <p className="mt-2 text-[11px] text-center text-[var(--vector-text-dim)] leading-relaxed">
+            {swapDisabledReason}
+          </p>
         )}
 
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">

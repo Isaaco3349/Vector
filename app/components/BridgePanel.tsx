@@ -23,7 +23,7 @@ import {
   type BridgeChainId,
 } from "../lib/bridge-chains";
 import { getProviderChainId } from "../lib/appkit";
-import { ensureArcNetwork } from "../lib/arc-wallet";
+import { switchConnectedWalletToArc } from "../lib/switch-to-arc";
 import {
   bridgeAmountExceedsUsdcBalance,
   bridgeMaxAmountHumanFromBalanceBaseUnits,
@@ -311,14 +311,13 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   async function handleSwitch() {
     if (sourceChainId === null) return;
     setError(null);
+    const provider = providerRef.current;
     let switchError: unknown = null;
     try {
-      // wagmi's injected connector asks the wallet to switch and, if the wallet
-      // doesn't know the chain yet, offers to add it from viem's own chain
-      // definition — so no RPC URL or chain id is hand-written into this prompt.
-      await switchChainAsync({ chainId: sourceChainId });
-      if (burnOnArc && providerRef.current) {
-        await ensureArcNetwork(providerRef.current);
+      if (burnOnArc && provider) {
+        await switchConnectedWalletToArc(provider);
+      } else {
+        await switchChainAsync({ chainId: sourceChainId });
       }
     } catch (err) {
       switchError = err;
@@ -368,16 +367,6 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       if (liveChainId !== sourceChainId) {
         setError(null);
         return;
-      }
-      if (burnOnArc) {
-        try {
-          await ensureArcNetwork(provider);
-        } catch {
-          setError(
-            "Couldn't switch to Arc in your wallet. Approve adding Arc (USDC gas) in OKX/MetaMask — nothing was sent.",
-          );
-          return;
-        }
       }
       const result = await executeBridge({
         provider,

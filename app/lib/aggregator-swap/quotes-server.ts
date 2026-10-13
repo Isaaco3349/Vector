@@ -22,6 +22,22 @@ const KYBER_CLIENT_ID = "VectorProtocol";
 const CIRCLE_BASE_URL =
   process.env.NEXT_PUBLIC_CIRCLE_BASE_URL ?? "https://api.circle.com";
 
+/** Don't let a slow Kyber/LI.FI leg block the whole quote comparison. */
+const UPSTREAM_QUOTE_TIMEOUT_MS = 14_000;
+
+async function fetchWithTimeout(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPSTREAM_QUOTE_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function parseAmountBase(symbol: AggregatorPairSymbol, amountHuman: string): string {
   const dec = tokenDecimals(symbol);
   return parseUnits(amountHuman.trim() as `${number}`, dec).toString();
@@ -47,7 +63,7 @@ async function quoteKyber(args: {
   amountIn: string;
   fromAddress: string;
   slippageBps: number;
-}): Promise<SwapRouteOffer | null> {
+}): Promise<{ offer: SwapRouteOffer; routeSummary: unknown } | null> {
   const url = new URL(
     `https://aggregator-api.kyberswap.com/${KYBER_CHAIN}/api/v1/routes`,
   );
@@ -56,27 +72,36 @@ async function quoteKyber(args: {
   url.searchParams.set("amountIn", args.amountIn);
   url.searchParams.set("to", args.fromAddress);
 
-  const res = await fetch(url.toString(), {
-    headers: { "X-Client-Id": KYBER_CLIENT_ID, accept: "application/json" },
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url.toString(), {
+      headers: { "X-Client-Id": KYBER_CLIENT_ID, accept: "application/json" },
+    });
+  } catch {
+    return null;
+  }
   if (!res.ok) return null;
   const body = (await res.json()) as {
     data?: { routeSummary?: { amountOut?: string } };
   };
-  const amountOut = body.data?.routeSummary?.amountOut;
-  if (!amountOut || !/^\d+$/.test(amountOut)) return null;
+  const routeSummary = body.data?.routeSummary;
+  const amountOut = routeSummary?.amountOut;
+  if (!routeSummary || !amountOut || !/^\d+$/.test(amountOut)) return null;
 
-  return withHumanOut(
-    {
-      provider: "kyber",
-      amountOut,
-      tokenInAddress: args.tokenIn,
-      tokenOutAddress: args.tokenOut,
-      amountIn: args.amountIn,
-      label: "KyberSwap",
-    },
-    args.tokenOutSymbol,
-  );
+  return {
+    routeSummary,
+    offer: withHumanOut(
+      {
+        provider: "kyber",
+        amountOut,
+        tokenInAddress: args.tokenIn,
+        tokenOutAddress: args.tokenOut,
+        amountIn: args.amountIn,
+        label: "KyberSwap",
+      },
+      args.tokenOutSymbol,
+    ),
+  };
 }
 
 async function quoteLifi(args: {
@@ -99,9 +124,14 @@ async function quoteLifi(args: {
   url.searchParams.set("integrator", LIFI_INTEGRATOR);
   url.searchParams.set("order", "CHEAPEST_GAS");
 
-  const res = await fetch(url.toString(), {
-    headers: { accept: "application/json" },
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url.toString(), {
+      headers: { accept: "application/json" },
+    });
+  } catch {
+    return null;
+  }
   if (!res.ok) return null;
   const quote = await res.json();
   const amountOut =
@@ -147,11 +177,16 @@ async function quoteCircle(args: {
     config: swapCustomFeeConfig(args.amountHuman),
   };
 
-  const res = await fetch(`${CIRCLE_BASE_URL}/v1/stablecoinKits/swap`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(swapBody),
-  });
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${CIRCLE_BASE_URL}/v1/stablecoinKits/swap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(swapBody),
+    });
+  } catch {
+    return null;
+  }
   if (!res.ok) return null;
   const data = await res.json();
   const rawEstimate = data?.estimatedAmount;
@@ -231,7 +266,7 @@ export async function fetchSwapRouteOffers(args: {
   ]);
 
   const offers: SwapRouteOffer[] = [
-    ...(kyber ? [kyber] : []),
+    ...(kyber ? [kyber.offer] : []),
     ...(lifi ? [lifi.offer] : []),
     ...(circle ? [circle] : []),
   ];
@@ -244,22 +279,10 @@ export async function fetchSwapRouteOffers(args: {
 
   if (!bestOffer) return { offers, best: null, lifiExecution };
 
-  if (bestOffer.provider === "kyber") {
-    const url = new URL(
-      `https://aggregator-api.kyberswap.com/${KYBER_CHAIN}/api/v1/routes`,
-    );
-    url.searchParams.set("tokenIn", aggIn);
-    url.searchParams.set("tokenOut", aggOut);
-    url.searchParams.set("amountIn", amountIn);
-    url.searchParams.set("to", args.fromAddress);
-    const res = await fetch(url.toString(), {
-      headers: { "X-Client-Id": KYBER_CLIENT_ID },
-    });
-    const body = await res.json();
-    const routeSummary = body?.data?.routeSummary;
+  if (bestOffer.provider === "kyber" && kyber) {
     return {
       offers,
-      best: { provider: "kyber", offer: bestOffer, routeSummary },
+      best: { provider: "kyber", offer: bestOffer, routeSummary: kyber.routeSummary },
       lifiExecution,
     };
   }
