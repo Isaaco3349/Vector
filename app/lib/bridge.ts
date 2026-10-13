@@ -289,9 +289,6 @@ export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
     };
   }
 
-  const erc20Source = from?.usdcKind === "erc20";
-  const inboundArc =
-    args.toChain === "Arc" || args.toChain === "Arc_Testnet";
   await buildBridgePlan({
     walletAddress: address,
     fromChain: args.fromChain,
@@ -299,15 +296,12 @@ export async function estimateBridge(args: BridgeArgs): Promise<BridgeQuote> {
     amount: args.amount,
     recipientAddress: address,
     usdcApprovalStyle: "erc20Approve",
-    omitPlatformFee: inboundArc && erc20Source,
   });
 
   return {
     amount: args.amount,
-    feeText: `${formatBridgeFeeLabelForRoute(from, args.toChain)} — plus CCTP provider/relayer fees from Circle`,
-    gasText: from
-      ? `Source gas on ${from.label} (native token in your wallet)`
-      : null,
+    feeText: formatBridgeFeeLabelForRoute(from, args.toChain),
+    gasText: null,
     raw: { estimate: "offline-cctp-plan" },
   };
 }

@@ -20,10 +20,6 @@ import { bridgeChainById, explorerTxUrl, type BridgeChainId } from "./bridge-cha
 import { buildBridgePlan, type BridgeCall } from "./google-bridge";
 import type { Eip1193Provider } from "./appkit";
 
-function isArcAppKitChain(id: BridgeChainId): boolean {
-  return id === "Arc" || id === "Arc_Testnet";
-}
-
 async function resolveWalletAddress(
   provider: Eip1193Provider,
 ): Promise<`0x${string}`> {
@@ -107,8 +103,6 @@ export async function executeBridgeViaSequentialTransactions(
   }
 
   const address = await resolveWalletAddress(args.provider);
-  const inboundArc = isArcAppKitChain(args.toChain);
-  const erc20Source = fromMeta.usdcKind === "erc20";
   const plan = await buildBridgePlan({
     walletAddress: address,
     fromChain: args.fromChain,
@@ -117,16 +111,13 @@ export async function executeBridgeViaSequentialTransactions(
     recipientAddress: address,
     // Same as OKX swap/earn: standard ERC-20 approve on every chain (including Arc native USDC).
     usdcApprovalStyle: "erc20Approve",
-    omitPlatformFee: inboundArc && erc20Source,
   });
 
   const sourceDefRpc = await resolveSourceRpc(fromMeta.appKitChain);
 
   if (typeof console !== "undefined") {
     console.info("[Vector] bridge: OKX-safe sequential path (eth_sendTransaction only)", {
-      inboundArc,
       approval: "erc20Approve",
-      omitPlatformFee: inboundArc && erc20Source,
     });
   }
 

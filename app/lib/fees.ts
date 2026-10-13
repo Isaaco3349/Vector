@@ -10,14 +10,14 @@ export const VECTOR_SWAP_FEE_USDC = "0.15";
 export const VECTOR_FLAT_FEE_USDC = VECTOR_SWAP_FEE_USDC;
 
 /**
- * Bridge platform fee (USDC). Kept low vs Relay/Jumper-style CCTP UIs — mostly
- * Circle CCTP + gas; override via NEXT_PUBLIC_VECTOR_BRIDGE_FEE_USDC.
+ * Bridge platform fee (USDC). Matches swap/earn flat fee unless overridden via
+ * NEXT_PUBLIC_VECTOR_BRIDGE_FEE_USDC.
  */
 export const VECTOR_BRIDGE_FEE_USDC = (() => {
   const raw = process.env.NEXT_PUBLIC_VECTOR_BRIDGE_FEE_USDC?.trim();
   if (raw === "0" || raw === "0.0" || raw === "0.00") return "0";
   if (raw && /^\d+(\.\d+)?$/.test(raw)) return raw;
-  return "0.01";
+  return VECTOR_SWAP_FEE_USDC;
 })();
 
 /** @deprecated Use flat fee labels; kept for UI that still references bps keys. */
@@ -75,42 +75,24 @@ export function bridgePlatformFeeBaseUnits(_amountHuman?: string): bigint {
   return bridgeFlatFeeBaseUnits();
 }
 
-/**
- * Inbound Arc from an ERC-20 source chain: OKX-safe path omits on-chain
- * customFee (see bridge-sequential-tx). Balance checks must match execution.
- */
-export function isOkxStyleInboundArcRoute(
-  from: BridgeChain | undefined,
-  toChain: BridgeChainId,
-): boolean {
-  if (!from) return false;
-  const inboundArc = toChain === "Arc" || toChain === "Arc_Testnet";
-  return inboundArc && from.usdcKind === "erc20";
-}
-
 export function bridgePlatformFeeBaseUnitsForRoute(
-  from: BridgeChain | undefined,
-  toChain: BridgeChainId,
+  _from: BridgeChain | undefined,
+  _toChain: BridgeChainId,
 ): bigint {
-  if (isOkxStyleInboundArcRoute(from, toChain)) return BigInt(0);
   return bridgePlatformFeeBaseUnits();
 }
 
 export function bridgePlatformFeeHumanForRoute(
-  from: BridgeChain | undefined,
-  toChain: BridgeChainId,
+  _from: BridgeChain | undefined,
+  _toChain: BridgeChainId,
 ): string {
-  if (isOkxStyleInboundArcRoute(from, toChain)) return "0";
   return bridgePlatformFeeHuman();
 }
 
 export function formatBridgeFeeLabelForRoute(
-  from: BridgeChain | undefined,
-  toChain: BridgeChainId,
+  _from: BridgeChain | undefined,
+  _toChain: BridgeChainId,
 ): string {
-  if (isOkxStyleInboundArcRoute(from, toChain)) {
-    return "No Vector bridge fee on this route — CCTP network fees only";
-  }
   return formatBridgeFeeLabel();
 }
 

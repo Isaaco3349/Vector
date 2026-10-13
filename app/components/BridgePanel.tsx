@@ -86,6 +86,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const [fromChain, setFromChain] = useState<BridgeChainId>(defaultBridgeFromChain());
   const [toChain, setToChain] = useState<BridgeChainId>(defaultBridgeToChain());
   const [amount, setAmount] = useState("");
+  const [debouncedAmount, setDebouncedAmount] = useState("");
 
   const [quote, setQuote] = useState<BridgeQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -159,10 +160,22 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     void refreshWalletChain();
   }, [fromChain, providerReady, refreshWalletChain]);
 
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedAmount(amount.trim());
+    }, 480);
+    return () => window.clearTimeout(handle);
+  }, [amount]);
+
   const parsedAmount = useMemo(() => {
     const n = Number(amount);
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [amount]);
+
+  const parsedAmountForQuote = useMemo(() => {
+    const n = Number(debouncedAmount);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [debouncedAmount]);
 
   const sameChain = fromChain === toChain;
 
@@ -199,10 +212,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     const bal = balanceFrom.formatted ?? "—";
     const max = maxBridgeableHuman;
     if (max) {
-      const feeLine =
-        routePlatformFeeHuman === "0"
-          ? "no Vector bridge fee on this route"
-          : `Vector's $${routePlatformFeeHuman} bridge fee`;
+      const feeLine = `Vector's $${routePlatformFeeHuman} bridge fee`;
       return `Your ${chainLabel(fromChain)} wallet must cover the bridge amount plus ${feeLine} (${bal} USDC on file). Max bridgeable: ${trimBridgeHint(max)} USDC — try MAX or a smaller amount.`;
     }
     return "Amount exceeds your USDC balance on the source chain (including Vector's bridge fee).";
@@ -233,13 +243,15 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       setError("Choose two different chains.");
       return;
     }
-    if (!parsedAmount) {
+    if (!parsedAmountForQuote) {
       setQuote(null);
-      setError(null);
+      setQuoting(false);
+      if (!parsedAmount) setError(null);
       return;
     }
     if (insufficient) {
       setQuote(null);
+      setQuoting(false);
       setError(insufficientMessage);
       return;
     }
@@ -253,13 +265,13 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     setQuoting(true);
     setError(null);
-    const handle = setTimeout(async () => {
+    void (async () => {
       try {
         const q = await estimateBridge({
           provider,
           fromChain,
           toChain,
-          amount: String(parsedAmount),
+          amount: String(parsedAmountForQuote),
         });
         if (!cancelled) setQuote(q);
       } catch (err) {
@@ -272,14 +284,14 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
       } finally {
         if (!cancelled) setQuoting(false);
       }
-    }, 500);
+    })();
 
     return () => {
       cancelled = true;
-      clearTimeout(handle);
     };
   }, [
     parsedAmount,
+    parsedAmountForQuote,
     fromChain,
     toChain,
     sameChain,
@@ -288,6 +300,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
     providerReady,
     txHash,
     bridging,
+    providerRef,
   ]);
 
   /**
@@ -474,23 +487,6 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
                 : undefined
             }
           />
-          {maxBridgeableHuman &&
-            balanceFrom.formatted &&
-            !balanceFrom.isLoading && (
-              <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
-                MAX uses your full USDC balance
-                {routePlatformFeeHuman !== "0" && (
-                  <>
-                    : Vector&apos;s ${routePlatformFeeHuman} bridge fee is
-                    reserved from it
-                  </>
-                )}
-                ; the
-                amount field (up to{" "}
-                <span className="font-mono">{trimBridgeHint(maxBridgeableHuman)}</span>
-                ) is what CCTP sends toward {chainLabel(toChain)}.
-              </p>
-            )}
           {!balanceFrom.isLoading &&
             balanceFrom.formatted === null &&
             !isArcBridgeChain(fromChain) && (
@@ -503,12 +499,6 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-pink)]">
               Wallet shows token USDC but not Arc gas USDC — on Arc they are one
               balance. Re-add Arc in OKX/MetaMask or switch networks, then retry.
-            </p>
-          )}
-          {!burnOnArc && (
-            <p className="mt-1 text-[10px] leading-snug text-[var(--vector-text-dim)]">
-              Source-chain gas (e.g. ETH on Base) is paid separately in your
-              wallet&apos;s native token — not USDC.
             </p>
           )}
         </div>
@@ -568,8 +558,10 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
             ) : (
               <div>{formatBridgeFeeLabelForRoute(fromMeta, toChain)}</div>
             )}
-            {quote?.feeText && <div>{quote.feeText}</div>}
-            {quote?.gasText && <div>Source gas: {quote.gasText}</div>}
+            {quote?.feeText &&
+              bridgeRouteUsesLifi(fromMeta, toMeta) && (
+                <div>{quote.feeText}</div>
+              )}
           </div>
         )}
 
@@ -654,24 +646,11 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         )}
 
         {okxWallet && (
-          <div className="mt-3 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
-            <span className="font-semibold text-[var(--vector-text)]">
-              OKX wallet:
-            </span>{" "}
-            Vector binds OKX directly (not MetaMask&apos;s{" "}
-            <span className="font-mono">window.ethereum</span>) and only sends
-            standard transaction confirms — approve, then burn/swap. Pick{" "}
-            <span className="font-semibold">OKX Wallet</span> in Connect if you
-            have multiple extensions. If OKX still shows risk with no Confirm,
-            update the extension or use Continue with Google.
-          </div>
+          <p className="mt-3 text-[11px] text-center text-[var(--vector-text-dim)]">
+            Using OKX — choose <span className="font-semibold">OKX Wallet</span>{" "}
+            at connect if you run multiple extensions.
+          </p>
         )}
-        <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          Bridges USDC across chains via Circle&apos;s CCTP. You sign the burn on
-          the source chain, so your wallet needs to be on {chainLabel(fromChain)};
-          Circle&apos;s relayer completes the mint on {chainLabel(toChain)}, so no
-          switch is needed on the destination side.
-        </p>
     </VectorModalShell>
   );
 }
