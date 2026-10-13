@@ -446,6 +446,7 @@ export async function executeSwapRoute(args: {
   const { route } = args;
 
   if (route.provider === "circle") {
+    args.onStage?.("preparing-route");
     const plan = await buildSwapPlan({
       walletAddress: args.walletAddress,
       fromSymbol: args.tokenIn,

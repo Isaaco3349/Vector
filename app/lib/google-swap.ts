@@ -436,23 +436,38 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
 
   // 1) createSwap via our same-origin server proxy (permissionless testnet).
   //    Returns Circle's executionParams + proxy-signed signature.
-  const swapResponse = await fetch("/api/endpoints", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      action: "createSwapTransaction",
-      tokenInAddress: tokenInAddressReq,
-      tokenInChain: ARC_CHAIN_ENUM,
-      tokenOutAddress: tokenOutAddressReq,
-      tokenOutChain: ARC_CHAIN_ENUM,
-      fromAddress: walletAddress,
-      toAddress: walletAddress,
-      amount: amountMinor,
-      ...(args.slippageBps != null && Number.isFinite(args.slippageBps)
-        ? { slippageBps: args.slippageBps }
-        : {}),
-    }),
-  });
+  const swapController = new AbortController();
+  const swapTimer = setTimeout(() => swapController.abort(), 28_000);
+  let swapResponse: Response;
+  try {
+    swapResponse = await fetch("/api/endpoints", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: swapController.signal,
+      body: JSON.stringify({
+        action: "createSwapTransaction",
+        tokenInAddress: tokenInAddressReq,
+        tokenInChain: ARC_CHAIN_ENUM,
+        tokenOutAddress: tokenOutAddressReq,
+        tokenOutChain: ARC_CHAIN_ENUM,
+        fromAddress: walletAddress,
+        toAddress: walletAddress,
+        amount: amountMinor,
+        ...(args.slippageBps != null && Number.isFinite(args.slippageBps)
+          ? { slippageBps: args.slippageBps }
+          : {}),
+      }),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        "Building the Circle swap plan timed out. Tap Refresh and try again.",
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(swapTimer);
+  }
   const swapData = await swapResponse.json();
   if (!swapResponse.ok) {
     throw new Error(
