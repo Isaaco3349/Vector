@@ -30,7 +30,7 @@ const OKX_BLOCKED_RPC = new Set([
 
 /** OKX in-app: Arc reads via public RPC; wallet is for signing only. */
 /** Arc state reads only — never eth_chainId (bridge needs the wallet's real network). */
-const OKX_MOBILE_PUBLIC_ARC_RPC = new Set([
+const OKX_PUBLIC_ARC_READ_RPC = new Set([
   "eth_call",
   "eth_getBalance",
   "eth_getTransactionReceipt",
@@ -152,7 +152,10 @@ export function createOkxSafeEip1193Provider(
           `[Vector] Blocked ${method} for OKX — use standard transaction confirms only.`,
         );
       }
-      if (okxInAppBrowser() && OKX_MOBILE_PUBLIC_ARC_RPC.has(method)) {
+      if (
+        OKX_PUBLIC_ARC_READ_RPC.has(method) &&
+        (okxInAppBrowser() || force)
+      ) {
         return okxMobileArcPublicRpcRequest(args);
       }
       if (method === "wallet_getCapabilities") {
