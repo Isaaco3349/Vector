@@ -6,6 +6,22 @@ export function pairIncludesCirBtc(tokenIn: string, tokenOut: string): boolean {
   return tokenIn === "cirBTC" || tokenOut === "cirBTC";
 }
 
+export function isStableUsdcEurcPair(tokenIn: string, tokenOut: string): boolean {
+  return (
+    (tokenIn === "USDC" && tokenOut === "EURC") ||
+    (tokenIn === "EURC" && tokenOut === "USDC")
+  );
+}
+
+/** OKX + stables: skip Kyber/LI.FI compare — Circle only (fast, one wallet flow). */
+export function okxPrefersCircleOnlySwap(
+  tokenIn: string,
+  tokenOut: string,
+  useOkxSequential: boolean,
+): boolean {
+  return useOkxSequential && isStableUsdcEurcPair(tokenIn, tokenOut);
+}
+
 /**
  * Ordered execution attempts after quotes: best route, then mobile-safe fallbacks.
  */
@@ -14,9 +30,7 @@ export function buildSwapRouteAttempts(
   tokenIn: string,
   tokenOut: string,
 ): SwapRouteExecution[] {
-  const stable =
-    (tokenIn === "USDC" && tokenOut === "EURC") ||
-    (tokenIn === "EURC" && tokenOut === "USDC");
+  const stable = isStableUsdcEurcPair(tokenIn, tokenOut);
 
   const attempts: SwapRouteExecution[] = [];
   const seen = new Set<string>();
@@ -73,11 +87,7 @@ export function buildOkxSwapRouteAttempts(
   tokenIn: string,
   tokenOut: string,
 ): SwapRouteExecution[] {
-  const stable =
-    (tokenIn === "USDC" && tokenOut === "EURC") ||
-    (tokenIn === "EURC" && tokenOut === "USDC");
-
-  if (stable) {
+  if (isStableUsdcEurcPair(tokenIn, tokenOut)) {
     const circleOffer = routes.offers.find((o) => o.provider === "circle");
     if (circleOffer) {
       return [{ provider: "circle", offer: circleOffer }];

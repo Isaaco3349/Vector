@@ -23,6 +23,7 @@ import {
 import {
   buildOkxSwapRouteAttempts,
   buildSwapRouteAttempts,
+  okxPrefersCircleOnlySwap,
   pairIncludesCirBtc,
 } from "../lib/aggregator-swap/route-attempts";
 import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
@@ -396,6 +397,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
   const useOkxSequential = requiresOkxSequentialSwap(connector, okxSafePath);
+  const okxCircleOnlySwap = okxPrefersCircleOnlySwap(
+    tokenIn,
+    tokenOut,
+    useOkxSequential,
+  );
   /** Bump to abandon an in-flight swap when the user closes the modal. */
   const swapRunRef = useRef(0);
 
@@ -565,7 +571,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       try {
       const aggIn = asAggregatorPair(tokenIn);
       const aggOut = asAggregatorPair(tokenOut);
-      if (isMainnet && address && aggIn && aggOut) {
+      if (isMainnet && address && aggIn && aggOut && !okxCircleOnlySwap) {
         try {
           const routes = await fetchSwapRoutesClient({
             tokenIn: aggIn,
@@ -689,6 +695,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     recordUnroutablePair,
     providerReady,
     useOkxSequential,
+    okxCircleOnlySwap,
     providerRef,
   ]);
 
@@ -703,6 +710,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [connector, address, providerRef]);
+
+  useEffect(() => {
+    void import("@circle-fin/adapter-viem-v2");
+  }, []);
 
   async function handleSwitch() {
     setErrorState(null);
@@ -772,6 +783,52 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         text: "This token pair is not supported for OKX swaps on Arc.",
         info: null,
       });
+      return;
+    }
+
+    if (okxCircleOnlySwap) {
+      setPreparingSwap(false);
+      setSwapping(true);
+      setPlanStage("preparing-route");
+      try {
+        const plan = await buildSwapPlan({
+          walletAddress: address!,
+          fromSymbol,
+          toSymbol,
+          amount: String(parsedAmount),
+          usdcApprovalStyle: "erc20Approve",
+          slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+        });
+        const planResult = await executeSwapPlan({
+          provider,
+          from: address!,
+          plan,
+          onStage: (stage) => setPlanStage(stage),
+        });
+        setTxHash(planResult.executeTxHash);
+        setSwapViaProvider("circle");
+        logVectorActivity({
+          walletAddress: address!,
+          txHash: planResult.executeTxHash,
+          kind: "swap",
+          chainId: ARC_CHAIN_ID,
+          detail: `${tokenIn} → ${tokenOut} (circle)`,
+        });
+        void syncBalancesAfterSwap(planResult.executeTxHash);
+      } catch (err) {
+        if (swapRunRef.current === runId) {
+          setErrorState({
+            text: describeRouteExecutionError(err, true),
+            info: null,
+          });
+        }
+      } finally {
+        setPreparingSwap(false);
+        if (swapRunRef.current === runId) {
+          setSwapping(false);
+          setPlanStage(null);
+        }
+      }
       return;
     }
 
@@ -1309,7 +1366,22 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Quote detail */}
-        {bestRouteOffer && routeOffers && routeOffers.length > 0 && (
+        {okxCircleOnlySwap && quote?.amountOut && (
+          <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
+              Swap route (OKX fast path)
+            </p>
+            <p className="text-[12px] font-mono text-[var(--vector-pink)] font-semibold">
+              ✓ Circle: ~{quote.amountOut} {tokenOut}
+            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
+              USDC ↔ EURC on OKX skips Kyber/LI.FI comparison so the wallet popup
+              opens sooner. You will sign Circle (approve, then swap).
+            </p>
+          </div>
+        )}
+
+        {!okxCircleOnlySwap && bestRouteOffer && routeOffers && routeOffers.length > 0 && (
           <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
               Swap route (cheapest output)
@@ -1517,7 +1589,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             {preparingSwap
               ? "Preparing route…"
               : swapping
-                ? (planStageLabel ?? "Confirm in OKX…")
+                ? (planStageLabel ??
+                  (okxWallet ? "Preparing OKX step…" : "Preparing wallet step…"))
                 : quoting
                   ? "Getting quote…"
                   : `Swap ${tokenIn} → ${tokenOut}`}
