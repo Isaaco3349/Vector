@@ -69,7 +69,8 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
   const { providerRef, okxSafePath, ready: providerReady } =
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
-  const useOkxSequential = okxSafePath || okxInAppBrowser();
+  const useOkxSequential =
+    okxSafePath || okxInAppBrowser() || isOkxWallet(connector);
 
   // Discover vaults once when the panel opens.
   useEffect(() => {
@@ -501,6 +502,12 @@ function readableError(err: unknown, fallback: string): string {
   }
   if (/^null$/i.test(blob.trim()) || (blob.trim() === "" && !(err instanceof Error))) {
     return fallback;
+  }
+  if (/receipt with hash|could not be found|has not confirmed yet/i.test(blob)) {
+    return (
+      "Your transaction was submitted but Arc has not confirmed it yet. " +
+      "Check OKX Activity or the Arc explorer before depositing again — the deposit may already have succeeded."
+    );
   }
   if (err instanceof Error && err.message) {
     if (/reject|denied|user cancel|user rejected/i.test(err.message)) {

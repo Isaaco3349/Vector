@@ -45,6 +45,8 @@ import { waitArcTransactionReceipt } from "./arc-tx-wait";
 import { getProviderChainId, type Eip1193Provider } from "./appkit";
 import type { SwapCall, SwapPlan } from "./google-swap";
 import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "./network";
+import { okxInAppBrowser, providerIsOkx } from "./wallet-brand";
+import { withWalletRequestTimeout } from "./wallet-request-timeout";
 
 export type ExternalSwapResult = {
   /** Hash of the approval transaction. */
@@ -75,6 +77,10 @@ function toHexQuantity(value: string): string {
  * Submit one call and return its hash. Throws if the wallet doesn't return a
  * recognisable hash — a silent non-answer must not be reported as a success.
  */
+function walletConfirmTimeoutMs(provider: Eip1193Provider): number {
+  return okxInAppBrowser() || providerIsOkx(provider) ? 120_000 : 180_000;
+}
+
 async function sendCall(
   provider: Eip1193Provider,
   from: string,
@@ -82,7 +88,7 @@ async function sendCall(
   label: string,
   chainId: number,
 ): Promise<string> {
-  const hash = await provider.request({
+  const request = provider.request({
     method: "eth_sendTransaction",
     params: [
       {
@@ -94,6 +100,13 @@ async function sendCall(
       },
     ],
   });
+  const hash = await withWalletRequestTimeout(
+    request,
+    walletConfirmTimeoutMs(provider),
+    providerIsOkx(provider) || okxInAppBrowser()
+      ? "OKX did not respond to the swap prompt in time. Open the OKX extension and approve or reject, then try again."
+      : "Your wallet did not respond in time. Approve or reject in the wallet, then try again.",
+  );
   if (typeof hash !== "string" || !hash.startsWith("0x")) {
     throw new Error(
       `Your wallet didn't return a transaction hash for the ${label} step, so ` +

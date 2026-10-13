@@ -374,7 +374,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const { providerRef, okxSafePath, ready: providerReady } =
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
-  const useOkxSequential = okxSafePath || okxInAppBrowser();
+  const useOkxSequential =
+    okxSafePath || okxInAppBrowser() || isOkxWallet(connector);
   /** Bump to abandon an in-flight swap when the user closes the modal. */
   const swapRunRef = useRef(0);
 
@@ -503,21 +504,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       );
       return;
     }
-    if (!providerReady) return;
-    const provider = providerRef.current;
-    if (!provider) {
-      setErrorState({
-        text: "No wallet provider available. Reconnect your wallet and try again.",
-        info: null,
-      });
-      return;
-    }
-
     let cancelled = false;
     setQuoting(true);
     setErrorState(null);
 
     void (async () => {
+      try {
       const aggIn = asAggregatorPair(tokenIn);
       const aggOut = asAggregatorPair(tokenOut);
       if (isMainnet && address && aggIn && aggOut) {
@@ -529,23 +521,35 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             fromAddress: address,
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
           });
-          if (!cancelled && routes.offers.length > 0) {
+          if (cancelled) return;
+          if (routes.offers.length > 0) {
             setRouteOffers(routes.offers);
             setQuote(null);
             setErrorState(null);
             sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
-            if (address) {
-              swapRouteCacheRef.current = {
-                key: `${tokenIn}:${tokenOut}:${parsedAmountForQuote}:${address.toLowerCase()}`,
-                best: routes.best,
-                offers: routes.offers,
-              };
-            }
+            swapRouteCacheRef.current = {
+              key: `${tokenIn}:${tokenOut}:${parsedAmountForQuote}:${address.toLowerCase()}`,
+              best: routes.best,
+              offers: routes.offers,
+            };
+            return;
           }
-        } catch {
-          if (!cancelled) setRouteOffers(null);
-        } finally {
-          if (!cancelled) setQuoting(false);
+          setRouteOffers(null);
+        } catch (err) {
+          if (!cancelled) {
+            setRouteOffers(null);
+            console.warn("[Vector] swap-routes:", err);
+          }
+        }
+      }
+
+      const provider = providerRef.current;
+      if (!providerReady || !provider) {
+        if (!cancelled) {
+          setErrorState({
+            text: "Wallet still connecting — wait a moment or tap Refresh, then try your amount again.",
+            info: null,
+          });
         }
         return;
       }
@@ -566,6 +570,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         });
         if (!cancelled) {
           setQuote(q);
+          setRouteOffers(null);
           sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
         }
       } catch (err) {
@@ -610,6 +615,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             }
           }
         }
+      }
       } finally {
         if (!cancelled) setQuoting(false);
       }
@@ -617,6 +623,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
     return () => {
       cancelled = true;
+      setQuoting(false);
     };
   }, [
     parsedAmountForQuote,
@@ -628,6 +635,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     recordUnroutablePair,
     providerReady,
     useOkxSequential,
+    providerRef,
   ]);
 
   useEffect(() => {
