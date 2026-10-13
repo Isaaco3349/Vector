@@ -51,7 +51,9 @@ import {
   requiresOkxSequentialSwap,
 } from "../lib/okx-swap-policy";
 import { isOkxWallet, okxInAppBrowser } from "../lib/wallet-brand";
-import { resolveSigningProvider } from "../lib/wallet-provider";
+import {
+  resolveSigningProviderCached,
+} from "../lib/wallet-provider";
 import { TokenPicker } from "./TokenPicker";
 import { useTokenBalance } from "./useTokenBalance";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
@@ -656,7 +658,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     if (!okxInAppBrowser()) return;
     const onVisible = () => {
       if (document.visibilityState !== "visible" || !address) return;
-      void resolveSigningProvider(connector, address).then((p) => {
+      void resolveSigningProviderCached(connector, address).then((p) => {
         if (p) providerRef.current = p;
       });
     };
@@ -841,7 +843,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     if (!address || !parsedAmount || sameToken || !swapQuoteReady) return;
     let provider: Eip1193Provider | null = providerRef.current;
     if (!provider) {
-      provider = await resolveSigningProvider(connector, address);
+      provider = await resolveSigningProviderCached(connector, address);
       providerRef.current = provider;
     }
     if (!provider) {

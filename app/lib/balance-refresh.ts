@@ -3,21 +3,35 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createPublicClient, http, type Hash } from "viem";
 import { arcViemChain } from "./viem-arc-chain";
+import { chainId as ARC_CHAIN_ID } from "./network";
 
-/** Invalidate wagmi balance reads so every open panel picks up new on-chain state. */
+/** Invalidate Arc balance reads only — not every wagmi query in the tab. */
 export async function invalidateOnchainBalances(
   queryClient: QueryClient,
 ): Promise<void> {
   await queryClient.invalidateQueries({
     predicate: (query) => {
       const head = query.queryKey[0];
-      return (
-        head === "balance" ||
-        head === "readContracts" ||
-        head === "readContract"
-      );
+      if (head !== "balance" && head !== "readContracts" && head !== "readContract") {
+        return false;
+      }
+      const params = query.queryKey[1] as { chainId?: number } | undefined;
+      if (params && typeof params === "object" && "chainId" in params) {
+        return params.chainId === ARC_CHAIN_ID;
+      }
+      return head === "balance" || head === "readContracts" || head === "readContract";
     },
   });
+}
+
+let invalidateDebounce: ReturnType<typeof setTimeout> | null = null;
+
+function debouncedInvalidate(queryClient: QueryClient): void {
+  if (invalidateDebounce) clearTimeout(invalidateDebounce);
+  invalidateDebounce = setTimeout(() => {
+    invalidateDebounce = null;
+    void invalidateOnchainBalances(queryClient);
+  }, 400);
 }
 
 /**
@@ -48,17 +62,17 @@ export async function refreshBalancesAfterTx(
       console.warn("[Vector] refreshBalancesAfterTx: receipt wait skipped", err);
     }
   }
-  await invalidateOnchainBalances(queryClient);
+  debouncedInvalidate(queryClient);
 }
 
-const BALANCE_POLL_DELAYS_MS = [1500, 5000] as const;
+const BALANCE_POLL_DELAYS_MS = [4000] as const;
 
-/** Re-read balances a few times — covers bridge mint lag and non-Arc source txs. */
+/** One follow-up balance read after bridge mint lag — not a global storm. */
 export function scheduleBalancePoll(queryClient: QueryClient): void {
   void (async () => {
     for (const delayMs of BALANCE_POLL_DELAYS_MS) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
-      await invalidateOnchainBalances(queryClient);
+      debouncedInvalidate(queryClient);
     }
   })();
 }

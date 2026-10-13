@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Connector } from "wagmi";
 import type { Eip1193Provider } from "../lib/appkit";
 import { okxSafeTransactionPath } from "../lib/wallet-brand";
-import { resolveSigningProvider } from "../lib/wallet-provider";
+import { resolveSigningProviderCached } from "../lib/wallet-provider";
 
 /** Ref-based signing provider; `ready` flips when resolution completes. */
 export function useWalletSigningProviderRef(
@@ -26,7 +26,7 @@ export function useWalletSigningProviderRef(
     setOkxSafePath(false);
 
     void (async () => {
-      const p = await resolveSigningProvider(connector, connectedAddress);
+      const p = await resolveSigningProviderCached(connector, connectedAddress);
       if (cancelled) return;
       providerRef.current = p;
       setOkxSafePath(okxSafeTransactionPath(connector, p ?? undefined));
