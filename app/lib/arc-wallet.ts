@@ -37,6 +37,10 @@ export async function ensureArcNetwork(provider: Eip1193Provider): Promise<void>
         method: "wallet_addEthereumChain",
         params: [arcAddEthereumChainParams()],
       });
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: chainIdHex }],
+      });
       return;
     }
     throw err;
