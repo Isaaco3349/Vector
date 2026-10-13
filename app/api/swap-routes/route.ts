@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { fetchSwapRouteOffers } from "../../lib/aggregator-swap/quotes-server";
+import {
+  fetchCircleOnlyQuote,
+  fetchSwapRouteOffers,
+} from "../../lib/aggregator-swap/quotes-server";
 import type { AggregatorPairSymbol } from "../../lib/aggregator-swap/tokens";
 import {
   rejectIfDisallowedOrigin,
@@ -61,6 +64,17 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (params.circleOnly === true) {
+      const offer = await fetchCircleOnlyQuote({
+        tokenIn,
+        tokenOut,
+        amountHuman: amount.trim(),
+        fromAddress,
+        slippageBps,
+      });
+      return NextResponse.json({ offer }, { status: 200 });
+    }
+
     const result = await fetchSwapRouteOffers({
       tokenIn,
       tokenOut,
