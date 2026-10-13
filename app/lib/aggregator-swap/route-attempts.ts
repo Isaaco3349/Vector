@@ -43,9 +43,36 @@ export function buildSwapRouteAttempts(
   return attempts;
 }
 
-/** OKX mobile: execute only the quoted best route — no Circle/LI.FI retry wall after wallet steps. */
+/** @deprecated Use buildOkxSwapRouteAttempts with token symbols. */
 export function buildOkxMobileSwapRouteAttempts(
   routes: ClientSwapRoutesResult,
+  tokenIn = "",
+  tokenOut = "",
 ): SwapRouteExecution[] {
-  return routes.best ? [routes.best] : [];
+  return buildOkxSwapRouteAttempts(routes, tokenIn, tokenOut);
+}
+
+/**
+ * OKX (extension + in-app): one wallet-facing attempt per tap.
+ * USDC ↔ EURC prefers Circle execution — fewer Kyber round-trips that stall
+ * before any confirm dialog appears.
+ */
+export function buildOkxSwapRouteAttempts(
+  routes: ClientSwapRoutesResult,
+  tokenIn: string,
+  tokenOut: string,
+): SwapRouteExecution[] {
+  const stable =
+    (tokenIn === "USDC" && tokenOut === "EURC") ||
+    (tokenIn === "EURC" && tokenOut === "USDC");
+
+  if (stable) {
+    const circleOffer = routes.offers.find((o) => o.provider === "circle");
+    if (circleOffer) {
+      return [{ provider: "circle", offer: circleOffer }];
+    }
+  }
+
+  if (routes.best) return [routes.best];
+  return [];
 }

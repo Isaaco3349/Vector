@@ -2,11 +2,29 @@
 
 import { fetchVectorApi } from "../okx-mobile-fetch";
 
+const KYBER_API_TIMEOUT_MS = 22_000;
+
 async function fetchKyberApi(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  return fetchVectorApi(input, init);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), KYBER_API_TIMEOUT_MS);
+  try {
+    return await fetchVectorApi(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        "Kyber route build timed out. Tap Swap again or try a slightly smaller amount.",
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function kyberRoutes(args: {

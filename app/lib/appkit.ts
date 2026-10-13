@@ -230,7 +230,16 @@ export async function getProviderChainId(
   wagmiChainIdFallback?: number | null,
 ): Promise<number | null> {
   try {
-    const raw = await provider.request({ method: "eth_chainId" });
+    const chainPromise = provider.request({ method: "eth_chainId" });
+    const raw = await Promise.race([
+      chainPromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("eth_chainId timed out")),
+          12_000,
+        ),
+      ),
+    ]);
     if (typeof raw === "string") {
       // parseInt handles the "0x" prefix; base 16 is explicit for clarity.
       const parsed = Number.parseInt(raw, 16);
@@ -240,7 +249,7 @@ export async function getProviderChainId(
     if (typeof raw === "number" && Number.isFinite(raw)) return raw;
     return null;
   } catch (err) {
-    console.error("[Vector] eth_chainId request failed:", err);
+    console.warn("[Vector] eth_chainId request failed:", err);
     if (wagmiChainIdFallback != null && Number.isFinite(wagmiChainIdFallback)) {
       return wagmiChainIdFallback;
     }

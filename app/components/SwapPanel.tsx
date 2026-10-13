@@ -16,9 +16,12 @@ import {
 import { fetchSwapRoutesClient } from "../lib/aggregator-swap/fetch-routes-client";
 import type { SwapRouteExecution, SwapRouteOffer } from "../lib/aggregator-swap/types";
 import type { ClientSwapRoutesResult } from "../lib/aggregator-swap/fetch-routes-client";
-import { executeSwapRoute } from "../lib/aggregator-swap/execute-client";
 import {
-  buildOkxMobileSwapRouteAttempts,
+  executeSwapRoute,
+  type SwapRouteStage,
+} from "../lib/aggregator-swap/execute-client";
+import {
+  buildOkxSwapRouteAttempts,
   buildSwapRouteAttempts,
   pairIncludesCirBtc,
 } from "../lib/aggregator-swap/route-attempts";
@@ -43,6 +46,10 @@ import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
 import { executeSwapViaSequentialTransactions } from "../lib/okx-safe-swap";
 import { logVectorActivity } from "../lib/record-vector-activity";
+import {
+  okxReuseQuotedRoutesOnExecute,
+  requiresOkxSequentialSwap,
+} from "../lib/okx-swap-policy";
 import { isOkxWallet, okxInAppBrowser } from "../lib/wallet-brand";
 import { resolveSigningProvider } from "../lib/wallet-provider";
 import { TokenPicker } from "./TokenPicker";
@@ -253,6 +260,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [swapping, setSwapping] = useState(false);
+  /** Route fetch / pre-wallet work — not the same as waiting on OKX confirm. */
+  const [preparingSwap, setPreparingSwap] = useState(false);
   /**
    * Message and Circle's own classification, held together in one piece of
    * state so the UI can show the reason, the SDK's verbatim detail, and the
@@ -303,9 +312,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
    * button label, but it matters: two wallet prompts with one generic
    * "Swapping…" is how people confirm the wrong thing or give up halfway.
    */
-  const [planStage, setPlanStage] = useState<
-    "approving" | "awaiting-approval" | "executing" | "awaiting-execution" | null
-  >(null);
+  const [planStage, setPlanStage] = useState<SwapRouteStage | null>(null);
 
   const error = errorState?.text ?? null;
   const errorInfo = errorState?.info ?? null;
@@ -337,15 +344,21 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     !bestRouteOffer || bestRouteOffer.provider === "circle";
 
   const planStageLabel =
-    planStage === "approving"
-      ? "Confirm the approval…"
-      : planStage === "awaiting-approval"
-        ? "Waiting for the approval…"
-        : planStage === "executing"
-          ? "Confirm the swap…"
-          : planStage === "awaiting-execution"
-            ? "Waiting for the swap…"
-            : null;
+    planStage === "preparing-route"
+      ? "Building route…"
+      : planStage === "approving"
+        ? "Confirm the approval…"
+        : planStage === "awaiting-approval"
+          ? "Waiting for the approval…"
+          : planStage === "executing"
+            ? "Confirm the swap…"
+            : planStage === "awaiting-execution"
+              ? "Waiting for the swap…"
+              : null;
+
+  const swapQuoteReady = Boolean(
+    displayAmountOut || fallbackPlan?.estimatedAmount,
+  );
 
   const queryClient = useQueryClient();
   const balanceIn = useTokenBalance(tokenIn);
@@ -374,29 +387,30 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const { providerRef, okxSafePath, ready: providerReady } =
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
-  const useOkxSequential =
-    okxSafePath || okxInAppBrowser() || isOkxWallet(connector);
+  const useOkxSequential = requiresOkxSequentialSwap(connector, okxSafePath);
   /** Bump to abandon an in-flight swap when the user closes the modal. */
   const swapRunRef = useRef(0);
 
   const dismissSwapModal = useCallback(() => {
     swapRunRef.current += 1;
     setSwapping(false);
+    setPreparingSwap(false);
     setPlanStage(null);
     onClose();
   }, [onClose]);
 
   const handleModalClose = useCallback(() => {
-    if (swapping) {
+    if (swapping || preparingSwap) {
       swapRunRef.current += 1;
       setSwapping(false);
+      setPreparingSwap(false);
       setPlanStage(null);
       setNotice(
         "Swap cancelled in Vector. If OKX still shows a pending confirm, open the extension and approve or reject there before trying again.",
       );
     }
     dismissSwapModal();
-  }, [dismissSwapModal, swapping]);
+  }, [dismissSwapModal, swapping, preparingSwap]);
 
   /**
    * Re-ask the wallet which chain it is on. Returns the id as well as storing
@@ -683,8 +697,148 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     });
   }
 
+  async function runOkxSequentialSwap(
+    provider: Eip1193Provider,
+    runId: number,
+  ): Promise<void> {
+    setPreparingSwap(true);
+    setPlanStage(null);
+    try {
+    const liveChainId = await getProviderChainId(provider, wagmiChainId);
+    setWalletChainId(liveChainId);
+    if (liveChainId !== ARC_CHAIN_ID) {
+      setErrorState({
+        text:
+          liveChainId === null
+            ? "Couldn't confirm which network your wallet is on, so nothing was sent. Reconnect the wallet and try again."
+            : `Your wallet is on chain ${liveChainId}, but swaps run on ${ARC_DISPLAY_NAME} (${ARC_CHAIN_ID}). Switch networks and try again — nothing was sent.`,
+        info: null,
+      });
+      return;
+    }
+
+    try {
+      await ensureArcNetwork(provider);
+    } catch {
+      setErrorState({
+        text:
+          "Couldn't switch to Arc in your wallet. Approve adding Arc (USDC gas) in OKX and try again — nothing was sent.",
+        info: null,
+      });
+      return;
+    }
+
+    const fromSymbol = asSwapSymbol(tokenIn);
+    const toSymbol = asSwapSymbol(tokenOut);
+    const aggIn = asAggregatorPair(tokenIn);
+    const aggOut = asAggregatorPair(tokenOut);
+    if (!fromSymbol || !toSymbol) {
+      setErrorState({
+        text: "This token pair is not supported for OKX swaps on Arc.",
+        info: null,
+      });
+      return;
+    }
+
+    let routes: ClientSwapRoutesResult | null = null;
+    const routeCacheKey = `${tokenIn}:${tokenOut}:${parsedAmount}:${address!.toLowerCase()}`;
+    const cached = swapRouteCacheRef.current;
+
+    if (
+      isMainnet &&
+      aggIn &&
+      aggOut &&
+      okxReuseQuotedRoutesOnExecute() &&
+      cached?.key === routeCacheKey &&
+      cached.best
+    ) {
+      routes = {
+        offers: cached.offers,
+        best: cached.best,
+        lifiExecution: null,
+      };
+    } else if (isMainnet && aggIn && aggOut) {
+      routes = await fetchSwapRoutesClient({
+        tokenIn: aggIn,
+        tokenOut: aggOut,
+        amount: String(parsedAmount),
+        fromAddress: address!,
+        slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+      });
+      swapRouteCacheRef.current = {
+        key: routeCacheKey,
+        best: routes.best,
+        offers: routes.offers,
+      };
+    }
+
+    const execArgs = {
+      provider,
+      walletAddress: address!,
+      tokenIn: fromSymbol,
+      tokenOut: toSymbol,
+      amountIn: String(parsedAmount),
+      slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+      onStage: (stage: SwapRouteStage) => setPlanStage(stage),
+    };
+
+    const finishSuccess = (txHash: string, via: string) => {
+      setTxHash(txHash);
+      setSwapViaProvider(via);
+      logVectorActivity({
+        walletAddress: address!,
+        txHash,
+        kind: "swap",
+        chainId: ARC_CHAIN_ID,
+        detail: `${tokenIn} → ${tokenOut} (${via})`,
+      });
+      void syncBalancesAfterSwap(txHash);
+    };
+
+    if (routes?.best) {
+      setSwapping(true);
+      const attempts = buildOkxSwapRouteAttempts(routes, tokenIn, tokenOut);
+      const attemptErrors: string[] = [];
+      for (const route of attempts) {
+        if (swapRunRef.current !== runId) return;
+        try {
+          const planResult = await executeSwapRoute({ ...execArgs, route });
+          finishSuccess(planResult.txHash, planResult.provider);
+          return;
+        } catch (attemptErr) {
+          attemptErrors.push(
+            `${route.provider}: ${describeRouteExecutionError(attemptErr, true)}`,
+          );
+        }
+      }
+      if (attemptErrors.length > 0) {
+        throw new Error(attemptErrors.join(" · "));
+      }
+    }
+
+    setSwapping(true);
+    const plan = await buildSwapPlan({
+      walletAddress: address!,
+      fromSymbol,
+      toSymbol,
+      amount: String(parsedAmount),
+      usdcApprovalStyle: "erc20Approve",
+      slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+    });
+    const planResult = await executeSwapPlan({
+      provider,
+      from: address!,
+      plan,
+      onStage: (stage) => setPlanStage(stage),
+    });
+    finishSuccess(planResult.executeTxHash, "circle");
+    } finally {
+      setPreparingSwap(false);
+    }
+  }
+
   async function handleSwap() {
-    if (!address || !parsedAmount || sameToken) return;
+    if (!address || !parsedAmount || sameToken || !swapQuoteReady) return;
     let provider: Eip1193Provider | null = providerRef.current;
     if (!provider) {
       provider = await resolveSigningProvider(connector, address);
@@ -709,6 +863,27 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     setNotice(null);
     setTxHash(null);
     setPlanStage(null);
+
+    if (useOkxSequential) {
+      try {
+        await runOkxSequentialSwap(provider, runId);
+      } catch (err) {
+        if (swapRunRef.current === runId) {
+          setErrorState({
+            text: describeRouteExecutionError(err, true),
+            info: null,
+          });
+        }
+      } finally {
+        setPreparingSwap(false);
+        if (swapRunRef.current === runId) {
+          setSwapping(false);
+          setPlanStage(null);
+        }
+      }
+      return;
+    }
+
     try {
       // A swap's first move is a signature bound to Arc, and a wallet on
       // another chain rejects it. Ask the wallet where it is right now — not
@@ -791,12 +966,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             tokenOut: toSymbol,
             amountIn: String(parsedAmount),
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
-            onStage: (stage: "approving" | "awaiting-approval" | "executing" | "awaiting-execution") =>
-              setPlanStage(stage),
+            onStage: (stage: SwapRouteStage) => setPlanStage(stage),
           };
-          const routeAttempts = okxInAppBrowser()
-            ? buildOkxMobileSwapRouteAttempts(routes)
-            : buildSwapRouteAttempts(routes, tokenIn, tokenOut);
+          const routeAttempts = buildSwapRouteAttempts(routes, tokenIn, tokenOut);
           const attemptErrors: string[] = [];
           for (const route of routeAttempts) {
             if (swapRunRef.current !== runId) return;
@@ -1130,8 +1302,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
                 ))}
             </ul>
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
-              You will sign <span className="font-semibold">{bestRouteOffer.label}</span>.
-              First step approves exactly{" "}
+              You will sign{" "}
+              <span className="font-semibold">
+                {okxWallet &&
+                ((tokenIn === "USDC" && tokenOut === "EURC") ||
+                  (tokenIn === "EURC" && tokenOut === "USDC"))
+                  ? "Circle"
+                  : bestRouteOffer.label}
+              </span>
+              . First step approves exactly{" "}
               <span className="font-semibold">{tokenIn}</span> (not unlimited). Arc
               gas is paid from native USDC in your wallet.
             </p>
@@ -1290,22 +1469,22 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             onClick={handleSwap}
             disabled={
               swapping ||
+              preparingSwap ||
               quoting ||
               quoteAmountPending ||
-              !displayAmountOut ||
+              !swapQuoteReady ||
               sameToken ||
               !parsedAmount
             }
             className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
           >
-            {swapping
-              ? // On the two-confirmation path, name the step. "Swapping…" over
-                // two separate wallet prompts is how people confirm the wrong
-                // one or abandon it halfway through.
-                (planStageLabel ?? "Swapping…")
-              : quoting
-                ? "Getting quote…"
-                : `Swap ${tokenIn} → ${tokenOut}`}
+            {preparingSwap
+              ? "Preparing route…"
+              : swapping
+                ? (planStageLabel ?? "Confirm in OKX…")
+                : quoting
+                  ? "Getting quote…"
+                  : `Swap ${tokenIn} → ${tokenOut}`}
           </button>
         )}
 

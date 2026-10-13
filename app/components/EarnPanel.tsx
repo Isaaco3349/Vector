@@ -21,6 +21,7 @@ import {
 } from "../lib/bridge-chains";
 import { chainId as ARC_CHAIN_ID, displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { executeEarnViaSequentialTransactions } from "../lib/okx-safe-earn";
+import { requiresOkxSequentialSwap } from "../lib/okx-swap-policy";
 import { isOkxWallet, okxInAppBrowser } from "../lib/wallet-brand";
 import { useSendBalance } from "./useSendBalance";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
@@ -69,8 +70,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
   const { providerRef, okxSafePath, ready: providerReady } =
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
-  const useOkxSequential =
-    okxSafePath || okxInAppBrowser() || isOkxWallet(connector);
+  const useOkxSequential = requiresOkxSequentialSwap(connector, okxSafePath);
 
   // Discover vaults once when the panel opens.
   useEffect(() => {
