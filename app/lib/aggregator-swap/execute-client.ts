@@ -23,7 +23,14 @@ import { withWalletRequestTimeout } from "../wallet-request-timeout";
 import { buildKyberSwapTx, fetchKyberRouteSummary } from "./kyber-client";
 import type { SwapRouteExecution } from "./types";
 
-type Stage = "approving" | "awaiting-approval" | "executing" | "awaiting-execution";
+export type SwapRouteStage =
+  | "preparing-route"
+  | "approving"
+  | "awaiting-approval"
+  | "executing"
+  | "awaiting-execution";
+
+type Stage = SwapRouteStage;
 
 function walletConfirmTimeoutMs(provider: Eip1193Provider): number {
   return okxInAppBrowser() || providerIsOkx(provider) ? 120_000 : 180_000;
@@ -281,6 +288,7 @@ async function executeKyber(
   );
   if (resumed) return resumed;
 
+  onStage?.("preparing-route");
   let prepared = await prepareKyberFromSummary(
     provider,
     from,

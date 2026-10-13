@@ -1,7 +1,10 @@
 "use client";
 
 import type { Eip1193Provider } from "./appkit";
-import { executeSwapRoute } from "./aggregator-swap/execute-client";
+import {
+  executeSwapRoute,
+  type SwapRouteStage,
+} from "./aggregator-swap/execute-client";
 import { fetchSwapRoutesClient } from "./aggregator-swap/fetch-routes-client";
 import { isMainnet } from "./network";
 import type { AggregatorPairSymbol } from "./aggregator-swap/tokens";
@@ -26,7 +29,7 @@ export async function executeSwapViaSequentialTransactions(args: {
   tokenOut: SwapSymbol;
   amountIn: string;
   slippageBps?: number;
-  onStage?: Parameters<typeof executeSwapPlan>[0]["onStage"];
+  onStage?: (stage: SwapRouteStage) => void;
 }): Promise<{ txHash: string; approveTxHash: string; provider?: string }> {
   const slippageBps = args.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
 
