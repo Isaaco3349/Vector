@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { setCookie, getCookie, deleteCookie } from "cookies-next";
 import { SocialLoginProvider } from "@circle-fin/w3s-pw-web-sdk/dist/src/types";
 import type { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
@@ -34,6 +34,8 @@ import {
   resolveCircleAppId,
   resolveGoogleClientId,
 } from "./lib/w3s-public-config";
+import { shouldInitW3sOnPageLoad } from "./lib/w3s-lazy";
+import { clearSigningProviderCache } from "./lib/wallet-provider";
 
 type LoginResult = {
   userToken: string;
@@ -67,6 +69,7 @@ export default function HomePage() {
 
   // --- Circle social-login path ---
   const sdkRef = useRef<W3SSdk | null>(null);
+  const w3sInitPromiseRef = useRef<Promise<void> | null>(null);
 
   const [sdkReady, setSdkReady] = useState(false);
   const [deviceId, setDeviceId] = useState<string>("");
@@ -95,19 +98,17 @@ export default function HomePage() {
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const initW3sSdk = useCallback(async (): Promise<void> => {
+    if (sdkRef.current) {
+      setSdkReady(true);
+      return;
+    }
+    if (w3sInitPromiseRef.current) {
+      await w3sInitPromiseRef.current;
+      return;
+    }
 
-    const initSdk = async () => {
-      // If an SDK instance already exists (e.g. a remount), don't create a
-      // second one — that would orphan the first instance mid-flight while
-      // it's processing an OAuth redirect, and its real callback would get
-      // silently dropped.
-      if (sdkRef.current) {
-        setSdkReady(true);
-        return;
-      }
-
+    w3sInitPromiseRef.current = (async () => {
       try {
         const { W3SSdk } = await import("@circle-fin/w3s-pw-web-sdk");
 
@@ -153,7 +154,7 @@ export default function HomePage() {
           activeGoogleClientId = resolveGoogleClientId();
         } catch (configErr) {
           console.error("[Vector] W3S config:", configErr);
-          if (!cancelled) setSdkReady(false);
+          setSdkReady(false);
           return;
         }
 
@@ -181,29 +182,22 @@ export default function HomePage() {
           },
         };
 
-        console.log("[Vector] mounting, current URL:", window.location.href);
-        console.log("[Vector] restored config on mount:", {
-          hasAppId: Boolean(restoredAppId),
-          hasGoogleClientId: Boolean(restoredGoogleClientId),
-          hasDeviceToken: Boolean(restoredDeviceToken),
-          hasDeviceEncryptionKey: Boolean(restoredDeviceEncryptionKey),
-        });
-
         const sdk = new W3SSdk(initialConfig, onLoginComplete);
         sdkRef.current = sdk;
-        console.log("[Vector] W3SSdk instance created");
-
-        if (!cancelled) setSdkReady(true);
+        setSdkReady(true);
       } catch (err) {
         console.error("Failed to initialize Web SDK:", err);
+        w3sInitPromiseRef.current = null;
       }
-    };
+    })();
 
-    void initSdk();
-    return () => {
-      cancelled = true;
-    };
+    await w3sInitPromiseRef.current;
   }, []);
+
+  useEffect(() => {
+    if (!shouldInitW3sOnPageLoad()) return;
+    void initW3sSdk();
+  }, [initW3sSdk]);
 
   const [deviceIdError, setDeviceIdError] = useState<string | null>(null);
   /** The single in-flight getDeviceId handshake, or null. See fetchDeviceId. */
@@ -455,6 +449,13 @@ export default function HomePage() {
   const handleConnect = async () => {
     setBusy(true);
     setStatus("Preparing secure session");
+
+    await initW3sSdk();
+    if (!sdkRef.current) {
+      setLoginError("Couldn't load Google sign-in. Refresh and try again.");
+      setBusy(false);
+      return;
+    }
 
     let id: string | null = deviceId;
     if (!id) {
@@ -764,7 +765,7 @@ export default function HomePage() {
 
               <button
                 onClick={handleConnect}
-                disabled={!sdkReady || busy}
+                disabled={busy}
                 className="w-full h-[52px] rounded-full bg-[var(--vector-pink)] text-[#0b0b0e] font-semibold text-[15px] flex items-center justify-center gap-2.5 transition-opacity disabled:opacity-40 hover:opacity-90 active:opacity-80"
               >
                 <GoogleMark />
@@ -950,7 +951,10 @@ export default function HomePage() {
                 onHistory={() => setShowHistory(true)}
                 onDisconnect={
                   connected.source === "wallet"
-                    ? () => disconnect()
+                    ? () => {
+                        clearSigningProviderCache();
+                        disconnect();
+                      }
                     : handleCircleSignOut
                 }
               />

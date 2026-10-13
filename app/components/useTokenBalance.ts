@@ -11,8 +11,8 @@ import {
 import { okxInAppBrowser } from "../lib/wallet-brand";
 import { chainId as ARC_CHAIN_ID } from "../lib/network";
 import { tokenBySymbol } from "../lib/swap-tokens";
-import { resolveSigningProvider } from "../lib/wallet-provider";
-import { useArcUsdcBalance } from "./useArcUsdcBalance";
+import { resolveSigningProviderCached } from "../lib/wallet-provider";
+import { useSharedArcUsdcBalance } from "./ArcUsdcBalanceContext";
 
 /**
  * Arc token balances for Swap / portfolio.
@@ -27,10 +27,10 @@ export function useTokenBalance(symbol: string): {
   refetch: () => Promise<void>;
 } {
   const { address, isConnected, connector } = useAccount();
-  const arcUsdc = useArcUsdcBalance();
   const token = tokenBySymbol(symbol);
 
   const isUsdc = token?.symbol === "USDC";
+  const arcUsdc = useSharedArcUsdcBalance();
   const verifiedDecimals = verifiedArcTokenDecimals(symbol);
   const isVerifiedErc20 =
     !isUsdc && token?.kind === "erc20" && !!token.address && verifiedDecimals !== null;
@@ -53,11 +53,17 @@ export function useTokenBalance(symbol: string): {
         isVerifiedErc20 &&
         !!token?.address &&
         !okxInAppBrowser(),
+      staleTime: 30_000,
+      refetchInterval: false,
     },
   });
 
   const erc20Query = useReadContracts({
-    query: { enabled: isConnected && !!address && isLegacyErc20 },
+    query: {
+      enabled: isConnected && !!address && isLegacyErc20,
+      staleTime: 30_000,
+      refetchInterval: false,
+    },
     contracts: isLegacyErc20
       ? [
           {
@@ -145,7 +151,10 @@ export function useTokenBalance(symbol: string): {
         const raw = okxInAppBrowser()
           ? await readSwapInputBalancePublic(token.address, address as `0x${string}`)
           : await (async () => {
-              const provider = await resolveSigningProvider(connector, address);
+              const provider = await resolveSigningProviderCached(
+                connector,
+                address,
+              );
               if (!provider) return null;
               return readErc20BalanceViaProvider(
                 provider,
@@ -172,11 +181,11 @@ export function useTokenBalance(symbol: string): {
   ]);
 
   const refetch = useCallback(async () => {
-    await arcUsdc.refetch();
+    if (isUsdc) await arcUsdc.refetch();
     await balanceQuery.refetch();
     await erc20Query.refetch();
     setWalletFetchGen((g) => g + 1);
-  }, [arcUsdc, balanceQuery, erc20Query]);
+  }, [arcUsdc, balanceQuery, erc20Query, isUsdc]);
 
   if (isUsdc) {
     return {

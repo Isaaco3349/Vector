@@ -4,10 +4,22 @@ import { useEffect, useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { wagmiConfig } from "./wagmi-config";
+import { ArcUsdcBalanceProvider } from "./components/ArcUsdcBalanceContext";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 export function Providers({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
+            staleTime: 25_000,
+          },
+        },
+      }),
+  );
 
   // Belt-and-suspenders for the stale-deploy "Failed to load chunk" crash.
   // app/error.tsx + app/global-error.tsx catch chunk errors thrown during
@@ -71,9 +83,9 @@ export function Providers({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
       <QueryClientProvider client={queryClient}>
-        {children}
+        <ArcUsdcBalanceProvider>{children}</ArcUsdcBalanceProvider>
         <ThemeToggle />
       </QueryClientProvider>
     </WagmiProvider>

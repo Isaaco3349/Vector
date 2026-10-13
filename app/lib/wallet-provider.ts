@@ -60,8 +60,8 @@ export function okxInjectedEip1193Provider(): Eip1193Provider | null {
  * (common with multiple extensions fighting over `window.ethereum`).
  */
 function eip6963DiscoveryTimeoutMs(): number {
-  if (typeof navigator === "undefined") return 400;
-  return /android|iphone|ipad|mobile/i.test(navigator.userAgent) ? 900 : 400;
+  if (typeof navigator === "undefined") return 250;
+  return /android|iphone|ipad|mobile/i.test(navigator.userAgent) ? 700 : 250;
 }
 
 export async function discoverEip6963Provider(
@@ -116,8 +116,14 @@ export async function resolveWalletEip1193Provider(
   const okxDirect = okxInjectedEip1193Provider();
   if (okxDirect) return okxDirect;
 
-  const okx6963 = await discoverEip6963Provider(OKX_WALLET_RDNS);
-  if (okx6963) return okx6963;
+  const shouldDiscoverOkx =
+    !connector ||
+    isOkxWallet(connector) ||
+    connector.id === "injected";
+  if (shouldDiscoverOkx) {
+    const okx6963 = await discoverEip6963Provider(OKX_WALLET_RDNS);
+    if (okx6963) return okx6963;
+  }
 
   if (typeof window !== "undefined") {
     const eth = (window as unknown as { ethereum?: unknown }).ethereum;
@@ -265,4 +271,36 @@ export async function resolveSigningProvider(
   return createOkxSafeEip1193Provider(raw, {
     force: inOkxApp || providerIsOkx(raw),
   });
+}
+
+let signingProviderCache: {
+  key: string;
+  provider: Eip1193Provider | null;
+  expiresAt: number;
+} | null = null;
+
+export function clearSigningProviderCache(): void {
+  signingProviderCache = null;
+}
+
+/** Session cache — avoids repeated EIP-6963 / OKX probes when opening panels. */
+export async function resolveSigningProviderCached(
+  connector: WagmiConnectorLike | undefined,
+  connectedAddress?: string | null,
+): Promise<Eip1193Provider | null> {
+  const key = `${connector?.id ?? "none"}:${connectedAddress?.toLowerCase() ?? ""}`;
+  if (
+    signingProviderCache &&
+    signingProviderCache.key === key &&
+    Date.now() < signingProviderCache.expiresAt
+  ) {
+    return signingProviderCache.provider;
+  }
+  const provider = await resolveSigningProvider(connector, connectedAddress);
+  signingProviderCache = {
+    key,
+    provider,
+    expiresAt: Date.now() + 120_000,
+  };
+  return provider;
 }

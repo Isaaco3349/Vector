@@ -5,7 +5,7 @@ import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import { arcUsdcNativeToErc20Minor } from "../lib/arc-usdc-balance";
 import { bridgeChainById, type BridgeChainId } from "../lib/bridge-chains";
-import { useArcUsdcBalance } from "./useArcUsdcBalance";
+import { useSharedArcUsdcBalance } from "./ArcUsdcBalanceContext";
 
 function arcUsdcBalanceBaseUnits(
   nativeWei: bigint | null,
@@ -35,7 +35,7 @@ export function useBridgeBalance(chainId: BridgeChainId): {
 } {
   const { address, isConnected } = useAccount();
   const chain = bridgeChainById(chainId);
-  const arcUsdc = useArcUsdcBalance();
+  const arcUsdc = useSharedArcUsdcBalance();
 
   const isArc = isArcChain(chain?.appKitChain);
   const isErc20 =

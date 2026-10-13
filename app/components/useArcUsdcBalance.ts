@@ -28,11 +28,19 @@ export function useArcUsdcBalance(): {
   const nativeQuery = useBalance({
     address,
     chainId: ARC_CHAIN_ID,
-    query: { enabled: isConnected && !!address },
+    query: {
+      enabled: isConnected && !!address,
+      staleTime: 30_000,
+      refetchInterval: false,
+    },
   });
 
   const erc20Query = useReadContracts({
-    query: { enabled: isConnected && !!address },
+    query: {
+      enabled: isConnected && !!address,
+      staleTime: 30_000,
+      refetchInterval: false,
+    },
     contracts: [
       {
         chainId: ARC_CHAIN_ID,
