@@ -185,9 +185,11 @@ export function useTokenBalance(symbol: string): {
 
   const refetch = useCallback(async () => {
     clearArcPublicReadCache();
-    if (isUsdc) await arcUsdc.refetch();
-    await balanceQuery.refetch();
-    await erc20Query.refetch();
+    await arcSnapshot?.refresh();
+    if (isUsdc) {
+      await arcUsdc.refetch();
+      return;
+    }
     if (isVerifiedErc20 && address && token?.address) {
       try {
         const raw = await readSwapInputBalancePublic(
@@ -199,7 +201,8 @@ export function useTokenBalance(symbol: string): {
         setManualPublicRaw(null);
       }
     }
-    await arcSnapshot?.refresh();
+    await balanceQuery.refetch();
+    await erc20Query.refetch();
     setWalletFetchGen((g) => g + 1);
   }, [
     arcUsdc,

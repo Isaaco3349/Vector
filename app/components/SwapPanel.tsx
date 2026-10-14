@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
-import { flushBalancesAfterSwap } from "../lib/balance-refresh";
+import {
+  flushArcBalancesImmediate,
+  flushBalancesAfterSwap,
+} from "../lib/balance-refresh";
 import {
   arcExplorerTxUrl,
   chainId as ARC_CHAIN_ID,
@@ -35,8 +38,7 @@ import {
   swapProviderExecutable,
   swapProviderQuoteOnly,
 } from "../lib/aggregator-swap/routing-policy";
-import { clearArcPublicReadCache } from "../lib/arc-erc20-read";
-import { invalidateOnchainBalances } from "../lib/balance-refresh";
+import { useArcBalancesSnapshot } from "./useArcBalancesPoll";
 import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
 import {
   classifySwapError,
@@ -286,6 +288,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const [swapping, setSwapping] = useState(false);
   /** Route fetch / pre-wallet work — not the same as waiting on OKX confirm. */
   const [preparingSwap, setPreparingSwap] = useState(false);
+  const [balancesRefreshing, setBalancesRefreshing] = useState(false);
   /**
    * Message and Circle's own classification, held together in one piece of
    * state so the UI can show the reason, the SDK's verbatim detail, and the
@@ -414,6 +417,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   );
 
   const queryClient = useQueryClient();
+  const arcBalances = useArcBalancesSnapshot();
   const balanceIn = useTokenBalance(tokenIn);
   const balanceOut = useTokenBalance(tokenOut);
 
@@ -428,10 +432,22 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   );
 
   const refreshSwapBalances = useCallback(async () => {
-    clearArcPublicReadCache();
-    await invalidateOnchainBalances(queryClient);
-    await Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
-  }, [queryClient, balanceIn.refetch, balanceOut.refetch]);
+    setBalancesRefreshing(true);
+    try {
+      await flushArcBalancesImmediate(
+        queryClient,
+        arcBalances?.refresh,
+        [balanceIn.refetch, balanceOut.refetch],
+      );
+    } finally {
+      setBalancesRefreshing(false);
+    }
+  }, [
+    queryClient,
+    arcBalances?.refresh,
+    balanceIn.refetch,
+    balanceOut.refetch,
+  ]);
   const arcWalletDesync =
     tokenIn === "USDC" && balanceIn.arcWalletDesync === true;
 
@@ -1498,10 +1514,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={refreshSwapBalances}
-              className="vector-modal-close !min-w-0 px-3"
+              onClick={() => void refreshSwapBalances()}
+              disabled={balancesRefreshing}
+              className="vector-modal-close !min-w-0 px-3 disabled:opacity-50"
             >
-              Refresh
+              {balancesRefreshing ? "Refreshing…" : "Refresh"}
             </button>
             <button type="button" onClick={handleModalClose} className="vector-modal-close">
               Close
@@ -1532,7 +1549,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <BalanceRow
             label="Balance"
             balance={balanceIn.formatted}
-            isLoading={balanceIn.isLoading}
+            isLoading={balanceIn.isLoading || balancesRefreshing}
             symbol={tokenIn}
             onMax={
               balanceIn.maxSpendable
@@ -1601,7 +1618,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <BalanceRow
             label="Balance"
             balance={balanceOut.formatted}
-            isLoading={balanceOut.isLoading}
+            isLoading={balanceOut.isLoading || balancesRefreshing}
             symbol={tokenOut}
           />
         </div>

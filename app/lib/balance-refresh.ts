@@ -81,6 +81,22 @@ export async function flushBalancesAfterSwap(
   }
 }
 
+/**
+ * Manual Refresh in Swap/Bridge: server Arc RPC first, then invalidate wagmi cache.
+ */
+export async function flushArcBalancesImmediate(
+  queryClient: QueryClient,
+  serverRefresh: (() => Promise<void>) | undefined,
+  tokenRefetches: Array<() => Promise<void>>,
+): Promise<void> {
+  clearArcPublicReadCache();
+  if (serverRefresh) {
+    await serverRefresh();
+  }
+  await invalidateOnchainBalances(queryClient);
+  await Promise.all(tokenRefetches.map((fn) => fn()));
+}
+
 /** One follow-up balance read after bridge mint lag — not a global storm. */
 export function scheduleBalancePoll(queryClient: QueryClient): void {
   void (async () => {
