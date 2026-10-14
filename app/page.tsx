@@ -1196,7 +1196,9 @@ function WalletCard({
   const cirBtc =
     source === "wallet" ? cirBtcOnChain.formatted : cirBtcBalance ?? null;
   const cirBtcNum = cirBtc !== null && cirBtc !== "" ? Number(cirBtc) : null;
-  const hasCirBtc = cirBtcNum !== null && Number.isFinite(cirBtcNum) && cirBtcNum > 0;
+  const hasCirBtc =
+    (cirBtcNum !== null && Number.isFinite(cirBtcNum) && cirBtcNum > 0) ||
+    (source === "wallet" && cirBtcOnChain.isLoading);
 
   // Arc's gas token IS USDC, so a 0-balance wallet is stuck until funded — show
   // a faucet nudge in that case.
@@ -1253,7 +1255,9 @@ function WalletCard({
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--vector-text-dim)]" />
               cirBTC
             </span>
-            <span className="text-[14px] font-mono">{cirBtc}</span>
+            <span className="text-[14px] font-mono">
+              {cirBtcOnChain.isLoading && !cirBtc ? "…" : (cirBtc ?? "0")}
+            </span>
           </div>
         </div>
       )}

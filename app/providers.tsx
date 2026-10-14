@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { wagmiConfig } from "./wagmi-config";
+import { ArcBalancesProvider } from "./components/useArcBalancesPoll";
 import { ArcUsdcBalanceProvider } from "./components/ArcUsdcBalanceContext";
 import { ThemeToggle } from "./components/ThemeToggle";
 
@@ -85,7 +86,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
       <QueryClientProvider client={queryClient}>
-        <ArcUsdcBalanceProvider>{children}</ArcUsdcBalanceProvider>
+        <ArcBalancesProvider>
+          <ArcUsdcBalanceProvider>{children}</ArcUsdcBalanceProvider>
+        </ArcBalancesProvider>
         <ThemeToggle />
       </QueryClientProvider>
     </WagmiProvider>
