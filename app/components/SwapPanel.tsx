@@ -3,10 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
-import {
-  refreshBalancesAfterTx,
-  scheduleBalancePoll,
-} from "../lib/balance-refresh";
+import { flushBalancesAfterSwap } from "../lib/balance-refresh";
 import {
   arcExplorerTxUrl,
   chainId as ARC_CHAIN_ID,
@@ -379,9 +376,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     fallbackPlan?.estimatedAmount ??
     null;
 
-  const showCircleQuoteDetails =
-    !bestRouteOffer || bestRouteOffer.provider === "circle";
-
   const planStageLabel =
     planStage === "preparing-route"
       ? "Building route…"
@@ -405,10 +399,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
   const syncBalancesAfterSwap = useCallback(
     async (txHash: string | null) => {
-      void refreshBalancesAfterTx(queryClient, txHash).then(() =>
-        scheduleBalancePoll(queryClient),
-      );
-      await Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
+      await flushBalancesAfterSwap(queryClient, txHash, [
+        balanceIn.refetch,
+        balanceOut.refetch,
+      ]);
     },
     [queryClient, balanceIn.refetch, balanceOut.refetch],
   );
@@ -429,10 +423,18 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const useOkxSequential = requiresOkxSequentialSwap(connector, okxSafePath);
   const stablePair = externalStableCircleFastPath(isMainnet, tokenIn, tokenOut);
   const stableCircleFastPath = stablePair && !compareAggregatorPrices;
-  const vectorBuild =
-    typeof process.env.NEXT_PUBLIC_VECTOR_BUILD === "string"
-      ? process.env.NEXT_PUBLIC_VECTOR_BUILD
-      : "dev";
+
+  const swapFeeLine = useMemo(() => {
+    const vectorFee = formatVectorFeeLabel();
+    if (stableCircleFastPath && quote?.amountOut) {
+      return vectorFee;
+    }
+    if (activeRouteOffer?.provider === "circle" || !activeRouteOffer) {
+      return vectorFee;
+    }
+    return `${vectorFee} on Circle routes · ${activeRouteOffer.label} fees on confirm`;
+  }, [stableCircleFastPath, quote?.amountOut, activeRouteOffer]);
+
   /** Bump to abandon an in-flight swap when the user closes the modal. */
   const swapRunRef = useRef(0);
 
@@ -1366,7 +1368,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           text: "Swap submitted, but no transaction hash was returned. Check your wallet activity to confirm.",
           info: null,
         });
-        scheduleBalancePoll(queryClient);
+        void flushBalancesAfterSwap(queryClient, null, [
+          balanceIn.refetch,
+          balanceOut.refetch,
+        ]);
       }
     } catch (err) {
       const described = describeSwapError(
@@ -1518,139 +1523,77 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           />
         </div>
 
-        {/* Quote detail */}
-        {stablePair && !compareAggregatorPrices && quote?.amountOut && (
-          <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
+        {(stableCircleFastPath && quote?.amountOut) ||
+        (routeOffers && routeOffers.length > 0) ? (
+          <div className="mb-3 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
-              Swap route (Circle fast path)
+              Routes
             </p>
-            <p className="text-[12px] font-mono text-[var(--vector-pink)] font-semibold">
-              ✓ Circle: ~{quote.amountOut} {tokenOut}
-            </p>
-            <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
-              Default for USDC ↔ EURC: server-side Circle quote (no wallet SDK) so
-              Binance/OKX/MetaMask don&apos;t freeze Chrome. Kyber/LI.FI/Uniswap
-              routing is available for demo via compare below.
-            </p>
-            <button
-              type="button"
-              onClick={() => setCompareAggregatorPrices(true)}
-              className="mt-2 text-[11px] font-semibold text-[var(--vector-pink)] hover:underline"
-            >
-              Compare Kyber + LI.FI prices →
-            </button>
-          </div>
-        )}
-
-        {stablePair && compareAggregatorPrices && (
-          <p className="mb-2 text-[11px] text-[var(--vector-text-dim)]">
-            Comparing all Arc engines (server quotes).{" "}
-            <button
-              type="button"
-              onClick={() => setCompareAggregatorPrices(false)}
-              className="font-semibold text-[var(--vector-pink)] hover:underline"
-            >
-              Back to Circle fast path
-            </button>
-          </p>
-        )}
-
-        {(!stableCircleFastPath || compareAggregatorPrices) &&
-          bestRouteOffer &&
-          routeOffers &&
-          routeOffers.length > 0 && (
-          <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
-              Swap routes on Arc (tap to execute)
-            </p>
-            <ul className="space-y-1.5 text-[12px] font-mono">
-              {[...routeOffers]
-                .sort((a, b) => {
-                  const diff = BigInt(b.amountOut) - BigInt(a.amountOut);
-                  return diff > BigInt(0) ? 1 : diff < BigInt(0) ? -1 : 0;
-                })
-                .map((o) => {
-                  const active =
-                    (selectedRouteProvider ?? bestRouteOffer.provider) ===
-                    o.provider;
-                  return (
-                    <li key={o.provider}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedRouteProvider(o.provider)}
-                        className={`w-full text-left rounded-lg px-2 py-1 transition-colors ${
-                          active
-                            ? "bg-[var(--vector-pink)]/10 text-[var(--vector-pink)] font-semibold"
-                            : "text-[var(--vector-text-dim)] hover:bg-[var(--vector-surface)]"
-                        }`}
-                      >
-                        {active ? "✓ " : "  "}
-                        {o.label}: ~{o.amountOutHuman} {tokenOut}
-                        {o.sublabel ? (
-                          <span className="block text-[10px] font-normal opacity-80 mt-0.5">
-                            {o.sublabel}
-                          </span>
-                        ) : null}
-                      </button>
-                    </li>
-                  );
-                })}
-            </ul>
-            <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
-              You will sign{" "}
-              <span className="font-semibold">
-                {activeRouteOffer?.label ?? bestRouteOffer.label}
-              </span>
-              . LI.FI may route via Uniswap pools on Arc; Kyber uses its own
-              aggregator. Earn (Morpho-style vaults) is separate under the Earn tab.
-              First step approves exactly{" "}
-              <span className="font-semibold">{tokenIn}</span> (not unlimited).
-            </p>
-            {pairIncludesCirBtc(tokenIn, tokenOut) && (
-              <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
-                cirBTC on Arc mainnet executes via KyberSwap or LI.FI only. Circle
-                lines are price comparisons — not used when you confirm a cirBTC swap.
+            {stableCircleFastPath && quote?.amountOut ? (
+              <p className="text-[12px] font-mono text-[var(--vector-pink)] font-semibold">
+                ✓ Circle · ~{quote.amountOut} {tokenOut}
               </p>
+            ) : (
+              <ul className="space-y-1 text-[12px] font-mono">
+                {[...(routeOffers ?? [])]
+                  .sort((a, b) => {
+                    const diff = BigInt(b.amountOut) - BigInt(a.amountOut);
+                    return diff > BigInt(0) ? 1 : diff < BigInt(0) ? -1 : 0;
+                  })
+                  .map((o) => {
+                    const active =
+                      (selectedRouteProvider ?? bestRouteOffer?.provider) ===
+                      o.provider;
+                    const executable =
+                      !pairIncludesCirBtc(tokenIn, tokenOut) ||
+                      o.provider !== "circle";
+                    return (
+                      <li key={o.provider}>
+                        <button
+                          type="button"
+                          disabled={!executable}
+                          onClick={() =>
+                            executable && setSelectedRouteProvider(o.provider)
+                          }
+                          className={`w-full text-left rounded-lg px-2 py-1 transition-colors disabled:opacity-40 ${
+                            active
+                              ? "bg-[var(--vector-pink)]/10 text-[var(--vector-pink)] font-semibold"
+                              : "text-[var(--vector-text-dim)] hover:bg-[var(--vector-surface)]"
+                          }`}
+                        >
+                          {active ? "✓ " : "  "}
+                          {o.label}: ~{o.amountOutHuman} {tokenOut}
+                        </button>
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+            {stablePair && !compareAggregatorPrices && (
+              <button
+                type="button"
+                onClick={() => setCompareAggregatorPrices(true)}
+                className="mt-2 text-[10px] text-[var(--vector-text-dim)] hover:text-[var(--vector-pink)]"
+              >
+                Compare all routes
+              </button>
+            )}
+            {stablePair && compareAggregatorPrices && (
+              <button
+                type="button"
+                onClick={() => setCompareAggregatorPrices(false)}
+                className="mt-2 text-[10px] text-[var(--vector-text-dim)] hover:text-[var(--vector-pink)]"
+              >
+                Circle fast path
+              </button>
             )}
           </div>
-        )}
+        ) : null}
 
-        {showCircleQuoteDetails && quote && (quote.rate || quote.feeText) && (
-          <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 space-y-1">
-            {quote.rate && <div>Rate: {quote.rate}</div>}
-            <div>{formatVectorFeeLabel()}</div>
-            {quote.feeText && <div>Fee: {quote.feeText}</div>}
-            {slippageBps !== null && (
-              <div>Slippage tolerance: {formatBps(slippageBps)} (you raised this)</div>
-            )}
-          </div>
-        )}
-
-        {bestRouteOffer && bestRouteOffer.provider !== "circle" && (
-          <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4">
-            {formatVectorFeeLabel()} applies on Circle routes; aggregator routes
-            use {bestRouteOffer.label} network fees on confirm.
-          </div>
-        )}
-
-        {/* Priced through POST /swap because GET /quote returned "not found"
-            for this pair. Said out loud, because it changes what the user is
-            about to do: two wallet confirmations instead of one, and no rate or
-            fee breakdown — that endpoint doesn't return one, and Vector won't
-            compute a rate itself and present it as Circle's. */}
-        {fallbackPlan && !swapping && !txHash && (
-          <div className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed space-y-1">
-            <div>
-              Priced through Circle&apos;s swap endpoint: {fallbackPlan.amount}{" "}
-              {fallbackPlan.fromSymbol} → ~{fallbackPlan.estimatedAmount}{" "}
-              {fallbackPlan.toSymbol}
-            </div>
-            <div>{formatVectorFeeLabel()}</div>
-            <div>
-              This route takes two confirmations in your wallet — an approval,
-              then the swap. Nothing moves until you confirm the second one.
-            </div>
-          </div>
+        {(swapQuoteReady || fallbackPlan) && (
+          <p className="text-[11px] text-[var(--vector-text-dim)] font-mono mb-3">
+            {swapFeeLine}
+          </p>
         )}
 
         {error && !txHash && (
@@ -1659,22 +1602,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             {/* Circle's own words and error code, kept visible. Paraphrasing
                 alone is how a wrong diagnosis goes unnoticed for weeks; with the
                 code on screen, the next report is one line instead of a guess. */}
-            {errorInfo?.detail &&
-              !isEmptyErrorDetail(errorInfo.detail) &&
-              errorInfo.kind !== "user-cancelled" && (
-              <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)] font-mono break-words">
-                Circle reported: {errorInfo.detail}
-                {errorInfo.name && (
-                  <>
-                    {" ["}
-                    {errorInfo.name}
-                    {errorInfo.code !== null ? ` ${errorInfo.code}` : ""}
-                    {errorInfo.recoverability ? `, ${errorInfo.recoverability}` : ""}
-                    {"]"}
-                  </>
-                )}
-              </p>
-            )}
             {/* The one case with a real remedy: Circle could price the trade but
                 not inside the tolerance. Offered, never applied automatically —
                 a looser tolerance is a worse price, so it needs a deliberate tap. */}
@@ -1710,10 +1637,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             title="Swap successful"
             subtitle={
               swapViaProvider
-                ? `Routed via ${swapViaProvider === "kyber" ? "KyberSwap" : swapViaProvider === "lifi" ? "LI.FI" : "Circle"} — open explorer for on-chain details.`
-                : bestRouteOffer
-                  ? `Routed via ${bestRouteOffer.label}.`
-                  : undefined
+                ? `Via ${swapViaProvider === "kyber" ? "KyberSwap" : swapViaProvider === "lifi" ? "LI.FI" : "Circle"}`
+                : undefined
             }
             txHash={txHash}
             explorerUrl={arcExplorerTxUrl(txHash)}
@@ -1721,6 +1646,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               setTxHash(null);
               setErrorState(null);
               setSwapViaProvider(null);
+              void flushBalancesAfterSwap(queryClient, null, [
+                balanceIn.refetch,
+                balanceOut.refetch,
+              ]);
             }}
           />
         )}
@@ -1733,23 +1662,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             mistake that pulled cirBTC from this selector. No "pick another pair"
             instruction either: with a short token list there may not be one, and
             telling someone to do something impossible is worse than silence. */}
-        {pairIsUnroutable && !error && (
-          <p className="text-[12px] text-[var(--vector-text-dim)] font-mono mb-4 leading-relaxed">
-            Circle returned &quot;not found&quot; for {tokenIn} → {tokenOut} on{" "}
-            {ARC_DISPLAY_NAME} the last time Vector priced it, on both of the endpoints
-            it can ask. Changing the amount tries again.
-          </p>
-        )}
-
         {needsChainSwitch ? (
           <div>
-            <p className="text-[12px] text-[var(--vector-text-dim)] leading-relaxed mb-3 text-center">
-              Swaps run on {ARC_DISPLAY_NAME}, and your wallet is on{" "}
-              <span className="font-mono">
-                chain {walletChainId ?? wagmiChainId ?? "?"}
-              </span>
-              . Switch
-              networks to continue — nothing has been sent.
+            <p className="text-[12px] text-[var(--vector-text-dim)] mb-3 text-center">
+              Switch to {ARC_DISPLAY_NAME} to swap.
             </p>
             <button
               onClick={handleSwitch}
@@ -1785,20 +1701,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         )}
 
         {swapDisabledReason && !needsChainSwitch && (
-          <p className="mt-2 text-[11px] text-center text-[var(--vector-text-dim)] leading-relaxed">
+          <p className="mt-2 text-[10px] text-center text-[var(--vector-text-dim)]">
             {swapDisabledReason}
           </p>
         )}
-
-        <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          Arc integrations: Circle Stablecoin Kit · KyberSwap · LI.FI (Uniswap/Morpho
-          on Arc) · Earn: Morpho-style vaults via Circle. Quotes run on Vector&apos;s
-          servers — not through your wallet — so extensions don&apos;t block pricing.
-        </p>
-        <p className="mt-1 text-[10px] text-center text-[var(--vector-text-dim)] opacity-70">
-          Build {vectorBuild}. Demo tip: one wallet extension, incognito, USDC ↔ EURC
-          fast path; tap Compare for Kyber/LI.FI.
-        </p>
     </VectorModalShell>
   );
 }
@@ -1845,6 +1751,9 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
     return okx
       ? "Arc balance check was busy. Wait a few seconds, tap Refresh, then try the swap again."
       : "Arc RPC rate limit — wait a moment and retry.";
+  }
+  if (/RPC_ENDPOINT_ERROR|RPC endpoint error/i.test(blob)) {
+    return "Arc RPC was unreachable for this route. Tap Refresh, or pick Kyber/LI.FI for cirBTC (Circle is quote-only on that pair).";
   }
   const short = blob ? sanitizeRouteErrorDetail(blob) : "";
   if (short) return short;
