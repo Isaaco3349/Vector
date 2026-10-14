@@ -13,7 +13,8 @@ import { errorTextBlob } from "./wallet-errors";
 import { arcUsdcAddress, rpcUrl } from "./network";
 import { arcViemChain } from "./viem-arc-chain";
 
-const ARC_PUBLIC_READ_FALLBACK_RPC = "https://rpc.arc.network/";
+const ARC_PUBLIC_READ_FALLBACK_RPC = "https://rpc.mainnet.arc.io";
+const ARC_PUBLIC_READ_FALLBACK_RPC_ALT = "https://rpc.arc.network/";
 const ARC_READ_CACHE_MS = 5_000;
 
 let arcReadClient: ReturnType<typeof createPublicClient> | null = null;
@@ -25,7 +26,11 @@ function arcReadRpcUrls(): string[] {
   const primary = rpcUrl.trim();
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of [primary, ARC_PUBLIC_READ_FALLBACK_RPC]) {
+  for (const raw of [
+    primary,
+    ARC_PUBLIC_READ_FALLBACK_RPC,
+    ARC_PUBLIC_READ_FALLBACK_RPC_ALT,
+  ]) {
     const u = raw.trim();
     if (!u) continue;
     const key = u.replace(/\/+$/, "").toLowerCase();

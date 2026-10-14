@@ -35,7 +35,8 @@ if (isMainnet && !mainnetArcFromKit && typeof console !== "undefined") {
   );
 }
 
-const FALLBACK_MAINNET_RPC = "https://rpc.arc.network/";
+const FALLBACK_MAINNET_RPC = "https://rpc.mainnet.arc.io";
+const FALLBACK_MAINNET_RPC_ALT = "https://rpc.arc.network/";
 const FALLBACK_MAINNET_EXPLORER = "https://arcscan.app";
 const TESTNET_RPC = "https://rpc.testnet.arc.network/";
 const TESTNET_EXPLORER = "https://testnet.arcscan.app";
