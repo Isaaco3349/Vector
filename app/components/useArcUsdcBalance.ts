@@ -58,11 +58,8 @@ export function useArcUsdcBalance(): {
 
   const refetch = useCallback(async () => {
     clearArcPublicReadCache();
-    await Promise.all([
-      nativeQuery.refetch(),
-      erc20Query.refetch(),
-      arcSnapshot?.refresh(),
-    ]);
+    await arcSnapshot?.refresh();
+    await Promise.all([nativeQuery.refetch(), erc20Query.refetch()]);
   }, [nativeQuery, erc20Query, arcSnapshot]);
 
   if (nativeQuery.isLoading || erc20Query.isLoading) {

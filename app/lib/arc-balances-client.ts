@@ -19,6 +19,7 @@ export async function fetchArcBalances(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ address }),
+      cache: "no-store",
     });
     const data = (await res.json()) as ArcBalancesSnapshot & { error?: string };
     if (!res.ok) return null;

@@ -54,10 +54,13 @@ function useArcBalancesPoll(): ArcBalancesValue {
     const gen = ++genRef.current;
     setIsLoading(true);
     clearArcPublicReadCache();
-    const data = await fetchArcBalances(address as `0x${string}`);
-    if (gen !== genRef.current) return;
-    setSnapshot(data);
-    setIsLoading(false);
+    try {
+      const data = await fetchArcBalances(address as `0x${string}`);
+      if (gen !== genRef.current) return;
+      setSnapshot(data);
+    } finally {
+      if (gen === genRef.current) setIsLoading(false);
+    }
   }, [address, isConnected]);
 
   useEffect(() => {
