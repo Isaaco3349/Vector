@@ -52,7 +52,12 @@ import {
   walletReportsArc,
 } from "../lib/switch-to-arc";
 import { formatVectorFeeLabel } from "../lib/fees";
-import { errorTextBlob, isEmptyErrorDetail } from "../lib/wallet-errors";
+import {
+  errorTextBlob,
+  friendlySwapExecutionError,
+  isEmptyErrorDetail,
+  sanitizeWalletDetail,
+} from "../lib/wallet-errors";
 import { TxSuccessCard } from "./TxSuccessCard";
 import { executeSwapPlan } from "../lib/external-swap";
 import { buildSwapPlan, type SwapPlan, type SwapSymbol } from "../lib/google-swap";
@@ -335,7 +340,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
    */
   const [planStage, setPlanStage] = useState<SwapRouteStage | null>(null);
 
-  const error = errorState?.text ?? null;
+  const error = errorState?.text
+    ? sanitizeWalletDetail(errorState.text)
+    : null;
   const errorInfo = errorState?.info ?? null;
   const effectiveSlippageBps = slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   /** The next looser tolerance on offer, or null once the ladder runs out. */
@@ -1798,6 +1805,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
 function describeRouteExecutionError(err: unknown, okx: boolean): string {
   const blob = errorTextBlob(err);
+  if (
+    /eth_getTransactionReceipt|HTTP request failed|failed to fetch|fetch failed|Still waiting for Arc/i.test(
+      blob,
+    )
+  ) {
+    return friendlySwapExecutionError(err);
+  }
   if (/user rejected|rejected the request|denied|4001/i.test(blob)) {
     return "You cancelled in your wallet. Nothing was sent.";
   }
@@ -1812,7 +1826,7 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
   if (/failed to fetch|networkerror|load failed|network request failed|could not reach vector/i.test(blob)) {
     return okx
       ? "OKX paused the connection while you were signing. If approval already succeeded, tap Swap again for the swap step only. Otherwise tap Refresh and retry once."
-      : blob;
+      : friendlySwapExecutionError(err);
   }
   if (/origin_not_allowed|ORIGIN_NOT_ALLOWED|vector app origin/i.test(blob)) {
     return okx

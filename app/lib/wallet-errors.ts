@@ -64,6 +64,9 @@ export function sanitizeWalletDetail(raw: string): string {
     /\nContract Call:[\s\S]*/i,
     /\nRaw Call Arguments:[\s\S]*/i,
     /\n\nDocs: https:\/\/viem\.sh[\s\S]*/i,
+    /\n\nURL: https:\/\/rpc\.[\s\S]*/i,
+    /\nRequest body:[\s\S]*/i,
+    /\nVersion: viem@[\s\S]*/i,
   ];
   for (const re of cutPatterns) {
     s = s.replace(re, "").trim();
@@ -115,6 +118,34 @@ export function friendlyWalletError(err: unknown, fallback: string): string {
     );
   }
   return fallback;
+}
+
+/** Swap/earn execution — never show viem HTTP dumps in the panel. */
+export function friendlySwapExecutionError(err: unknown, txHint?: string): string {
+  const blob = errorTextBlob(err);
+  if (isWalletUserRejection(blob)) {
+    return "You cancelled in your wallet. Nothing was sent.";
+  }
+  if (
+    /eth_getTransactionReceipt|HTTP request failed|failed to fetch|fetch failed/i.test(
+      blob,
+    )
+  ) {
+    const hint = txHint
+      ? ` Transaction: ${txHint.slice(0, 10)}…`
+      : "";
+    return (
+      "Your wallet likely broadcast the transaction, but Vector could not confirm it on Arc RPC from the browser." +
+      hint +
+      " Open wallet Activity or Arcscan. If approval succeeded, tap Swap again for the swap step only."
+    );
+  }
+  if (/Still waiting for Arc to confirm/i.test(blob)) {
+    return sanitizeWalletDetail(blob);
+  }
+  const short = sanitizeWalletDetail(blob);
+  if (short) return short;
+  return "Swap did not finish. Check your wallet activity before trying again.";
 }
 
 /** Bridge panel: App Kit returned state:error with a detail string. */
