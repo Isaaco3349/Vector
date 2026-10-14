@@ -29,13 +29,15 @@ const CIRCLE_BASE_URL =
 
 /** Don't let a slow Kyber/LI.FI leg block the whole quote comparison. */
 const UPSTREAM_QUOTE_TIMEOUT_MS = 14_000;
+const LIFI_CIRBTC_QUOTE_TIMEOUT_MS = 24_000;
 
 async function fetchWithTimeout(
   input: string,
   init?: RequestInit,
+  timeoutMs = UPSTREAM_QUOTE_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UPSTREAM_QUOTE_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } finally {
@@ -117,6 +119,7 @@ async function quoteLifi(args: {
   amountIn: string;
   fromAddress: string;
   slippageBps: number;
+  timeoutMs?: number;
 }): Promise<{ offer: SwapRouteOffer; quote: unknown } | null> {
   const slippage = Math.min(Math.max(args.slippageBps / 10_000, 0.001), 0.5);
   const url = new URL("https://li.quest/v1/quote");
@@ -132,14 +135,22 @@ async function quoteLifi(args: {
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(url.toString(), {
-      headers: { accept: "application/json" },
-    });
+    res = await fetchWithTimeout(
+      url.toString(),
+      {
+        headers: { accept: "application/json" },
+      },
+      args.timeoutMs ?? UPSTREAM_QUOTE_TIMEOUT_MS,
+    );
   } catch {
     return null;
   }
   if (!res.ok) return null;
   const quote = await res.json();
+  const txReq = quote?.transactionRequest as
+    | { to?: string; data?: string }
+    | undefined;
+  if (!txReq?.to || !txReq?.data) return null;
   const amountOut =
     quote?.estimate?.toAmount ??
     quote?.toAmount ??
@@ -273,7 +284,27 @@ export async function fetchSwapRouteOffers(args: {
     !cirBtcPair &&
     process.env.VECTOR_ENABLE_KYBER_SWAP !== "0";
 
-  const [kyber, lifi, circle] = await Promise.all([
+  const lifiArgs = {
+    tokenIn: aggIn,
+    tokenOut: aggOut,
+    tokenOutSymbol: args.tokenOut,
+    amountIn,
+    fromAddress: args.fromAddress,
+    slippageBps: args.slippageBps,
+  };
+
+  let lifi = await quoteLifi({
+    ...lifiArgs,
+    timeoutMs: cirBtcPair ? LIFI_CIRBTC_QUOTE_TIMEOUT_MS : undefined,
+  });
+  if (cirBtcPair && !lifi) {
+    lifi = await quoteLifi({
+      ...lifiArgs,
+      timeoutMs: LIFI_CIRBTC_QUOTE_TIMEOUT_MS,
+    });
+  }
+
+  const [kyber, circle] = await Promise.all([
     includeKyber
       ? quoteKyber({
           tokenIn: aggIn,
@@ -284,14 +315,6 @@ export async function fetchSwapRouteOffers(args: {
           slippageBps: args.slippageBps,
         })
       : Promise.resolve(null),
-    quoteLifi({
-      tokenIn: aggIn,
-      tokenOut: aggOut,
-      tokenOutSymbol: args.tokenOut,
-      amountIn,
-      fromAddress: args.fromAddress,
-      slippageBps: args.slippageBps,
-    }),
     quoteCircle({
       tokenIn: circleIn,
       tokenOut: circleOut,
@@ -310,7 +333,7 @@ export async function fetchSwapRouteOffers(args: {
   ];
 
   const executions: SwapRouteExecution[] = [];
-  if (circle) {
+  if (circle && !cirBtcPair) {
     executions.push({ provider: "circle", offer: circle });
   }
   if (kyber && swapProviderExecutable("kyber", args.tokenIn, args.tokenOut, isMainnet)) {
@@ -336,7 +359,8 @@ export async function fetchSwapRouteOffers(args: {
   const executableOffers = offers.filter((o) =>
     swapProviderExecutable(o.provider, args.tokenIn, args.tokenOut, isMainnet),
   );
-  const bestOffer = pickBest(executableOffers.length > 0 ? executableOffers : offers);
+  const bestOffer =
+    executableOffers.length > 0 ? pickBest(executableOffers) : null;
   if (!bestOffer) {
     return { offers, best: null, executions, lifiExecution };
   }
