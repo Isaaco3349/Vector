@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { erc20Abi, formatUnits } from "viem";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import {
+  clearArcPublicReadCache,
   readErc20BalanceViaProvider,
   readSwapInputBalancePublic,
   verifiedArcTokenDecimals,
@@ -88,6 +89,7 @@ export function useTokenBalance(symbol: string): {
   const [publicRaw, setPublicRaw] = useState<bigint | null>(null);
   const [publicFetchDone, setPublicFetchDone] = useState(false);
   const [walletFetchGen, setWalletFetchGen] = useState(0);
+  const [manualPublicRaw, setManualPublicRaw] = useState<bigint | null>(null);
 
   const okxPublicRead =
     okxInAppBrowser() &&
@@ -181,11 +183,23 @@ export function useTokenBalance(symbol: string): {
   ]);
 
   const refetch = useCallback(async () => {
+    clearArcPublicReadCache();
     if (isUsdc) await arcUsdc.refetch();
     await balanceQuery.refetch();
     await erc20Query.refetch();
+    if (isVerifiedErc20 && address && token?.address) {
+      try {
+        const raw = await readSwapInputBalancePublic(
+          token.address,
+          address as `0x${string}`,
+        );
+        setManualPublicRaw(raw);
+      } catch {
+        setManualPublicRaw(null);
+      }
+    }
     setWalletFetchGen((g) => g + 1);
-  }, [arcUsdc, balanceQuery, erc20Query, isUsdc]);
+  }, [arcUsdc, balanceQuery, erc20Query, isUsdc, isVerifiedErc20, address, token?.address]);
 
   if (isUsdc) {
     return {
@@ -203,9 +217,11 @@ export function useTokenBalance(symbol: string): {
       (!okxPublicRead &&
         (balanceQuery.isLoading ||
           (needsWalletFallback && !walletFetchDone && walletRaw === null)));
+    const publicMerged =
+      manualPublicRaw !== null ? manualPublicRaw : publicRaw;
     const raw =
-      okxInAppBrowser() && publicRaw !== null
-        ? publicRaw
+      publicMerged !== null
+        ? publicMerged
         : wagmiRawVerified ?? walletRaw;
     if (isLoading && raw === null) {
       return {

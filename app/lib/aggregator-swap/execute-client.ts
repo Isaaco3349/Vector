@@ -2,7 +2,8 @@
 
 import { encodeFunctionData, erc20Abi } from "viem";
 import type { Eip1193Provider } from "../appkit";
-import { chainId as ARC_CHAIN_ID } from "../network";
+import { chainId as ARC_CHAIN_ID, isMainnet } from "../network";
+import { pairIncludesCirBtc, swapProviderExecutable } from "./routing-policy";
 import { executeSwapPlan } from "../external-swap";
 import { buildSwapPlan, type SwapSymbol } from "../google-swap";
 import {
@@ -68,8 +69,8 @@ async function sendTx(
   return hash;
 }
 
-function usePublicArcReads(provider: Eip1193Provider): boolean {
-  return okxInAppBrowser() || providerIsOkx(provider);
+function usePublicArcReads(_provider: Eip1193Provider): boolean {
+  return true;
 }
 
 async function approveExact(
@@ -444,6 +445,21 @@ export async function executeSwapRoute(args: {
   onStage?: (s: Stage) => void;
 }): Promise<{ txHash: string; approveTxHash: string; provider: string }> {
   const { route } = args;
+
+  if (
+    !swapProviderExecutable(
+      route.provider,
+      args.tokenIn,
+      args.tokenOut,
+      isMainnet,
+    )
+  ) {
+    throw new Error(
+      route.provider === "circle" && pairIncludesCirBtc(args.tokenIn, args.tokenOut)
+        ? "Circle shows a price for cirBTC but execution uses LI.FI on Arc. Select LI.FI under Routes."
+        : `${route.provider} is not available for this pair on Arc. Pick another route.`,
+    );
+  }
 
   if (route.provider === "circle") {
     args.onStage?.("preparing-route");
