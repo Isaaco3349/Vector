@@ -31,6 +31,12 @@ import {
   pairIncludesCirBtc,
   pickSwapExecution,
 } from "../lib/aggregator-swap/route-attempts";
+import {
+  swapProviderExecutable,
+  swapProviderQuoteOnly,
+} from "../lib/aggregator-swap/routing-policy";
+import { clearArcPublicReadCache } from "../lib/arc-erc20-read";
+import { invalidateOnchainBalances } from "../lib/balance-refresh";
 import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
 import {
   classifySwapError,
@@ -407,9 +413,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     [queryClient, balanceIn.refetch, balanceOut.refetch],
   );
 
-  const refreshSwapBalances = useCallback(() => {
-    void Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
-  }, [balanceIn.refetch, balanceOut.refetch]);
+  const refreshSwapBalances = useCallback(async () => {
+    clearArcPublicReadCache();
+    await invalidateOnchainBalances(queryClient);
+    await Promise.all([balanceIn.refetch(), balanceOut.refetch()]);
+  }, [queryClient, balanceIn.refetch, balanceOut.refetch]);
   const arcWalletDesync =
     tokenIn === "USDC" && balanceIn.arcWalletDesync === true;
 
@@ -497,6 +505,20 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     }, 480);
     return () => window.clearTimeout(handle);
   }, [amountIn]);
+
+  useEffect(() => {
+    if (!routeOffers?.length) return;
+    if (pairIncludesCirBtc(tokenIn, tokenOut)) {
+      const lifi = routeOffers.find((o) => o.provider === "lifi");
+      if (lifi) {
+        setSelectedRouteProvider("lifi");
+        return;
+      }
+    }
+    if (selectedRouteProvider === null && bestRouteOffer) {
+      setSelectedRouteProvider(bestRouteOffer.provider);
+    }
+  }, [routeOffers, tokenIn, tokenOut, bestRouteOffer, selectedRouteProvider]);
 
   const parsedAmount = useMemo(() => {
     const n = Number(amountIn);
@@ -711,7 +733,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         if (!cancelled) {
           setQuote(null);
           setErrorState({
-            text: "No quote from Circle, KyberSwap, or LI.FI on Arc right now. Tap Refresh or try a slightly different amount.",
+            text: pairIncludesCirBtc(tokenIn, tokenOut)
+              ? "No LI.FI route for cirBTC on Arc right now. Tap Refresh or try a slightly different amount."
+              : "No quote from Circle or LI.FI on Arc right now. Tap Refresh or try a slightly different amount.",
             info: null,
           });
         }
@@ -1017,7 +1041,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
     if (routes?.best) {
       setSwapping(true);
-      const primary = pickSwapExecution(routes, selectedRouteProvider);
+      const primary = pickSwapExecution(
+        routes,
+        selectedRouteProvider,
+        tokenIn,
+        tokenOut,
+      );
       const attempts = primary
         ? [
             primary,
@@ -1199,7 +1228,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
             onStage: (stage: SwapRouteStage) => setPlanStage(stage),
           };
-          const primary = pickSwapExecution(routes, selectedRouteProvider);
+          const primary = pickSwapExecution(
+            routes,
+            selectedRouteProvider,
+            tokenIn,
+            tokenOut,
+          );
           const fallbackAttempts = buildSwapRouteAttempts(
             {
               ...routes,
@@ -1540,13 +1574,35 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
                     const diff = BigInt(b.amountOut) - BigInt(a.amountOut);
                     return diff > BigInt(0) ? 1 : diff < BigInt(0) ? -1 : 0;
                   })
-                  .map((o) => {
+                  .map((o, idx, sorted) => {
                     const active =
                       (selectedRouteProvider ?? bestRouteOffer?.provider) ===
                       o.provider;
-                    const executable =
-                      !pairIncludesCirBtc(tokenIn, tokenOut) ||
-                      o.provider !== "circle";
+                    const executable = swapProviderExecutable(
+                      o.provider,
+                      tokenIn,
+                      tokenOut,
+                      isMainnet,
+                    );
+                    const quoteOnly = swapProviderQuoteOnly(
+                      o.provider,
+                      tokenIn,
+                      tokenOut,
+                      isMainnet,
+                    );
+                    const bestOut = sorted[0]?.amountOut;
+                    let impactLabel = "";
+                    if (bestOut && idx > 0 && /^\d+$/.test(o.amountOut)) {
+                      const best = BigInt(bestOut);
+                      const out = BigInt(o.amountOut);
+                      if (best > out && best > BigInt(0)) {
+                        const bps =
+                          Number(((best - out) * BigInt(10_000)) / best) / 100;
+                        if (bps >= 0.01) {
+                          impactLabel = ` · ${bps.toFixed(2)}% less output`;
+                        }
+                      }
+                    }
                     return (
                       <li key={o.provider}>
                         <button
@@ -1563,6 +1619,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
                         >
                           {active ? "✓ " : "  "}
                           {o.label}: ~{o.amountOutHuman} {tokenOut}
+                          {quoteOnly ? " (quote only)" : ""}
+                          {impactLabel}
                         </button>
                       </li>
                     );
@@ -1753,7 +1811,7 @@ function describeRouteExecutionError(err: unknown, okx: boolean): string {
       : "Arc RPC rate limit — wait a moment and retry.";
   }
   if (/RPC_ENDPOINT_ERROR|RPC endpoint error/i.test(blob)) {
-    return "Arc RPC was unreachable for this route. Tap Refresh, or pick Kyber/LI.FI for cirBTC (Circle is quote-only on that pair).";
+    return "Arc RPC was unreachable for this route. Tap Refresh, select LI.FI for cirBTC, or try a slightly smaller amount.";
   }
   const short = blob ? sanitizeRouteErrorDetail(blob) : "";
   if (short) return short;

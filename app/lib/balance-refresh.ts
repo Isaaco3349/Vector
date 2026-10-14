@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { arcViemChain } from "./viem-arc-chain";
 import { chainId as ARC_CHAIN_ID } from "./network";
 import { waitArcTransactionReceipt } from "./arc-tx-wait";
+import { clearArcPublicReadCache } from "./arc-erc20-read";
 import type { Eip1193Provider } from "./appkit";
 
 /** Invalidate Arc balance reads only — not every wagmi query in the tab. */
@@ -69,6 +70,7 @@ export async function flushBalancesAfterSwap(
   /** When bridging from a non-Arc chain, skip Arc receipt polling for the burn hash. */
   sourceChainId?: number,
 ): Promise<void> {
+  clearArcPublicReadCache();
   await refreshBalancesAfterTx(queryClient, txHash, sourceChainId);
   await Promise.all(refetchTokens.map((fn) => fn()));
   scheduleBalancePoll(queryClient);

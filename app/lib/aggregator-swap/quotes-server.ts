@@ -13,6 +13,10 @@ import {
   type AggregatorPairSymbol,
 } from "./tokens";
 import { formatLifiOfferLabel } from "./lifi-label";
+import {
+  pairIncludesCirBtc,
+  swapProviderExecutable,
+} from "./routing-policy";
 import type { SwapRouteExecution, SwapRouteOffer } from "./types";
 
 const ARC_CHAIN_ID = isMainnet ? 5042 : 5042002;
@@ -263,16 +267,23 @@ export async function fetchSwapRouteOffers(args: {
   }
 
   const amountIn = parseAmountBase(args.tokenIn, args.amountHuman);
+  const cirBtcPair = pairIncludesCirBtc(args.tokenIn, args.tokenOut);
+  const includeKyber =
+    isMainnet &&
+    !cirBtcPair &&
+    process.env.VECTOR_ENABLE_KYBER_SWAP !== "0";
 
   const [kyber, lifi, circle] = await Promise.all([
-    quoteKyber({
-      tokenIn: aggIn,
-      tokenOut: aggOut,
-      tokenOutSymbol: args.tokenOut,
-      amountIn,
-      fromAddress: args.fromAddress,
-      slippageBps: args.slippageBps,
-    }),
+    includeKyber
+      ? quoteKyber({
+          tokenIn: aggIn,
+          tokenOut: aggOut,
+          tokenOutSymbol: args.tokenOut,
+          amountIn,
+          fromAddress: args.fromAddress,
+          slippageBps: args.slippageBps,
+        })
+      : Promise.resolve(null),
     quoteLifi({
       tokenIn: aggIn,
       tokenOut: aggOut,
@@ -302,7 +313,7 @@ export async function fetchSwapRouteOffers(args: {
   if (circle) {
     executions.push({ provider: "circle", offer: circle });
   }
-  if (kyber) {
+  if (kyber && swapProviderExecutable("kyber", args.tokenIn, args.tokenOut, isMainnet)) {
     executions.push({
       provider: "kyber",
       offer: kyber.offer,
@@ -317,18 +328,22 @@ export async function fetchSwapRouteOffers(args: {
     });
   }
 
-  const bestOffer = pickBest(offers);
   const lifiExecution: SwapRouteExecution | null =
     lifi != null
       ? { provider: "lifi", offer: lifi.offer, quote: lifi.quote }
       : null;
 
+  const executableOffers = offers.filter((o) =>
+    swapProviderExecutable(o.provider, args.tokenIn, args.tokenOut, isMainnet),
+  );
+  const bestOffer = pickBest(executableOffers.length > 0 ? executableOffers : offers);
   if (!bestOffer) {
     return { offers, best: null, executions, lifiExecution };
   }
 
   const best =
-    executions.find((e) => e.offer.provider === bestOffer.provider) ?? null;
+    executions.find((e) => e.offer.provider === bestOffer.provider) ??
+    (bestOffer.provider === "lifi" ? lifiExecution : null);
 
   return { offers, best, executions, lifiExecution };
 }

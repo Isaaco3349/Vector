@@ -1,25 +1,45 @@
 import type { ClientSwapRoutesResult } from "./fetch-routes-client";
+import { isMainnet } from "../network";
+import {
+  pairIncludesCirBtc,
+  swapProviderExecutable,
+} from "./routing-policy";
 import type { SwapRouteExecution, SwapRouteProvider } from "./types";
 
+export { pairIncludesCirBtc } from "./routing-policy";
+
 export function pickSwapExecution(
-  routes: Pick<ClientSwapRoutesResult, "best" | "executions">,
+  routes: Pick<ClientSwapRoutesResult, "best" | "executions" | "lifiExecution">,
   preferred: SwapRouteProvider | null,
+  tokenIn: string,
+  tokenOut: string,
 ): SwapRouteExecution | null {
-  const list =
+  const raw =
     routes.executions && routes.executions.length > 0
       ? routes.executions
       : routes.best
         ? [routes.best]
         : [];
+  const list = raw.filter((e) =>
+    swapProviderExecutable(e.provider, tokenIn, tokenOut, isMainnet),
+  );
   if (preferred) {
-    return list.find((e) => e.provider === preferred) ?? routes.best;
+    const picked = list.find((e) => e.provider === preferred);
+    if (picked) return picked;
   }
-  return routes.best;
-}
-
-/** Circle kit cannot execute cirBTC on Arc mainnet — Kyber / LI.FI only. */
-export function pairIncludesCirBtc(tokenIn: string, tokenOut: string): boolean {
-  return tokenIn === "cirBTC" || tokenOut === "cirBTC";
+  if (list.length > 0) {
+    return list.reduce((a, b) =>
+      BigInt(b.offer.amountOut) > BigInt(a.offer.amountOut) ? b : a,
+    );
+  }
+  const lifi = routes.lifiExecution;
+  if (
+    lifi &&
+    swapProviderExecutable("lifi", tokenIn, tokenOut, isMainnet)
+  ) {
+    return lifi;
+  }
+  return null;
 }
 
 export function isStableUsdcEurcPair(tokenIn: string, tokenOut: string): boolean {
@@ -66,6 +86,9 @@ export function buildSwapRouteAttempts(
 
   const push = (route: SwapRouteExecution | null | undefined) => {
     if (!route) return;
+    if (!swapProviderExecutable(route.provider, tokenIn, tokenOut, isMainnet)) {
+      return;
+    }
     const key = route.provider;
     if (seen.has(key)) return;
     seen.add(key);
@@ -92,6 +115,11 @@ export function buildSwapRouteAttempts(
 
   if (routes.lifiExecution && routes.best?.provider !== "lifi") {
     push(routes.lifiExecution);
+  }
+
+  if (cirBtcPair) {
+    const lifi = routes.lifiExecution ?? routes.executions?.find((e) => e.provider === "lifi");
+    if (lifi) return [lifi];
   }
 
   return attempts;
@@ -123,6 +151,12 @@ export function buildOkxSwapRouteAttempts(
     }
   }
 
-  if (routes.best) return [routes.best];
+  if (routes.best && swapProviderExecutable(routes.best.provider, tokenIn, tokenOut, isMainnet)) {
+    return [routes.best];
+  }
+  const lifi = routes.lifiExecution ?? routes.executions?.find((e) => e.provider === "lifi");
+  if (lifi && swapProviderExecutable("lifi", tokenIn, tokenOut, isMainnet)) {
+    return [lifi];
+  }
   return [];
 }

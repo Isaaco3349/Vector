@@ -265,6 +265,11 @@ export function invalidateArcAllowanceReadCache(
   bigintReadCache.delete(`allow:${token}:${owner}:${spender}`);
 }
 
+/** After swaps, wagmi + short TTL cache can show stale balances — clear Arc read cache. */
+export function clearArcPublicReadCache(): void {
+  bigintReadCache.clear();
+}
+
 export async function readSwapInputBalancePublic(
   token: string,
   owner: `0x${string}`,

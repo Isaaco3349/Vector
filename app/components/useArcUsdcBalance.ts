@@ -8,6 +8,7 @@ import {
   arcUsdcNativeToErc20Minor,
   ARC_USDC_SCALE,
 } from "../lib/arc-usdc-balance";
+import { clearArcPublicReadCache } from "../lib/arc-erc20-read";
 import { arcUsdcAddress, chainId as ARC_CHAIN_ID } from "../lib/network";
 
 /**
@@ -53,6 +54,7 @@ export function useArcUsdcBalance(): {
   });
 
   const refetch = useCallback(async () => {
+    clearArcPublicReadCache();
     await Promise.all([nativeQuery.refetch(), erc20Query.refetch()]);
   }, [nativeQuery, erc20Query]);
 
