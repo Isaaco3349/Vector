@@ -12,6 +12,7 @@ import {
   tokenDecimals,
   type AggregatorPairSymbol,
 } from "./tokens";
+import { formatLifiOfferLabel } from "./lifi-label";
 import type { SwapRouteExecution, SwapRouteOffer } from "./types";
 
 const ARC_CHAIN_ID = isMainnet ? 5042 : 5042002;
@@ -98,6 +99,7 @@ async function quoteKyber(args: {
         tokenOutAddress: args.tokenOut,
         amountIn: args.amountIn,
         label: "KyberSwap",
+        sublabel: "Kyber aggregator on Arc",
       },
       args.tokenOutSymbol,
     ),
@@ -140,6 +142,7 @@ async function quoteLifi(args: {
     quote?.action?.toAmount;
   if (typeof amountOut !== "string" || !/^\d+$/.test(amountOut)) return null;
 
+  const lifiLabels = formatLifiOfferLabel(quote);
   return {
     quote,
     offer: withHumanOut(
@@ -149,7 +152,8 @@ async function quoteLifi(args: {
         tokenInAddress: args.tokenIn,
         tokenOutAddress: args.tokenOut,
         amountIn: args.amountIn,
-        label: "LI.FI",
+        label: lifiLabels.label,
+        sublabel: lifiLabels.sublabel,
       },
       args.tokenOutSymbol,
     ),
@@ -202,6 +206,7 @@ async function quoteCircle(args: {
       tokenOutAddress: args.tokenOut,
       amountIn: args.amountIn,
       label: "Circle",
+      sublabel: "Stablecoin Kit (USDC gas)",
     },
     args.tokenOutSymbol,
   );
@@ -246,16 +251,15 @@ export async function fetchSwapRouteOffers(args: {
 }): Promise<{
   offers: SwapRouteOffer[];
   best: SwapRouteExecution | null;
+  executions: SwapRouteExecution[];
   lifiExecution?: SwapRouteExecution | null;
-  kyberRouteSummary?: unknown;
-  lifiQuote?: unknown;
 }> {
   const aggIn = aggregatorTokenAddress(args.tokenIn);
   const aggOut = aggregatorTokenAddress(args.tokenOut);
   const circleIn = circleTokenAddress(args.tokenIn);
   const circleOut = circleTokenAddress(args.tokenOut);
   if (!aggIn || !aggOut || !circleIn || !circleOut) {
-    return { offers: [], best: null };
+    return { offers: [], best: null, executions: [] };
   }
 
   const amountIn = parseAmountBase(args.tokenIn, args.amountHuman);
@@ -294,33 +298,37 @@ export async function fetchSwapRouteOffers(args: {
     ...(circle ? [circle] : []),
   ];
 
+  const executions: SwapRouteExecution[] = [];
+  if (circle) {
+    executions.push({ provider: "circle", offer: circle });
+  }
+  if (kyber) {
+    executions.push({
+      provider: "kyber",
+      offer: kyber.offer,
+      routeSummary: kyber.routeSummary,
+    });
+  }
+  if (lifi) {
+    executions.push({
+      provider: "lifi",
+      offer: lifi.offer,
+      quote: lifi.quote,
+    });
+  }
+
   const bestOffer = pickBest(offers);
   const lifiExecution: SwapRouteExecution | null =
     lifi != null
       ? { provider: "lifi", offer: lifi.offer, quote: lifi.quote }
       : null;
 
-  if (!bestOffer) return { offers, best: null, lifiExecution };
-
-  if (bestOffer.provider === "kyber" && kyber) {
-    return {
-      offers,
-      best: { provider: "kyber", offer: bestOffer, routeSummary: kyber.routeSummary },
-      lifiExecution,
-    };
+  if (!bestOffer) {
+    return { offers, best: null, executions, lifiExecution };
   }
 
-  if (bestOffer.provider === "lifi" && lifi) {
-    return {
-      offers,
-      best: { provider: "lifi", offer: bestOffer, quote: lifi.quote },
-      lifiExecution,
-    };
-  }
+  const best =
+    executions.find((e) => e.offer.provider === bestOffer.provider) ?? null;
 
-  return {
-    offers,
-    best: { provider: "circle", offer: bestOffer },
-    lifiExecution,
-  };
+  return { offers, best, executions, lifiExecution };
 }
