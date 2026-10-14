@@ -1,5 +1,21 @@
 import type { ClientSwapRoutesResult } from "./fetch-routes-client";
-import type { SwapRouteExecution } from "./types";
+import type { SwapRouteExecution, SwapRouteProvider } from "./types";
+
+export function pickSwapExecution(
+  routes: Pick<ClientSwapRoutesResult, "best" | "executions">,
+  preferred: SwapRouteProvider | null,
+): SwapRouteExecution | null {
+  const list =
+    routes.executions && routes.executions.length > 0
+      ? routes.executions
+      : routes.best
+        ? [routes.best]
+        : [];
+  if (preferred) {
+    return list.find((e) => e.provider === preferred) ?? routes.best;
+  }
+  return routes.best;
+}
 
 /** Circle kit cannot execute cirBTC on Arc mainnet — Kyber / LI.FI only. */
 export function pairIncludesCirBtc(tokenIn: string, tokenOut: string): boolean {

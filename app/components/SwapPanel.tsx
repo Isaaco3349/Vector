@@ -17,7 +17,11 @@ import {
   fetchCircleQuoteClient,
   fetchSwapRoutesClient,
 } from "../lib/aggregator-swap/fetch-routes-client";
-import type { SwapRouteExecution, SwapRouteOffer } from "../lib/aggregator-swap/types";
+import type {
+  SwapRouteExecution,
+  SwapRouteOffer,
+  SwapRouteProvider,
+} from "../lib/aggregator-swap/types";
 import type { ClientSwapRoutesResult } from "../lib/aggregator-swap/fetch-routes-client";
 import {
   executeSwapRoute,
@@ -28,6 +32,7 @@ import {
   buildSwapRouteAttempts,
   externalStableCircleFastPath,
   pairIncludesCirBtc,
+  pickSwapExecution,
 } from "../lib/aggregator-swap/route-attempts";
 import type { AggregatorPairSymbol } from "../lib/aggregator-swap/tokens";
 import {
@@ -316,8 +321,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     key: string;
     best: SwapRouteExecution | null;
     offers: SwapRouteOffer[];
+    executions?: SwapRouteExecution[];
     lifiExecution?: SwapRouteExecution | null;
   } | null>(null);
+  const [compareAggregatorPrices, setCompareAggregatorPrices] = useState(false);
+  const [selectedRouteProvider, setSelectedRouteProvider] =
+    useState<SwapRouteProvider | null>(null);
   const [swapViaProvider, setSwapViaProvider] = useState<string | null>(null);
   /**
    * Which of the fallback path's two confirmations is in flight. Purely for the
@@ -346,8 +355,19 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     );
   }, [routeOffers]);
 
+  const activeRouteOffer = useMemo(() => {
+    if (!routeOffers?.length) return bestRouteOffer;
+    if (selectedRouteProvider) {
+      return (
+        routeOffers.find((o) => o.provider === selectedRouteProvider) ??
+        bestRouteOffer
+      );
+    }
+    return bestRouteOffer;
+  }, [routeOffers, selectedRouteProvider, bestRouteOffer]);
+
   const displayAmountOut =
-    bestRouteOffer?.amountOutHuman ??
+    activeRouteOffer?.amountOutHuman ??
     quote?.amountOut ??
     fallbackPlan?.estimatedAmount ??
     null;
@@ -400,11 +420,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     useWalletSigningProviderRef(connector, address);
   const okxWallet = isOkxWallet(connector) || okxSafePath || okxInAppBrowser();
   const useOkxSequential = requiresOkxSequentialSwap(connector, okxSafePath);
-  const stableCircleFastPath = externalStableCircleFastPath(
-    isMainnet,
-    tokenIn,
-    tokenOut,
-  );
+  const stablePair = externalStableCircleFastPath(isMainnet, tokenIn, tokenOut);
+  const stableCircleFastPath = stablePair && !compareAggregatorPrices;
   const vectorBuild =
     typeof process.env.NEXT_PUBLIC_VECTOR_BUILD === "string"
       ? process.env.NEXT_PUBLIC_VECTOR_BUILD
@@ -560,6 +577,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     setTxHash(null);
     setFallbackPlan(null);
+    setSelectedRouteProvider(null);
 
     if (!parsedAmountForQuote || sameToken) {
       setQuote(null);
@@ -639,6 +657,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               key: `${tokenIn}:${tokenOut}:${parsedAmountForQuote}:${address.toLowerCase()}`,
               best: routes.best,
               offers: routes.offers,
+              executions: routes.executions,
               lifiExecution: routes.lifiExecution ?? null,
             };
             return;
@@ -650,6 +669,44 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             console.warn("[Vector] swap-routes:", err);
           }
         }
+      }
+
+      if (isMainnet && address && aggIn && aggOut && !stableCircleFastPath) {
+        try {
+          const offer = await fetchCircleQuoteClient({
+            tokenIn: aggIn,
+            tokenOut: aggOut,
+            amount: String(parsedAmountForQuote),
+            fromAddress: address,
+            slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+          });
+          if (cancelled) return;
+          if (offer?.amountOutHuman) {
+            setQuote({
+              amountOut: offer.amountOutHuman,
+              rate: null,
+              feeText: null,
+              raw: offer,
+            });
+            setRouteOffers(null);
+            setErrorState(null);
+            sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
+            return;
+          }
+        } catch {
+          /* fall through to wallet SDK as last resort */
+        }
+      }
+
+      if (isMainnet && address && aggIn && aggOut) {
+        if (!cancelled) {
+          setQuote(null);
+          setErrorState({
+            text: "No quote from Circle, KyberSwap, or LI.FI on Arc right now. Tap Refresh or try a slightly different amount.",
+            info: null,
+          });
+        }
+        return;
       }
 
       const provider = providerRef.current;
@@ -745,6 +802,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     providerReady,
     useOkxSequential,
     stableCircleFastPath,
+    compareAggregatorPrices,
   ]);
 
   useEffect(() => {
@@ -905,6 +963,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       routes = {
         offers: cached.offers,
         best: cached.best,
+        executions: cached.executions,
         lifiExecution: cached.lifiExecution ?? null,
       };
     } else if (isMainnet && aggIn && aggOut) {
@@ -919,6 +978,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         key: routeCacheKey,
         best: routes.best,
         offers: routes.offers,
+        executions: routes.executions,
         lifiExecution: routes.lifiExecution ?? null,
       };
     }
@@ -948,7 +1008,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
     if (routes?.best) {
       setSwapping(true);
-      const attempts = buildOkxSwapRouteAttempts(routes, tokenIn, tokenOut);
+      const primary = pickSwapExecution(routes, selectedRouteProvider);
+      const attempts = primary
+        ? [
+            primary,
+            ...buildOkxSwapRouteAttempts(routes, tokenIn, tokenOut).filter(
+              (r) => r.provider !== primary.provider,
+            ),
+          ]
+        : buildOkxSwapRouteAttempts(routes, tokenIn, tokenOut);
       const attemptErrors: string[] = [];
       for (const route of attempts) {
         if (swapRunRef.current !== runId) return;
@@ -1084,6 +1152,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             routes = {
               offers: cached.offers,
               best: cached.best,
+              executions: cached.executions,
               lifiExecution: cached.lifiExecution ?? null,
             };
           } else {
@@ -1098,6 +1167,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               key: routeCacheKey,
               best: routes.best,
               offers: routes.offers,
+              executions: routes.executions,
               lifiExecution: routes.lifiExecution ?? null,
             };
           }
@@ -1120,7 +1190,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             slippageBps: slippageBps ?? DEFAULT_SLIPPAGE_BPS,
             onStage: (stage: SwapRouteStage) => setPlanStage(stage),
           };
-          const routeAttempts = buildSwapRouteAttempts(
+          const primary = pickSwapExecution(routes, selectedRouteProvider);
+          const fallbackAttempts = buildSwapRouteAttempts(
             {
               ...routes,
               lifiExecution: routes.lifiExecution ?? null,
@@ -1128,6 +1199,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             tokenIn,
             tokenOut,
           );
+          const routeAttempts = primary
+            ? [
+                primary,
+                ...fallbackAttempts.filter((r) => r.provider !== primary.provider),
+              ]
+            : fallbackAttempts;
           const attemptErrors: string[] = [];
           for (const route of routeAttempts) {
             if (swapRunRef.current !== runId) return;
@@ -1435,7 +1512,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Quote detail */}
-        {stableCircleFastPath && quote?.amountOut && (
+        {stablePair && !compareAggregatorPrices && quote?.amountOut && (
           <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
               Swap route (Circle fast path)
@@ -1444,49 +1521,83 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               ✓ Circle: ~{quote.amountOut} {tokenOut}
             </p>
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
-              USDC ↔ EURC skips Kyber/LI.FI on external wallets so quotes load faster
-              and your wallet popup opens sooner (approve, then swap).
+              Default for USDC ↔ EURC: server-side Circle quote (no wallet SDK) so
+              Binance/OKX/MetaMask don&apos;t freeze Chrome. Kyber/LI.FI/Uniswap
+              routing is available for demo via compare below.
             </p>
+            <button
+              type="button"
+              onClick={() => setCompareAggregatorPrices(true)}
+              className="mt-2 text-[11px] font-semibold text-[var(--vector-pink)] hover:underline"
+            >
+              Compare Kyber + LI.FI prices →
+            </button>
           </div>
         )}
 
-        {!stableCircleFastPath && bestRouteOffer && routeOffers && routeOffers.length > 0 && (
+        {stablePair && compareAggregatorPrices && (
+          <p className="mb-2 text-[11px] text-[var(--vector-text-dim)]">
+            Comparing all Arc engines (server quotes).{" "}
+            <button
+              type="button"
+              onClick={() => setCompareAggregatorPrices(false)}
+              className="font-semibold text-[var(--vector-pink)] hover:underline"
+            >
+              Back to Circle fast path
+            </button>
+          </p>
+        )}
+
+        {(!stableCircleFastPath || compareAggregatorPrices) &&
+          bestRouteOffer &&
+          routeOffers &&
+          routeOffers.length > 0 && (
           <div className="mb-4 rounded-xl border border-[var(--vector-line)] bg-[var(--vector-surface-raised)] px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
-              Swap route (cheapest output)
+              Swap routes on Arc (tap to execute)
             </p>
-            <ul className="space-y-1 text-[12px] font-mono">
+            <ul className="space-y-1.5 text-[12px] font-mono">
               {[...routeOffers]
                 .sort((a, b) => {
                   const diff = BigInt(b.amountOut) - BigInt(a.amountOut);
                   return diff > BigInt(0) ? 1 : diff < BigInt(0) ? -1 : 0;
                 })
-                .map((o) => (
-                  <li
-                    key={o.provider}
-                    className={
-                      o.provider === bestRouteOffer.provider
-                        ? "text-[var(--vector-pink)] font-semibold"
-                        : "text-[var(--vector-text-dim)]"
-                    }
-                  >
-                    {o.provider === bestRouteOffer.provider ? "✓ " : "  "}
-                    {o.label}: ~{o.amountOutHuman} {tokenOut}
-                  </li>
-                ))}
+                .map((o) => {
+                  const active =
+                    (selectedRouteProvider ?? bestRouteOffer.provider) ===
+                    o.provider;
+                  return (
+                    <li key={o.provider}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRouteProvider(o.provider)}
+                        className={`w-full text-left rounded-lg px-2 py-1 transition-colors ${
+                          active
+                            ? "bg-[var(--vector-pink)]/10 text-[var(--vector-pink)] font-semibold"
+                            : "text-[var(--vector-text-dim)] hover:bg-[var(--vector-surface)]"
+                        }`}
+                      >
+                        {active ? "✓ " : "  "}
+                        {o.label}: ~{o.amountOutHuman} {tokenOut}
+                        {o.sublabel ? (
+                          <span className="block text-[10px] font-normal opacity-80 mt-0.5">
+                            {o.sublabel}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
             </ul>
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
               You will sign{" "}
               <span className="font-semibold">
-                {okxWallet &&
-                ((tokenIn === "USDC" && tokenOut === "EURC") ||
-                  (tokenIn === "EURC" && tokenOut === "USDC"))
-                  ? "Circle"
-                  : bestRouteOffer.label}
+                {activeRouteOffer?.label ?? bestRouteOffer.label}
               </span>
-              . First step approves exactly{" "}
-              <span className="font-semibold">{tokenIn}</span> (not unlimited). Arc
-              gas is paid from native USDC in your wallet.
+              . LI.FI may route via Uniswap pools on Arc; Kyber uses its own
+              aggregator. Earn (Morpho-style vaults) is separate under the Earn tab.
+              First step approves exactly{" "}
+              <span className="font-semibold">{tokenIn}</span> (not unlimited).
             </p>
             {pairIncludesCirBtc(tokenIn, tokenOut) && (
               <p className="mt-2 text-[11px] leading-relaxed text-[var(--vector-text-dim)]">
@@ -1673,15 +1784,13 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         )}
 
         <p className="mt-4 text-[11px] leading-relaxed text-[var(--vector-text-dim)] text-center">
-          Same-chain swaps on {ARC_DISPLAY_NAME}.{" "}
-          {stableCircleFastPath
-            ? "USDC ↔ EURC uses Circle only on this wallet path."
-            : "Vector compares Circle, KyberSwap, and LI.FI on mainnet."}{" "}
-          Output can move slightly before you confirm.
+          Arc integrations: Circle Stablecoin Kit · KyberSwap · LI.FI (Uniswap/Morpho
+          on Arc) · Earn: Morpho-style vaults via Circle. Quotes run on Vector&apos;s
+          servers — not through your wallet — so extensions don&apos;t block pricing.
         </p>
         <p className="mt-1 text-[10px] text-center text-[var(--vector-text-dim)] opacity-70">
-          Build {vectorBuild}. USDC ↔ EURC should show Circle fast path — if you still
-          see Kyber, hard-refresh (Ctrl+Shift+R) or try incognito.
+          Build {vectorBuild}. Demo tip: one wallet extension, incognito, USDC ↔ EURC
+          fast path; tap Compare for Kyber/LI.FI.
         </p>
     </VectorModalShell>
   );

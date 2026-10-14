@@ -503,8 +503,24 @@ function pickString(obj: unknown, keys: string[]): string | null {
  * shape (`estimatedOutput.amount`, nested fees array) — see @circle-fin/app-kit
  * SwapEstimate / TokenAmount types.
  */
+const ESTIMATE_SWAP_TIMEOUT_MS = 22_000;
+
 export async function estimateSwap(args: SwapArgs): Promise<SwapQuote> {
-  const { kit, swapParams } = await buildKitAndParams(args);
+  const built = await Promise.race([
+    buildKitAndParams(args),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              "Circle App Kit quote timed out. Vector will use server-side pricing instead — tap Refresh.",
+            ),
+          ),
+        ESTIMATE_SWAP_TIMEOUT_MS,
+      ),
+    ),
+  ]);
+  const { kit, swapParams } = built;
   if (typeof console !== "undefined") {
     console.log("[Vector] estimateSwap params:", {
       ...swapParams,
@@ -519,7 +535,20 @@ export async function estimateSwap(args: SwapArgs): Promise<SwapQuote> {
   }
   let estimate: unknown;
   try {
-    estimate = await kit.estimateSwap(swapParams);
+    estimate = await Promise.race([
+      kit.estimateSwap(swapParams),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Circle quote timed out (wallet or Circle API). Try Refresh or disconnect extra wallet extensions.",
+              ),
+            ),
+          ESTIMATE_SWAP_TIMEOUT_MS,
+        ),
+      ),
+    ]);
   } catch (err) {
     console.error("[Vector] estimateSwap threw:", err);
     throw err;
