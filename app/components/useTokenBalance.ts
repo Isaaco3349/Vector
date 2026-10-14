@@ -53,7 +53,7 @@ export function useTokenBalance(symbol: string): {
         isVerifiedErc20 &&
         !!token?.address &&
         !okxInAppBrowser(),
-      staleTime: 30_000,
+      staleTime: 8_000,
       refetchInterval: false,
     },
   });
@@ -61,7 +61,7 @@ export function useTokenBalance(symbol: string): {
   const erc20Query = useReadContracts({
     query: {
       enabled: isConnected && !!address && isLegacyErc20,
-      staleTime: 30_000,
+      staleTime: 8_000,
       refetchInterval: false,
     },
     contracts: isLegacyErc20

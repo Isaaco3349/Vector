@@ -72,7 +72,9 @@ export function buildSwapRouteAttempts(
     attempts.push(route);
   };
 
-  if (stable) {
+  const cirBtcPair = pairIncludesCirBtc(tokenIn, tokenOut);
+
+  if (stable && !cirBtcPair) {
     const circleOffer = routes.offers.find((o) => o.provider === "circle");
     if (circleOffer) {
       push({ provider: "circle", offer: circleOffer });
@@ -80,8 +82,6 @@ export function buildSwapRouteAttempts(
   }
 
   push(routes.best);
-
-  const cirBtcPair = pairIncludesCirBtc(tokenIn, tokenOut);
 
   if (!cirBtcPair) {
     const circleOffer = routes.offers.find((o) => o.provider === "circle");

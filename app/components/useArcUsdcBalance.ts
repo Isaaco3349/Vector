@@ -30,7 +30,7 @@ export function useArcUsdcBalance(): {
     chainId: ARC_CHAIN_ID,
     query: {
       enabled: isConnected && !!address,
-      staleTime: 30_000,
+      staleTime: 8_000,
       refetchInterval: false,
     },
   });
@@ -38,7 +38,7 @@ export function useArcUsdcBalance(): {
   const erc20Query = useReadContracts({
     query: {
       enabled: isConnected && !!address,
-      staleTime: 30_000,
+      staleTime: 8_000,
       refetchInterval: false,
     },
     contracts: [
