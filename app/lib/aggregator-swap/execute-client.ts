@@ -455,9 +455,7 @@ export async function executeSwapRoute(args: {
     )
   ) {
     throw new Error(
-      route.provider === "circle" && pairIncludesCirBtc(args.tokenIn, args.tokenOut)
-        ? "Circle shows a price for cirBTC but execution uses LI.FI on Arc. Select LI.FI under Routes."
-        : `${route.provider} is not available for this pair on Arc. Pick another route.`,
+      `${route.provider} is not available for this pair on Arc. Pick Circle (Arc Adapter) or LI.FI under Routes.`,
     );
   }
 

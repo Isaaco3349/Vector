@@ -21,7 +21,13 @@ import type { SwapRouteExecution, SwapRouteOffer } from "./types";
 
 const ARC_CHAIN_ID = isMainnet ? 5042 : 5042002;
 const KYBER_CHAIN = isMainnet ? "arc" : "arct";
-const LIFI_INTEGRATOR = "vectorprotocol";
+const LIFI_INTEGRATOR =
+  process.env.LIFI_INTEGRATOR?.trim() ||
+  process.env.NEXT_PUBLIC_LIFI_INTEGRATOR?.trim() ||
+  "vectorprotocol";
+
+/** Match Arc Portal default on [portal.arc.io/swap](https://portal.arc.io/swap). */
+const PORTAL_LIKE_SLIPPAGE = 0.005;
 const KYBER_CLIENT_ID = "VectorProtocol";
 
 const CIRCLE_BASE_URL =
@@ -121,58 +127,74 @@ async function quoteLifi(args: {
   slippageBps: number;
   timeoutMs?: number;
 }): Promise<{ offer: SwapRouteOffer; quote: unknown } | null> {
-  const slippage = Math.min(Math.max(args.slippageBps / 10_000, 0.001), 0.5);
-  const url = new URL("https://li.quest/v1/quote");
-  url.searchParams.set("fromChain", String(ARC_CHAIN_ID));
-  url.searchParams.set("toChain", String(ARC_CHAIN_ID));
-  url.searchParams.set("fromToken", args.tokenIn);
-  url.searchParams.set("toToken", args.tokenOut);
-  url.searchParams.set("fromAmount", args.amountIn);
-  url.searchParams.set("fromAddress", args.fromAddress);
-  url.searchParams.set("slippage", String(slippage));
-  url.searchParams.set("integrator", LIFI_INTEGRATOR);
-  url.searchParams.set("order", "CHEAPEST_GAS");
+  const slippage = Math.min(
+    Math.max(args.slippageBps / 10_000, PORTAL_LIKE_SLIPPAGE),
+    0.5,
+  );
 
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(
-      url.toString(),
-      {
-        headers: { accept: "application/json" },
-      },
-      args.timeoutMs ?? UPSTREAM_QUOTE_TIMEOUT_MS,
-    );
-  } catch {
-    return null;
+  const integratorCandidates = [
+    LIFI_INTEGRATOR,
+    "lifi-sdk",
+  ].filter((v, i, a) => v && a.indexOf(v) === i);
+
+  for (const integrator of [...integratorCandidates, ""]) {
+    const url = new URL("https://li.quest/v1/quote");
+    url.searchParams.set("fromChain", String(ARC_CHAIN_ID));
+    url.searchParams.set("toChain", String(ARC_CHAIN_ID));
+    url.searchParams.set("fromToken", args.tokenIn);
+    url.searchParams.set("toToken", args.tokenOut);
+    url.searchParams.set("fromAmount", args.amountIn);
+    url.searchParams.set("fromAddress", args.fromAddress);
+    url.searchParams.set("toAddress", args.fromAddress);
+    url.searchParams.set("slippage", String(slippage));
+    if (integrator) {
+      url.searchParams.set("integrator", integrator);
+    }
+    url.searchParams.set("order", "RECOMMENDED");
+
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(
+        url.toString(),
+        {
+          headers: { accept: "application/json" },
+        },
+        args.timeoutMs ?? UPSTREAM_QUOTE_TIMEOUT_MS,
+      );
+    } catch {
+      continue;
+    }
+    if (!res.ok) continue;
+    const quote = await res.json();
+    const txReq = quote?.transactionRequest as
+      | { to?: string; data?: string }
+      | undefined;
+    if (!txReq?.to || !txReq?.data) continue;
+    const amountOut =
+      quote?.estimate?.toAmount ??
+      quote?.toAmount ??
+      quote?.action?.toAmount;
+    if (typeof amountOut !== "string" || !/^\d+$/.test(amountOut)) continue;
+
+    const lifiLabels = formatLifiOfferLabel(quote);
+    return {
+      quote,
+      offer: withHumanOut(
+        {
+          provider: "lifi",
+          amountOut,
+          tokenInAddress: args.tokenIn,
+          tokenOutAddress: args.tokenOut,
+          amountIn: args.amountIn,
+          label: lifiLabels.label,
+          sublabel: lifiLabels.sublabel,
+        },
+        args.tokenOutSymbol,
+      ),
+    };
   }
-  if (!res.ok) return null;
-  const quote = await res.json();
-  const txReq = quote?.transactionRequest as
-    | { to?: string; data?: string }
-    | undefined;
-  if (!txReq?.to || !txReq?.data) return null;
-  const amountOut =
-    quote?.estimate?.toAmount ??
-    quote?.toAmount ??
-    quote?.action?.toAmount;
-  if (typeof amountOut !== "string" || !/^\d+$/.test(amountOut)) return null;
 
-  const lifiLabels = formatLifiOfferLabel(quote);
-  return {
-    quote,
-    offer: withHumanOut(
-      {
-        provider: "lifi",
-        amountOut,
-        tokenInAddress: args.tokenIn,
-        tokenOutAddress: args.tokenOut,
-        amountIn: args.amountIn,
-        label: lifiLabels.label,
-        sublabel: lifiLabels.sublabel,
-      },
-      args.tokenOutSymbol,
-    ),
-  };
+  return null;
 }
 
 async function quoteCircle(args: {
@@ -333,7 +355,7 @@ export async function fetchSwapRouteOffers(args: {
   ];
 
   const executions: SwapRouteExecution[] = [];
-  if (circle && !cirBtcPair) {
+  if (circle) {
     executions.push({ provider: "circle", offer: circle });
   }
   if (kyber && swapProviderExecutable("kyber", args.tokenIn, args.tokenOut, isMainnet)) {
@@ -359,8 +381,14 @@ export async function fetchSwapRouteOffers(args: {
   const executableOffers = offers.filter((o) =>
     swapProviderExecutable(o.provider, args.tokenIn, args.tokenOut, isMainnet),
   );
-  const bestOffer =
-    executableOffers.length > 0 ? pickBest(executableOffers) : null;
+  const bestOffer = (() => {
+    if (executableOffers.length === 0) return null;
+    if (cirBtcPair) {
+      const circle = executableOffers.find((o) => o.provider === "circle");
+      if (circle) return circle;
+    }
+    return pickBest(executableOffers);
+  })();
   if (!bestOffer) {
     return { offers, best: null, executions, lifiExecution };
   }

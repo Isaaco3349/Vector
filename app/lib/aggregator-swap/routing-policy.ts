@@ -5,8 +5,8 @@ export function pairIncludesCirBtc(tokenIn: string, tokenOut: string): boolean {
 }
 
 /**
- * Which providers may be executed (not quote-only) for this pair on Arc mainnet.
- * Kyber on Arc has been unreliable (hangs / browser RPC errors); cirBTC uses LI.FI.
+ * Arc Portal ([portal.arc.io/swap](https://portal.arc.io/swap)) routes cirBTC through
+ * Circle's Adapter + LI.FI (see `execute` on the Adapter in explorer), not raw Kyber.
  */
 export function swapProviderExecutable(
   provider: SwapRouteProvider,
@@ -16,23 +16,21 @@ export function swapProviderExecutable(
 ): boolean {
   if (!mainnet) return provider !== "kyber";
 
+  if (provider === "kyber") return false;
+
   if (pairIncludesCirBtc(tokenIn, tokenOut)) {
-    if (provider === "kyber") return false;
-    if (provider === "circle") return false;
-    return provider === "lifi";
+    return provider === "circle" || provider === "lifi";
   }
 
-  if (provider === "kyber") return false;
   return true;
 }
 
+/** Circle is never quote-only on Arc when it is the executable Adapter path. */
 export function swapProviderQuoteOnly(
-  provider: SwapRouteProvider,
-  tokenIn: string,
-  tokenOut: string,
-  mainnet: boolean,
+  _provider: SwapRouteProvider,
+  _tokenIn: string,
+  _tokenOut: string,
+  _mainnet: boolean,
 ): boolean {
-  if (!mainnet) return false;
-  if (!pairIncludesCirBtc(tokenIn, tokenOut)) return false;
-  return provider === "circle";
+  return false;
 }
