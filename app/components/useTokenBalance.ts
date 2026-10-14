@@ -14,6 +14,7 @@ import { chainId as ARC_CHAIN_ID } from "../lib/network";
 import { tokenBySymbol } from "../lib/swap-tokens";
 import { resolveSigningProviderCached } from "../lib/wallet-provider";
 import { useSharedArcUsdcBalance } from "./ArcUsdcBalanceContext";
+import { useArcBalancesSnapshot } from "./useArcBalancesPoll";
 
 /**
  * Arc token balances for Swap / portfolio.
@@ -32,6 +33,7 @@ export function useTokenBalance(symbol: string): {
 
   const isUsdc = token?.symbol === "USDC";
   const arcUsdc = useSharedArcUsdcBalance();
+  const arcSnapshot = useArcBalancesSnapshot();
   const verifiedDecimals = verifiedArcTokenDecimals(symbol);
   const isVerifiedErc20 =
     !isUsdc && token?.kind === "erc20" && !!token.address && verifiedDecimals !== null;
@@ -54,15 +56,16 @@ export function useTokenBalance(symbol: string): {
         isVerifiedErc20 &&
         !!token?.address &&
         !okxInAppBrowser(),
-      staleTime: 8_000,
+      staleTime: 0,
       refetchInterval: false,
+      refetchOnWindowFocus: true,
     },
   });
 
   const erc20Query = useReadContracts({
     query: {
       enabled: isConnected && !!address && isLegacyErc20,
-      staleTime: 8_000,
+      staleTime: 0,
       refetchInterval: false,
     },
     contracts: isLegacyErc20
@@ -91,11 +94,9 @@ export function useTokenBalance(symbol: string): {
   const [walletFetchGen, setWalletFetchGen] = useState(0);
   const [manualPublicRaw, setManualPublicRaw] = useState<bigint | null>(null);
 
-  const okxPublicRead =
-    okxInAppBrowser() &&
-    isVerifiedErc20 &&
-    !!address &&
-    !!token?.address;
+  const preferPublicRead =
+    isVerifiedErc20 && !!address && !!token?.address;
+  const okxPublicRead = okxInAppBrowser() && preferPublicRead;
 
   const wagmiRawVerified =
     typeof balanceQuery.data === "bigint" ? balanceQuery.data : null;
@@ -114,7 +115,7 @@ export function useTokenBalance(symbol: string): {
     (balanceQuery.isError || balanceQuery.data === undefined);
 
   useEffect(() => {
-    if (!okxPublicRead) {
+    if (!preferPublicRead) {
       setPublicRaw(null);
       setPublicFetchDone(false);
       return;
@@ -137,7 +138,7 @@ export function useTokenBalance(symbol: string): {
     return () => {
       cancelled = true;
     };
-  }, [okxPublicRead, connector, address, token?.address, symbol, walletFetchGen]);
+  }, [preferPublicRead, connector, address, token?.address, symbol, walletFetchGen]);
 
   useEffect(() => {
     if (!needsWalletFallback) {
@@ -198,8 +199,18 @@ export function useTokenBalance(symbol: string): {
         setManualPublicRaw(null);
       }
     }
+    await arcSnapshot?.refresh();
     setWalletFetchGen((g) => g + 1);
-  }, [arcUsdc, balanceQuery, erc20Query, isUsdc, isVerifiedErc20, address, token?.address]);
+  }, [
+    arcUsdc,
+    arcSnapshot,
+    balanceQuery,
+    erc20Query,
+    isUsdc,
+    isVerifiedErc20,
+    address,
+    token?.address,
+  ]);
 
   if (isUsdc) {
     return {
@@ -212,17 +223,26 @@ export function useTokenBalance(symbol: string): {
   }
 
   if (isVerifiedErc20 && verifiedDecimals !== null) {
+    const serverMinor = (() => {
+      const snap = arcSnapshot?.snapshot;
+      if (!snap) return null;
+      if (symbol === "cirBTC") return BigInt(snap.cirBtcMinor);
+      if (symbol === "EURC") return BigInt(snap.eurcMinor);
+      return null;
+    })();
     const isLoading =
-      (okxPublicRead && !publicFetchDone && publicRaw === null) ||
-      (!okxPublicRead &&
+      (arcSnapshot?.isLoading && serverMinor === null && publicRaw === null) ||
+      (preferPublicRead && !publicFetchDone && publicRaw === null && serverMinor === null) ||
+      (!preferPublicRead &&
         (balanceQuery.isLoading ||
           (needsWalletFallback && !walletFetchDone && walletRaw === null)));
     const publicMerged =
       manualPublicRaw !== null ? manualPublicRaw : publicRaw;
     const raw =
-      publicMerged !== null
-        ? publicMerged
-        : wagmiRawVerified ?? walletRaw;
+      serverMinor ??
+      (publicMerged !== null ? publicMerged : null) ??
+      wagmiRawVerified ??
+      walletRaw;
     if (isLoading && raw === null) {
       return {
         formatted: null,
@@ -241,7 +261,7 @@ export function useTokenBalance(symbol: string): {
     }
     const maxSpendable = trimTrailingZeros(formatUnits(raw, verifiedDecimals));
     return {
-      formatted: trim(formatUnits(raw, verifiedDecimals)),
+      formatted: trim(formatUnits(raw, verifiedDecimals), symbol),
       maxSpendable,
       isLoading: false,
       refetch,
@@ -296,11 +316,12 @@ function trimTrailingZeros(value: string): string {
   return value.replace(/\.?0+$/, "") || "0";
 }
 
-function trim(value: string): string {
+function trim(value: string, symbol?: string): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return value;
   if (n === 0) return "0";
+  const maxFrac = symbol === "cirBTC" ? 8 : 4;
   return n
-    .toLocaleString("en-US", { maximumFractionDigits: 4, useGrouping: false })
+    .toLocaleString("en-US", { maximumFractionDigits: maxFrac, useGrouping: false })
     .toString();
 }

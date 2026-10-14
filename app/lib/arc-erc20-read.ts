@@ -15,7 +15,7 @@ import { arcViemChain } from "./viem-arc-chain";
 
 const ARC_PUBLIC_READ_FALLBACK_RPC = "https://rpc.mainnet.arc.io";
 const ARC_PUBLIC_READ_FALLBACK_RPC_ALT = "https://rpc.arc.network/";
-const ARC_READ_CACHE_MS = 5_000;
+const ARC_READ_CACHE_MS = 2_000;
 
 let arcReadClient: ReturnType<typeof createPublicClient> | null = null;
 

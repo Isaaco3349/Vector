@@ -10,6 +10,7 @@ import {
 } from "../lib/arc-usdc-balance";
 import { clearArcPublicReadCache } from "../lib/arc-erc20-read";
 import { arcUsdcAddress, chainId as ARC_CHAIN_ID } from "../lib/network";
+import { useArcBalancesSnapshot } from "./useArcBalancesPoll";
 
 /**
  * Single Arc USDC balance for UI — native is authoritative (gas + same pool per Arc).
@@ -25,21 +26,23 @@ export function useArcUsdcBalance(): {
   refetch: () => Promise<void>;
 } {
   const { address, isConnected } = useAccount();
+  const arcSnapshot = useArcBalancesSnapshot();
 
   const nativeQuery = useBalance({
     address,
     chainId: ARC_CHAIN_ID,
     query: {
       enabled: isConnected && !!address,
-      staleTime: 8_000,
+      staleTime: 0,
       refetchInterval: false,
+      refetchOnWindowFocus: true,
     },
   });
 
   const erc20Query = useReadContracts({
     query: {
       enabled: isConnected && !!address,
-      staleTime: 8_000,
+      staleTime: 0,
       refetchInterval: false,
     },
     contracts: [
@@ -55,8 +58,12 @@ export function useArcUsdcBalance(): {
 
   const refetch = useCallback(async () => {
     clearArcPublicReadCache();
-    await Promise.all([nativeQuery.refetch(), erc20Query.refetch()]);
-  }, [nativeQuery, erc20Query]);
+    await Promise.all([
+      nativeQuery.refetch(),
+      erc20Query.refetch(),
+      arcSnapshot?.refresh(),
+    ]);
+  }, [nativeQuery, erc20Query, arcSnapshot]);
 
   if (nativeQuery.isLoading || erc20Query.isLoading) {
     return {
@@ -70,11 +77,19 @@ export function useArcUsdcBalance(): {
     };
   }
 
-  const nativeWei = nativeQuery.data?.value ?? null;
-  const erc20Minor =
+  const wagmiNative = nativeQuery.data?.value ?? null;
+  const wagmiErc20 =
     typeof erc20Query.data?.[0]?.result === "bigint"
       ? erc20Query.data[0].result
       : null;
+  const serverNative = arcSnapshot?.snapshot?.nativeWei
+    ? BigInt(arcSnapshot.snapshot.nativeWei)
+    : null;
+  const serverErc20 = arcSnapshot?.snapshot?.usdcErc20Minor
+    ? BigInt(arcSnapshot.snapshot.usdcErc20Minor)
+    : null;
+  const nativeWei = serverNative ?? wagmiNative;
+  const erc20Minor = serverErc20 ?? wagmiErc20;
 
   if (nativeWei === null && erc20Minor === null) {
     return {
