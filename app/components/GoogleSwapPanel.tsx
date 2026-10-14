@@ -275,7 +275,7 @@ export function GoogleSwapPanel({
         ) : (
           <>
             {/* You pay */}
-            <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-1">
+            <div className="vector-input-panel p-4 mb-1">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[12px] text-[var(--vector-text-dim)]">
                   You pay
@@ -342,7 +342,7 @@ export function GoogleSwapPanel({
             </div>
 
             {/* You receive */}
-            <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mt-1 mb-4">
+            <div className="vector-input-panel p-4 mt-1 mb-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[12px] text-[var(--vector-text-dim)]">
                   You receive (estimated)

@@ -24,6 +24,8 @@ import { GoogleSwapPanel } from "./components/GoogleSwapPanel";
 import { ReceivePanel } from "./components/ReceivePanel";
 import { EarnPanel } from "./components/EarnPanel";
 import { DigitalMarquee } from "./components/DigitalMarquee";
+import { HowItWorksSection } from "./components/landing/HowItWorksSection";
+import { FaqSection } from "./components/landing/FaqSection";
 import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { useTokenBalance } from "./components/useTokenBalance";
@@ -706,7 +708,11 @@ export default function HomePage() {
           </Link>
 
           <nav
-            className="hidden md:flex items-center gap-1 text-[14px] font-medium"
+            className={`items-center gap-1 font-medium ${
+              appNav
+                ? "hidden md:flex text-[14px]"
+                : "flex flex-wrap justify-center flex-1 min-w-0 text-[12px] sm:text-[13px] md:text-[14px] md:flex-initial md:justify-start"
+            }`}
             aria-label="Primary"
           >
             {appNav ? (
@@ -725,6 +731,18 @@ export default function HomePage() {
                   className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
                 >
                   Features
+                </a>
+                <a
+                  href="#how-it-works"
+                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
+                >
+                  How it works
+                </a>
+                <a
+                  href="#faq"
+                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
+                >
+                  FAQ
                 </a>
                 <a
                   href="#connect"
@@ -746,26 +764,30 @@ export default function HomePage() {
 
       <section className="flex-1 w-full mx-auto max-w-[var(--vector-max-content)] px-6 py-10 md:py-14 lg:py-16">
         <div
-          className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-12 lg:gap-16 ${
-            connected ? "items-start" : "items-start lg:items-stretch"
+          className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-10 lg:gap-14 ${
+            connected ? "items-start" : "items-stretch"
           }`}
         >
-          <div className="hidden lg:block pt-2" id="features">
+          <div
+            className={`order-2 lg:order-1 flex flex-col justify-center min-h-0 lg:min-h-[560px] lg:py-8 ${
+              connected ? "hidden lg:flex" : "flex"
+            }`}
+            id="features"
+          >
             <ProductOverview connected={Boolean(connected)} />
           </div>
 
           <div
             id="connect"
-            className="w-full max-w-[420px] mx-auto lg:mx-0 lg:max-w-[420px] scroll-mt-24 lg:flex lg:flex-col"
+            className="order-1 lg:order-2 w-full max-w-[420px] mx-auto lg:mx-0 lg:max-w-[420px] scroll-mt-24 lg:flex lg:flex-col lg:justify-center lg:min-h-[560px]"
           >
           {!connected && (
-            <div className="lg:flex lg:flex-col lg:flex-1 lg:min-h-[520px]">
-              <div className="mb-8 lg:hidden">
-                <LandingHero compact />
-              </div>
-
-              <p className="text-[12px] text-[var(--vector-text-dim)] mb-4 uppercase tracking-wide">
+            <div className="vector-connect-card flex flex-col gap-1">
+              <h2 className="text-[22px] font-semibold tracking-tight mb-1 text-center lg:text-left">
                 Connect to get started
+              </h2>
+              <p className="text-[14px] text-[var(--vector-text-dim)] mb-5 text-center lg:text-left leading-relaxed">
+                Google sign-in or an external wallet on Arc.
               </p>
 
               <button
@@ -812,7 +834,7 @@ export default function HomePage() {
                 <span className="flex-1 h-px bg-[var(--vector-line)]" />
               </div>
 
-              <div className="flex flex-col gap-5 mt-0 lg:flex-1 lg:min-h-[380px] lg:justify-evenly lg:gap-0 lg:py-4">
+              <div className="flex flex-col gap-4 mt-0">
               <button
                 onClick={() => {
                   if (pickableConnectors.length <= 1) {
@@ -823,23 +845,11 @@ export default function HomePage() {
                   }
                 }}
                 disabled={pickableConnectors.length === 0 || isConnectPending}
-                className="w-full h-[52px] rounded-full border border-[var(--vector-line)] text-[var(--vector-text)] font-semibold text-[15px] flex items-center justify-center gap-2.5 hover:border-[var(--vector-pink)] transition-colors disabled:opacity-40 shrink-0"
+                className="vector-btn-outline w-full h-[52px] rounded-full bg-[var(--vector-surface-raised)] text-[var(--vector-text)] font-semibold text-[15px] flex items-center justify-center gap-2.5 transition-colors disabled:opacity-40 shrink-0"
               >
                 <WalletMark />
                 {isConnectPending ? "Connecting…" : "Connect Wallet"}
               </button>
-
-              <p className="text-[11px] text-[var(--vector-text-dim)] leading-relaxed text-center shrink-0">
-                By connecting, you agree to our{" "}
-                <Link href="/terms" className="text-[var(--vector-pink)] underline">
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
-                <Link href="/privacy" className="text-[var(--vector-pink)] underline">
-                  Privacy Policy
-                </Link>
-                .
-              </p>
 
               {showWalletPicker && (
                 <div
@@ -933,10 +943,6 @@ export default function HomePage() {
                 Circle if you lose access to that account, so keep it secure.
               </p>
               </div>
-
-              <div className="lg:hidden mt-12 pt-10 border-t border-[var(--vector-line)]">
-                <ProductOverview connected={false} />
-              </div>
             </div>
           )}
 
@@ -963,13 +969,17 @@ export default function HomePage() {
                     : handleCircleSignOut
                 }
               />
-              <div className="lg:hidden mt-12 pt-10 border-t border-[var(--vector-line)]">
-                <ProductOverview connected />
-              </div>
             </>
           )}
           </div>
         </div>
+
+        {!connected && (
+          <div className="mt-16 md:mt-20 lg:mt-24 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 border-t border-[var(--vector-line)] pt-14 md:pt-16">
+            <HowItWorksSection />
+            <FaqSection />
+          </div>
+        )}
       </section>
 
       <footer className="mt-auto border-t border-[var(--vector-line)] flex flex-col items-center gap-4 px-6 py-8">
@@ -1194,7 +1204,7 @@ function WalletCard({
   const needsFunds = balanceNum !== null && Number.isFinite(balanceNum) && balanceNum === 0;
 
   return (
-    <div className="rounded-3xl border border-[var(--vector-line)] bg-[var(--vector-surface)] p-7">
+    <div className="vector-panel-border bg-[var(--vector-surface)] p-7">
       <div className="flex items-center justify-between gap-3 mb-8">
         <WalletMetaBadge
           href="https://www.arc.io"
@@ -1454,8 +1464,8 @@ function LandingHero({ compact }: { compact?: boolean }) {
             : "text-[var(--vector-text-dim)] text-[16px] lg:text-[17px] leading-relaxed max-w-xl"
         }
       >
-        Vector is a home base for USDC-native DeFi on Circle&apos;s Arc network:
-        trade, earn yield, and move USDC across chains — with Google sign-in or
+        Vector is a home base for USDC-native DeFi on Circle&apos;s Arc network.
+        Trade, earn yield, and move USDC across chains with Google sign-in or
         your own wallet.
       </p>
     </div>
@@ -1489,7 +1499,7 @@ function ProductOverview({ connected }: { connected: boolean }) {
         />
         <FeatureBlurb
           title="Bridge"
-          body="CCTP v2 cross-chain USDC — burn on the source chain, mint on the destination via Circle's relayer. Arc, Base, Ethereum, and more."
+          body="CCTP v2 cross-chain USDC. Burn on the source chain and mint on the destination via Circle's relayer. Arc, Base, Ethereum, and more."
         />
         <FeatureBlurb
           title="Earn"
@@ -1497,24 +1507,19 @@ function ProductOverview({ connected }: { connected: boolean }) {
         />
       </div>
 
-      <p className="text-[13px] leading-relaxed text-[var(--vector-text-dim)] max-w-lg">
-        Arc uses USDC for gas, so one balance covers fees and transfers. New here?{" "}
-        <Link href="/terms" className="text-[var(--vector-pink)] underline">
-          Terms
-        </Link>{" "}
-        and{" "}
-        <Link href="/privacy" className="text-[var(--vector-pink)] underline">
-          Privacy
-        </Link>{" "}
-        explain how Vector and Circle handle your data.
-      </p>
+      {!connected && (
+        <p className="text-[14px] leading-relaxed text-[var(--vector-text-dim)] max-w-lg">
+          Arc uses USDC for gas, so one balance covers fees and transfers. Scroll
+          for how it works, FAQ, and legal links in the footer.
+        </p>
+      )}
     </div>
   );
 }
 
 function FeatureBlurb({ title, body }: { title: string; body: string }) {
   return (
-    <article className="rounded-2xl border border-[var(--vector-line)] bg-[var(--vector-surface)]/60 p-5">
+    <article className="vector-panel-border bg-[var(--vector-surface)]/60 p-5">
       <h3 className="text-[15px] font-semibold mb-2">{title}</h3>
       <p className="text-[14px] leading-relaxed text-[var(--vector-text-dim)]">
         {body}
