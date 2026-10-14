@@ -297,7 +297,7 @@ export function GoogleBridgePanel({
         ) : (
           <>
             {/* Route: Arc → destination */}
-            <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-3">
+            <div className="vector-input-panel p-4 mb-3">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[12px] text-[var(--vector-text-dim)]">
                   From
@@ -334,7 +334,7 @@ export function GoogleBridgePanel({
             </div>
 
             {/* Amount */}
-            <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">
+            <div className="vector-input-panel p-4 mb-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[12px] text-[var(--vector-text-dim)]">
                   Amount
@@ -374,7 +374,7 @@ export function GoogleBridgePanel({
             </p>
 
             {/* Recipient on the destination chain */}
-            <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">
+            <div className="vector-input-panel p-4 mb-4">
               <p className="text-[11px] leading-relaxed text-[var(--vector-text-dim)] mb-3">
                 Your Google wallet is a Circle smart account that exists only on
                 Arc ({walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}).

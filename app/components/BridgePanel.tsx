@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
-  refreshBalancesAfterTx,
+  flushBalancesAfterSwap,
   scheduleBalancePoll,
 } from "../lib/balance-refresh";
 import {
@@ -109,9 +109,16 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   const syncBalancesAfterBridge = useCallback(
     async (txHash: string | null) => {
       const srcChainId = bridgeChainById(fromChain)?.chainId;
-      await refreshBalancesAfterTx(queryClient, txHash, srcChainId);
-      scheduleBalancePoll(queryClient);
-      await balanceFrom.refetch();
+      await flushBalancesAfterSwap(
+        queryClient,
+        txHash,
+        [
+          async () => {
+            await balanceFrom.refetch();
+          },
+        ],
+        srcChainId,
+      );
     },
     [queryClient, fromChain, balanceFrom.refetch],
   );
@@ -447,7 +454,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   return (
     <VectorModalShell title="Bridge USDC" onClose={onClose}>
         {/* From chain + amount */}
-        <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-1">
+        <div className="vector-input-panel p-4 mb-1">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] text-[var(--vector-text-dim)]">From</span>
             <ChainSelect value={fromChain} onChange={setFromChain} />
@@ -512,7 +519,7 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* To chain */}
-        <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mt-1 mb-4">
+        <div className="vector-input-panel p-4 mt-1 mb-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] text-[var(--vector-text-dim)]">To</span>
             <ChainSelect value={toChain} onChange={setToChain} />

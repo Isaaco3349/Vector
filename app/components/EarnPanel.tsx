@@ -332,7 +332,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
         ) : (
           // ---- Vault detail: deposit / withdraw ----
           <div>
-            <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">
+            <div className="vector-input-panel p-4 mb-4">
               <div className="flex items-center justify-between">
                 <span className="text-[15px] font-semibold">{selected.name}</span>
                 <span className="text-[15px] font-semibold text-[var(--vector-pink)]">
@@ -406,7 +406,7 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
             ) : (
               <>
                 {/* Amount */}
-                <div className="rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] p-4 mb-4">
+                <div className="vector-input-panel p-4 mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[12px] text-[var(--vector-text-dim)]">
                       {mode === "deposit" ? "Deposit amount" : "Withdraw amount"}

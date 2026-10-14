@@ -19,6 +19,8 @@ import type { BridgeExecution, BridgeArgs } from "./bridge";
 import { bridgeChainById, explorerTxUrl, type BridgeChainId } from "./bridge-chains";
 import { buildBridgePlan, type BridgeCall } from "./google-bridge";
 import type { Eip1193Provider } from "./appkit";
+import { waitArcTransactionReceipt } from "./arc-tx-wait";
+import { chainId as ARC_CHAIN_ID } from "./network";
 
 async function resolveWalletAddress(
   provider: Eip1193Provider,
@@ -79,7 +81,15 @@ async function sendLegacyTransaction(
   return hash as Hash;
 }
 
-async function waitForReceipt(rpcUrl: string, hash: Hash): Promise<void> {
+async function waitForReceipt(
+  rpcUrl: string,
+  hash: Hash,
+  chainId?: number,
+): Promise<void> {
+  if (chainId === ARC_CHAIN_ID) {
+    await waitArcTransactionReceipt({} as Eip1193Provider, hash);
+    return;
+  }
   const client = createPublicClient({ transport: http(rpcUrl) });
   await client.waitForTransactionReceipt({ hash, confirmations: 1 });
 }
@@ -144,7 +154,7 @@ export async function executeBridgeViaSequentialTransactions(
   if (needsApprove) {
     try {
       approveHash = await sendTx(plan.approve);
-      await waitForReceipt(sourceDefRpc, approveHash);
+      await waitForReceipt(sourceDefRpc, approveHash, sourceChainId);
     } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/reject|denied|cancel|risky|blocked/i.test(msg)) {

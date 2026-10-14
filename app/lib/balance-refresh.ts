@@ -66,8 +66,10 @@ export async function flushBalancesAfterSwap(
   queryClient: QueryClient,
   txHash: string | null,
   refetchTokens: Array<() => Promise<void>>,
+  /** When bridging from a non-Arc chain, skip Arc receipt polling for the burn hash. */
+  sourceChainId?: number,
 ): Promise<void> {
-  await refreshBalancesAfterTx(queryClient, txHash);
+  await refreshBalancesAfterTx(queryClient, txHash, sourceChainId);
   await Promise.all(refetchTokens.map((fn) => fn()));
   scheduleBalancePoll(queryClient);
   for (const delayMs of BALANCE_POLL_DELAYS_MS) {
