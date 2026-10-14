@@ -1,8 +1,11 @@
 "use client";
 
 import { fetchVectorApi } from "../okx-mobile-fetch";
+import { assembleSwapRoutes } from "./assemble-swap-routes";
+import { fetchLifiQuoteBrowser } from "./lifi-quote-browser";
 import type { SwapRouteExecution, SwapRouteOffer } from "./types";
 import type { AggregatorPairSymbol } from "./tokens";
+import { pairIncludesCirBtc } from "./routing-policy";
 
 export type ClientSwapRoutesResult = {
   offers: SwapRouteOffer[];
@@ -66,6 +69,75 @@ export async function fetchSwapRoutesClient(args: {
     );
   }
   return data as ClientSwapRoutesResult;
+}
+
+/**
+ * Server compare first; if empty or failed, LI.FI from the browser (Arc Portal path).
+ */
+export async function fetchSwapRoutesResilient(args: {
+  tokenIn: AggregatorPairSymbol;
+  tokenOut: AggregatorPairSymbol;
+  amount: string;
+  fromAddress: string;
+  slippageBps?: number;
+}): Promise<ClientSwapRoutesResult> {
+  const slippageBps = args.slippageBps ?? 300;
+  let serverError: Error | null = null;
+
+  try {
+    const server = await fetchSwapRoutesClient({ ...args, slippageBps });
+    if (server.offers.length > 0) return server;
+  } catch (err) {
+    serverError =
+      err instanceof Error ? err : new Error("Could not compare swap routes.");
+  }
+
+  const lifi = await fetchLifiQuoteBrowser({
+    tokenIn: args.tokenIn,
+    tokenOut: args.tokenOut,
+    amountHuman: args.amount,
+    fromAddress: args.fromAddress,
+    slippageBps,
+  });
+  if (lifi) {
+    const lifiExecution: SwapRouteExecution = {
+      provider: "lifi",
+      offer: lifi.offer,
+      quote: lifi.quote,
+    };
+    return assembleSwapRoutes({
+      tokenIn: args.tokenIn,
+      tokenOut: args.tokenOut,
+      offers: [lifi.offer],
+      executions: [lifiExecution],
+      lifiExecution,
+    });
+  }
+
+  try {
+    const circle = await fetchCircleQuoteClient({ ...args, slippageBps });
+    if (circle) {
+      const circleExecution: SwapRouteExecution = {
+        provider: "circle",
+        offer: circle,
+      };
+      return assembleSwapRoutes({
+        tokenIn: args.tokenIn,
+        tokenOut: args.tokenOut,
+        offers: [circle],
+        executions: [circleExecution],
+        lifiExecution: null,
+      });
+    }
+  } catch (err) {
+    if (!serverError) {
+      serverError =
+        err instanceof Error ? err : new Error("Could not fetch Circle quote.");
+    }
+  }
+
+  if (serverError) throw serverError;
+  return { offers: [], best: null, executions: [], lifiExecution: null };
 }
 
 export async function fetchCircleQuoteClient(args: {

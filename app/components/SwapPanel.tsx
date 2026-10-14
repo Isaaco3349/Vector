@@ -15,7 +15,7 @@ import {
 } from "../lib/network";
 import {
   fetchCircleQuoteClient,
-  fetchSwapRoutesClient,
+  fetchSwapRoutesResilient,
 } from "../lib/aggregator-swap/fetch-routes-client";
 import type {
   SwapRouteExecution,
@@ -289,6 +289,8 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   /** Route fetch / pre-wallet work — not the same as waiting on OKX confirm. */
   const [preparingSwap, setPreparingSwap] = useState(false);
   const [balancesRefreshing, setBalancesRefreshing] = useState(false);
+  /** Bump to re-run LI.FI / Circle quotes (header Refresh). */
+  const [quoteRefreshTick, setQuoteRefreshTick] = useState(0);
   /**
    * Message and Circle's own classification, held together in one piece of
    * state so the UI can show the reason, the SDK's verbatim detail, and the
@@ -431,14 +433,16 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     [queryClient, balanceIn.refetch, balanceOut.refetch],
   );
 
-  const refreshSwapBalances = useCallback(async () => {
+  const refreshSwapPanel = useCallback(async () => {
     setBalancesRefreshing(true);
+    swapRouteCacheRef.current = null;
     try {
       await flushArcBalancesImmediate(
         queryClient,
         arcBalances?.refresh,
         [balanceIn.refetch, balanceOut.refetch],
       );
+      setQuoteRefreshTick((t) => t + 1);
     } finally {
       setBalancesRefreshing(false);
     }
@@ -718,7 +722,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
 
       if (isMainnet && address && aggIn && aggOut && !stableCircleFastPath) {
         try {
-          const routes = await fetchSwapRoutesClient({
+          const routes = await fetchSwapRoutesResilient({
             tokenIn: aggIn,
             tokenOut: aggOut,
             amount: String(parsedAmountForQuote),
@@ -732,11 +736,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
             const missingCirBtcExec =
               pairIncludesCirBtc(tokenIn, tokenOut) &&
               !routes.best &&
-              !routes.offers.some((o) => o.provider === "circle");
+              !routes.lifiExecution;
             setErrorState(
               missingCirBtcExec
                 ? {
-                    text: "No Arc Portal route for cirBTC at this size. Tap Refresh or try a slightly different amount.",
+                    text: "LI.FI returned a price but no executable Arc Adapter route. Tap Refresh or try a slightly different amount.",
                     info: null,
                   }
                 : null,
@@ -755,7 +759,14 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         } catch (err) {
           if (!cancelled) {
             setRouteOffers(null);
-            console.warn("[Vector] swap-routes:", err);
+            setErrorState({
+              text:
+                err instanceof Error
+                  ? err.message
+                  : "Could not reach Arc Portal routes. Tap Refresh.",
+              info: null,
+            });
+            return;
           }
         }
       }
@@ -799,7 +810,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           setQuote(null);
           setErrorState({
             text: pairIncludesCirBtc(tokenIn, tokenOut)
-              ? "No LI.FI route for cirBTC on Arc right now. Tap Refresh or try a slightly different amount."
+              ? "No Arc Portal route (LI.FI + Circle Adapter) for cirBTC right now. Tap Refresh to re-quote or try a slightly different amount."
               : "No quote from Circle or LI.FI on Arc right now. Tap Refresh or try a slightly different amount.",
             info: null,
           });
@@ -901,6 +912,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     useOkxSequential,
     stableCircleFastPath,
     compareAggregatorPrices,
+    quoteRefreshTick,
   ]);
 
   useEffect(() => {
@@ -949,7 +961,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       if (parsedAmount > 0) {
         setDebouncedAmountIn(amountIn.trim());
       }
-      void refreshSwapBalances();
+      void refreshSwapPanel();
       return;
     }
     setErrorState({
@@ -1065,7 +1077,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         lifiExecution: cached.lifiExecution ?? null,
       };
     } else if (isMainnet && aggIn && aggOut) {
-      routes = await fetchSwapRoutesClient({
+      routes = await fetchSwapRoutesResilient({
         tokenIn: aggIn,
         tokenOut: aggOut,
         amount: String(parsedAmount),
@@ -1136,6 +1148,12 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       if (attemptErrors.length > 0) {
         throw new Error(attemptErrors.join(" · "));
       }
+    }
+
+    if (pairIncludesCirBtc(tokenIn, tokenOut)) {
+      throw new Error(
+        "No executable Arc Portal route for cirBTC. Tap Refresh to re-quote via LI.FI (Circle Adapter).",
+      );
     }
 
     setSwapping(true);
@@ -1259,7 +1277,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               lifiExecution: cached.lifiExecution ?? null,
             };
           } else {
-            routes = await fetchSwapRoutesClient({
+            routes = await fetchSwapRoutesResilient({
               tokenIn: aggIn,
               tokenOut: aggOut,
               amount: String(parsedAmount),
@@ -1514,7 +1532,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => void refreshSwapBalances()}
+              onClick={() => void refreshSwapPanel()}
               disabled={balancesRefreshing}
               className="vector-modal-close !min-w-0 px-3 disabled:opacity-50"
             >
