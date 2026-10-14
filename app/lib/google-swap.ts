@@ -1,6 +1,7 @@
 "use client";
 
 import { SwapChain } from "@circle-fin/app-kit";
+import { AGGREGATOR_CIRBTC_MAINNET } from "./aggregator-swap/tokens";
 import {
   chainIdHex as ARC_CHAIN_ID_HEX,
   isMainnet,
@@ -403,10 +404,7 @@ export async function buildSwapPlan(args: BuildSwapPlanArgs): Promise<SwapPlan> 
     if (s === "USDC") return usdcAddress;
     if (s === "cirBTC") {
       if (isMainnet) {
-        throw new Error(
-          "cirBTC isn't available to swap on Arc mainnet yet (Circle's SDK " +
-            "lists no mainnet contract). No funds moved — pick USDC or EURC.",
-        );
+        return AGGREGATOR_CIRBTC_MAINNET;
       }
       return CIRBTC_ARC_TESTNET_ADDRESS;
     }

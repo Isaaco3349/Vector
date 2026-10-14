@@ -28,6 +28,10 @@ export function pickSwapExecution(
     if (picked) return picked;
   }
   if (list.length > 0) {
+    if (pairIncludesCirBtc(tokenIn, tokenOut)) {
+      const circle = list.find((e) => e.provider === "circle");
+      if (circle) return circle;
+    }
     return list.reduce((a, b) =>
       BigInt(b.offer.amountOut) > BigInt(a.offer.amountOut) ? b : a,
     );
@@ -118,8 +122,19 @@ export function buildSwapRouteAttempts(
   }
 
   if (cirBtcPair) {
-    const lifi = routes.lifiExecution ?? routes.executions?.find((e) => e.provider === "lifi");
-    if (lifi) return [lifi];
+    const ordered: SwapRouteExecution[] = [];
+    const circleExec =
+      routes.executions?.find((e) => e.provider === "circle") ??
+      (() => {
+        const offer = routes.offers.find((o) => o.provider === "circle");
+        return offer ? ({ provider: "circle" as const, offer }) : null;
+      })();
+    const lifi =
+      routes.lifiExecution ??
+      routes.executions?.find((e) => e.provider === "lifi");
+    if (circleExec) ordered.push(circleExec);
+    if (lifi) ordered.push(lifi);
+    if (ordered.length > 0) return ordered;
   }
 
   return attempts;
@@ -149,6 +164,14 @@ export function buildOkxSwapRouteAttempts(
     if (circleOffer) {
       return [{ provider: "circle", offer: circleOffer }];
     }
+  }
+
+  if (pairIncludesCirBtc(tokenIn, tokenOut)) {
+    return buildSwapRouteAttempts(
+      { ...routes, lifiExecution: routes.lifiExecution ?? null },
+      tokenIn,
+      tokenOut,
+    );
   }
 
   if (routes.best && swapProviderExecutable(routes.best.provider, tokenIn, tokenOut, isMainnet)) {

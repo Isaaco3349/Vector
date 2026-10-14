@@ -396,12 +396,18 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               : null;
 
   const cirBtcPair = pairIncludesCirBtc(tokenIn, tokenOut);
-  const hasLifiRoute = Boolean(
-    routeOffers?.some((o) => o.provider === "lifi") ||
-      swapRouteCacheRef.current?.lifiExecution ||
-      swapRouteCacheRef.current?.best?.provider === "lifi",
+  const hasExecutableCirBtcRoute = Boolean(
+    routeOffers?.some(
+      (o) =>
+        o.provider === "circle" ||
+        (o.provider === "lifi" &&
+          swapProviderExecutable("lifi", tokenIn, tokenOut, isMainnet)),
+    ) ||
+      swapRouteCacheRef.current?.best ||
+      swapRouteCacheRef.current?.lifiExecution,
   );
-  const cirBtcSwapReady = !cirBtcPair || !isMainnet || hasLifiRoute;
+  const cirBtcSwapReady =
+    !cirBtcPair || !isMainnet || hasExecutableCirBtcRoute;
 
   const swapQuoteReady = Boolean(
     (displayAmountOut || fallbackPlan?.estimatedAmount) && cirBtcSwapReady,
@@ -517,6 +523,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (!routeOffers?.length) return;
     if (pairIncludesCirBtc(tokenIn, tokenOut)) {
+      const circle = routeOffers.find((o) => o.provider === "circle");
+      if (circle) {
+        setSelectedRouteProvider("circle");
+        return;
+      }
       const lifi = routeOffers.find((o) => o.provider === "lifi");
       if (lifi) {
         setSelectedRouteProvider("lifi");
@@ -604,10 +615,10 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
       cirBtcPair &&
       isMainnet &&
       displayAmountOut &&
-      !hasLifiRoute &&
+      !hasExecutableCirBtcRoute &&
       !quoting
     ) {
-      return "LI.FI route required for cirBTC. Tap Refresh — Circle is quote-only on Arc.";
+      return "Waiting for Arc Portal routes (Circle Adapter or LI.FI). Tap Refresh.";
     }
     if (!swapQuoteReady) {
       return "Quote not ready — wait a few seconds or tap Refresh in the header.";
@@ -621,7 +632,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     swapQuoteReady,
     cirBtcPair,
     displayAmountOut,
-    hasLifiRoute,
+    hasExecutableCirBtcRoute,
   ]);
 
   // Quote when debounced amount / pair settles — never on every keypress.
@@ -702,13 +713,14 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           if (routes.offers.length > 0) {
             setRouteOffers(routes.offers);
             setQuote(null);
-            const missingLifi =
+            const missingCirBtcExec =
               pairIncludesCirBtc(tokenIn, tokenOut) &&
-              !routes.offers.some((o) => o.provider === "lifi");
+              !routes.best &&
+              !routes.offers.some((o) => o.provider === "circle");
             setErrorState(
-              missingLifi
+              missingCirBtcExec
                 ? {
-                    text: "LI.FI did not return an executable cirBTC route for this amount. Tap Refresh or try a slightly different size. Circle is shown for comparison only.",
+                    text: "No Arc Portal route for cirBTC at this size. Tap Refresh or try a slightly different amount.",
                     info: null,
                   }
                 : null,
@@ -1323,19 +1335,6 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         }
       }
 
-      if (
-        isMainnet &&
-        pairIncludesCirBtc(tokenIn, tokenOut) &&
-        fromSymbol &&
-        toSymbol
-      ) {
-        setErrorState({
-          text: "cirBTC swaps on Arc run through LI.FI only. Select LI.FI under Routes and tap Refresh if it is missing.",
-          info: null,
-        });
-        return;
-      }
-
       if (useOkxSequential && address && fromSymbol && toSymbol) {
         setSwapping(true);
         const planResult = await executeSwapViaSequentialTransactions({
@@ -1669,6 +1668,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
                         >
                           {active ? "✓ " : "  "}
                           {o.label}: ~{o.amountOutHuman} {tokenOut}
+                          {o.provider === "circle" && cirBtcPair
+                            ? " · Arc Adapter"
+                            : ""}
                           {quoteOnly ? " (quote only)" : ""}
                           {impactLabel}
                         </button>
