@@ -395,8 +395,16 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
               ? "Waiting for the swap…"
               : null;
 
+  const cirBtcPair = pairIncludesCirBtc(tokenIn, tokenOut);
+  const hasLifiRoute = Boolean(
+    routeOffers?.some((o) => o.provider === "lifi") ||
+      swapRouteCacheRef.current?.lifiExecution ||
+      swapRouteCacheRef.current?.best?.provider === "lifi",
+  );
+  const cirBtcSwapReady = !cirBtcPair || !isMainnet || hasLifiRoute;
+
   const swapQuoteReady = Boolean(
-    displayAmountOut || fallbackPlan?.estimatedAmount,
+    (displayAmountOut || fallbackPlan?.estimatedAmount) && cirBtcSwapReady,
   );
 
   const queryClient = useQueryClient();
@@ -592,6 +600,15 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   const swapDisabledReason = useMemo(() => {
     if (!parsedAmount || needsChainSwitch) return null;
     if (quoteAmountPending || quoting) return "Updating quote…";
+    if (
+      cirBtcPair &&
+      isMainnet &&
+      displayAmountOut &&
+      !hasLifiRoute &&
+      !quoting
+    ) {
+      return "LI.FI route required for cirBTC. Tap Refresh — Circle is quote-only on Arc.";
+    }
     if (!swapQuoteReady) {
       return "Quote not ready — wait a few seconds or tap Refresh in the header.";
     }
@@ -602,6 +619,9 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     quoteAmountPending,
     quoting,
     swapQuoteReady,
+    cirBtcPair,
+    displayAmountOut,
+    hasLifiRoute,
   ]);
 
   // Quote when debounced amount / pair settles — never on every keypress.
@@ -682,7 +702,17 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           if (routes.offers.length > 0) {
             setRouteOffers(routes.offers);
             setQuote(null);
-            setErrorState(null);
+            const missingLifi =
+              pairIncludesCirBtc(tokenIn, tokenOut) &&
+              !routes.offers.some((o) => o.provider === "lifi");
+            setErrorState(
+              missingLifi
+                ? {
+                    text: "LI.FI did not return an executable cirBTC route for this amount. Tap Refresh or try a slightly different size. Circle is shown for comparison only.",
+                    info: null,
+                  }
+                : null,
+            );
             sessionQuotedPairs.add(pairKey(tokenIn, tokenOut));
             swapRouteCacheRef.current = {
               key: `${tokenIn}:${tokenOut}:${parsedAmountForQuote}:${address.toLowerCase()}`,
@@ -702,7 +732,14 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
         }
       }
 
-      if (isMainnet && address && aggIn && aggOut && !stableCircleFastPath) {
+      if (
+        isMainnet &&
+        address &&
+        aggIn &&
+        aggOut &&
+        !stableCircleFastPath &&
+        !pairIncludesCirBtc(tokenIn, tokenOut)
+      ) {
         try {
           const offer = await fetchCircleQuoteClient({
             tokenIn: aggIn,
@@ -1212,9 +1249,11 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           if (!routes.best) {
             setErrorState({
               text:
-                routes.offers.length > 0
-                  ? "No executable route for this amount. Try a slightly different size."
-                  : "No swap route for this pair on Arc right now. Try USDC ↔ EURC or a smaller amount.",
+                pairIncludesCirBtc(tokenIn, tokenOut)
+                  ? "No LI.FI route to execute for cirBTC on Arc. Tap Refresh or adjust the amount. Do not use Circle for this pair."
+                  : routes.offers.length > 0
+                    ? "No executable route for this amount. Try a slightly different size."
+                    : "No swap route for this pair on Arc right now. Try USDC ↔ EURC or a smaller amount.",
               info: null,
             });
             return;
@@ -1276,14 +1315,25 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
           );
         } catch (routeErr) {
           if (swapRunRef.current !== runId) return;
-          if (useOkxSequential) {
-            setErrorState({
-              text: describeRouteExecutionError(routeErr, true),
-              info: null,
-            });
-            return;
-          }
+          setErrorState({
+            text: describeRouteExecutionError(routeErr, useOkxSequential),
+            info: null,
+          });
+          return;
         }
+      }
+
+      if (
+        isMainnet &&
+        pairIncludesCirBtc(tokenIn, tokenOut) &&
+        fromSymbol &&
+        toSymbol
+      ) {
+        setErrorState({
+          text: "cirBTC swaps on Arc run through LI.FI only. Select LI.FI under Routes and tap Refresh if it is missing.",
+          info: null,
+        });
+        return;
       }
 
       if (useOkxSequential && address && fromSymbol && toSymbol) {

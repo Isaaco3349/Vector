@@ -11,7 +11,7 @@ export type ClientSwapRoutesResult = {
   lifiExecution?: SwapRouteExecution | null;
 };
 
-const SWAP_ROUTES_TIMEOUT_MS = 25_000;
+const SWAP_ROUTES_TIMEOUT_MS = 32_000;
 const CIRCLE_QUOTE_TIMEOUT_MS = 22_000;
 
 async function postSwapRoutesApi(
