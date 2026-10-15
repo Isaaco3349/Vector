@@ -3,6 +3,7 @@
 import type { Eip1193Provider } from "./appkit";
 import { arcExplorerTxUrl } from "./network";
 import { fetchVectorApi } from "./okx-mobile-fetch";
+import { dedupePostJson } from "./vector-api-inflight";
 import { okxInAppBrowser } from "./wallet-brand";
 
 type ReceiptPoll = {
@@ -20,18 +21,22 @@ export async function waitArcTransactionReceipt(
   hash: string,
 ): Promise<void> {
   const inOkx = okxInAppBrowser();
-  const pollMs = inOkx ? 400 : 800;
+  /** OKX used 400ms — that alone could exhaust shared 30/min rate limits during one swap. */
+  const pollMs = inOkx ? 1_000 : 800;
   const timeoutMs = inOkx ? 75_000 : 120_000;
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     let data: ReceiptPoll;
     try {
-      const res = await fetchVectorApi("/api/arc-receipt", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txHash: hash }),
-      });
+      const bodyJson = JSON.stringify({ txHash: hash });
+      const res = await dedupePostJson(`arc-receipt:${hash}`, () =>
+        fetchVectorApi("/api/arc-receipt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: bodyJson,
+        }),
+      );
       data = (await res.json()) as ReceiptPoll;
       if (!res.ok && data.status !== "pending") {
         throw new Error(

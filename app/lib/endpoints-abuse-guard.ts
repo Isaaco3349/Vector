@@ -101,8 +101,27 @@ function envLimit(name: string, fallback: number): number {
 const BUCKET_LIMITS: Record<RateBucket, () => number> = {
   device: () => envLimit("RATE_LIMIT_DEVICE_PER_MINUTE", 10),
   kit: () => envLimit("RATE_LIMIT_KIT_PER_MINUTE", 40),
-  default: () => envLimit("RATE_LIMIT_DEFAULT_PER_MINUTE", 30),
+  default: () => envLimit("RATE_LIMIT_DEFAULT_PER_MINUTE", 60),
 };
+
+/** Per-route limits — must not share one bucket (receipt polling alone can exceed 30/min). */
+const READ_ACTION_DEFAULTS: Record<string, number> = {
+  "arc-receipt": 360,
+  "swap-routes": 180,
+  "arc-balances": 120,
+  kyber: 90,
+};
+
+function limitForAction(action: string): number {
+  const envKey = `RATE_LIMIT_${action.replace(/-/g, "_").toUpperCase()}_PER_MINUTE`;
+  const fromEnv = envLimit(envKey, -1);
+  if (fromEnv > 0) return fromEnv;
+  if (action in READ_ACTION_DEFAULTS) {
+    return READ_ACTION_DEFAULTS[action]!;
+  }
+  const bucket = rateLimitBucketForAction(action);
+  return BUCKET_LIMITS[bucket]();
+}
 
 export function rateLimitBucketForAction(action: string): RateBucket {
   if (action === "createDeviceToken") return "device";
@@ -122,18 +141,21 @@ type SlidingEntry = { timestamps: number[] };
 /** Per-instance sliding window (Vercel serverless — not global, but raises the bar). */
 const slidingWindows = new Map<string, SlidingEntry>();
 
-function slidingWindowKey(ip: string, bucket: RateBucket): string {
-  return `${ip}:${bucket}`;
+function slidingWindowKey(ip: string, action: string): string {
+  const bucket = rateLimitBucketForAction(action);
+  if (bucket === "kit" || bucket === "device") {
+    return `${bucket}:${ip}`;
+  }
+  return `${action}:${ip}`;
 }
 
 export function rejectIfRateLimited(
   request: Request,
   action: string,
 ): NextResponse | null {
-  const bucket = rateLimitBucketForAction(action);
-  const limit = BUCKET_LIMITS[bucket]();
+  const limit = limitForAction(action);
   const ip = clientIpFromRequest(request);
-  const key = slidingWindowKey(ip, bucket);
+  const key = slidingWindowKey(ip, action);
   const now = Date.now();
 
   let entry = slidingWindows.get(key);
