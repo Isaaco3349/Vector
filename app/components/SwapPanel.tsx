@@ -337,6 +337,7 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
     executions?: SwapRouteExecution[];
     lifiExecution?: SwapRouteExecution | null;
   } | null>(null);
+  const refreshPanelInFlight = useRef<Promise<void> | null>(null);
   const [compareAggregatorPrices, setCompareAggregatorPrices] = useState(false);
   const [selectedRouteProvider, setSelectedRouteProvider] =
     useState<SwapRouteProvider | null>(null);
@@ -434,17 +435,31 @@ export function SwapPanel({ onClose }: { onClose: () => void }) {
   );
 
   const refreshSwapPanel = useCallback(async () => {
-    setBalancesRefreshing(true);
-    swapRouteCacheRef.current = null;
+    if (refreshPanelInFlight.current) {
+      await refreshPanelInFlight.current;
+      return;
+    }
+    const run = (async () => {
+      setBalancesRefreshing(true);
+      swapRouteCacheRef.current = null;
+      try {
+        await flushArcBalancesImmediate(
+          queryClient,
+          arcBalances?.refresh,
+          [balanceIn.refetch, balanceOut.refetch],
+        );
+        setQuoteRefreshTick((t) => t + 1);
+      } finally {
+        setBalancesRefreshing(false);
+      }
+    })();
+    refreshPanelInFlight.current = run;
     try {
-      await flushArcBalancesImmediate(
-        queryClient,
-        arcBalances?.refresh,
-        [balanceIn.refetch, balanceOut.refetch],
-      );
-      setQuoteRefreshTick((t) => t + 1);
+      await run;
     } finally {
-      setBalancesRefreshing(false);
+      if (refreshPanelInFlight.current === run) {
+        refreshPanelInFlight.current = null;
+      }
     }
   }, [
     queryClient,

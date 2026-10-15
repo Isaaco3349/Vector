@@ -1,11 +1,11 @@
 "use client";
 
 import { fetchVectorApi } from "../okx-mobile-fetch";
+import { dedupePostJson } from "../vector-api-inflight";
 import { assembleSwapRoutes } from "./assemble-swap-routes";
 import { fetchLifiQuoteBrowser } from "./lifi-quote-browser";
 import type { SwapRouteExecution, SwapRouteOffer } from "./types";
 import type { AggregatorPairSymbol } from "./tokens";
-import { pairIncludesCirBtc } from "./routing-policy";
 
 export type ClientSwapRoutesResult = {
   offers: SwapRouteOffer[];
@@ -21,18 +21,23 @@ async function postSwapRoutesApi(
   body: Record<string, unknown>,
   timeoutMs: number,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetchVectorApi("/api/swap-routes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const bodyJson = JSON.stringify(body);
+  const dedupeKey = `swap-routes:${bodyJson}`;
+
+  return dedupePostJson(dedupeKey, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetchVectorApi("/api/swap-routes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: bodyJson,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  });
 }
 
 export async function fetchSwapRoutesClient(args: {
@@ -90,6 +95,30 @@ export async function fetchSwapRoutesResilient(args: {
   } catch (err) {
     serverError =
       err instanceof Error ? err : new Error("Could not compare swap routes.");
+    const msg = serverError.message.toLowerCase();
+    if (msg.includes("too many requests") || msg.includes("rate_limit")) {
+      const lifiOnly = await fetchLifiQuoteBrowser({
+        tokenIn: args.tokenIn,
+        tokenOut: args.tokenOut,
+        amountHuman: args.amount,
+        fromAddress: args.fromAddress,
+        slippageBps,
+      });
+      if (lifiOnly) {
+        const lifiExecution: SwapRouteExecution = {
+          provider: "lifi",
+          offer: lifiOnly.offer,
+          quote: lifiOnly.quote,
+        };
+        return assembleSwapRoutes({
+          tokenIn: args.tokenIn,
+          tokenOut: args.tokenOut,
+          offers: [lifiOnly.offer],
+          executions: [lifiExecution],
+          lifiExecution,
+        });
+      }
+    }
   }
 
   const lifi = await fetchLifiQuoteBrowser({

@@ -16,7 +16,9 @@ import {
 } from "../lib/arc-balances-client";
 import { clearArcPublicReadCache } from "../lib/arc-erc20-read";
 
-const POLL_MS = 10_000;
+const POLL_MS = 15_000;
+/** OKX fires focus + visibilitychange together — don't double-hit /api/arc-balances. */
+const MIN_BACKGROUND_REFRESH_MS = 5_000;
 
 type ArcBalancesValue = {
   snapshot: ArcBalancesSnapshot | null;
@@ -45,6 +47,7 @@ function useArcBalancesPoll(): ArcBalancesValue {
   const [snapshot, setSnapshot] = useState<ArcBalancesSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const genRef = useRef(0);
+  const lastFetchAtRef = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!address || !isConnected) {
@@ -58,10 +61,18 @@ function useArcBalancesPoll(): ArcBalancesValue {
       const data = await fetchArcBalances(address as `0x${string}`);
       if (gen !== genRef.current) return;
       setSnapshot(data);
+      lastFetchAtRef.current = Date.now();
     } finally {
       if (gen === genRef.current) setIsLoading(false);
     }
   }, [address, isConnected]);
+
+  const refreshIfDue = useCallback(async () => {
+    if (Date.now() - lastFetchAtRef.current < MIN_BACKGROUND_REFRESH_MS) {
+      return;
+    }
+    await refresh();
+  }, [refresh]);
 
   useEffect(() => {
     if (!address || !isConnected) {
@@ -70,10 +81,10 @@ function useArcBalancesPoll(): ArcBalancesValue {
     }
     void refresh();
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") void refreshIfDue();
     }, POLL_MS);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") void refreshIfDue();
     };
     window.addEventListener("focus", onVisible);
     document.addEventListener("visibilitychange", onVisible);
@@ -82,7 +93,7 @@ function useArcBalancesPoll(): ArcBalancesValue {
       window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [address, isConnected, refresh]);
+  }, [address, isConnected, refresh, refreshIfDue]);
 
   return { snapshot, isLoading, refresh };
 }
