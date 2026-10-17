@@ -29,14 +29,18 @@ export function FaqSection() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="scroll-mt-28">
-      <p className="text-[12px] uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
+    <section id="faq" className="scroll-mt-24 vector-landing-section">
+      <div className="mx-auto max-w-[var(--vector-max-content)] px-6 md:px-10 py-14 md:py-20">
+      <p className="text-[12px] uppercase tracking-wider text-[var(--vector-text-dim)] mb-2 font-medium">
         FAQ
       </p>
-      <h2 className="text-[26px] lg:text-[28px] font-semibold tracking-tight mb-6">
+      <h2 className="text-[28px] md:text-[32px] font-semibold tracking-tight mb-3">
         Common questions
       </h2>
-      <div className="space-y-3">
+      <p className="text-[15px] text-[var(--vector-text-dim)] mb-10 max-w-2xl leading-relaxed">
+        Quick answers about Arc, gas, wallets, routes, and bridging.
+      </p>
+      <div className="space-y-3 max-w-3xl">
         {FAQ_ITEMS.map((item, i) => {
           const expanded = open === i;
           return (
@@ -63,6 +67,7 @@ export function FaqSection() {
             </div>
           );
         })}
+      </div>
       </div>
     </section>
   );

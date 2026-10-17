@@ -26,6 +26,11 @@ import { EarnPanel } from "./components/EarnPanel";
 import { DigitalMarquee } from "./components/DigitalMarquee";
 import { HowItWorksSection } from "./components/landing/HowItWorksSection";
 import { FaqSection } from "./components/landing/FaqSection";
+import { HeroSection } from "./components/landing/HeroSection";
+import { StatsStrip } from "./components/landing/StatsStrip";
+import { FeaturesGrid } from "./components/landing/FeaturesGrid";
+import { SiteFooter } from "./components/landing/SiteFooter";
+import { LandingNav } from "./components/landing/LandingNav";
 import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { useTokenBalance } from "./components/useTokenBalance";
@@ -698,88 +703,44 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-[var(--vector-line)] bg-[var(--vector-bg)]/85 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-[var(--vector-max-content)] items-center justify-between gap-4 px-6 py-4 md:px-10">
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <VectorMark />
-            <span className="text-[15px] font-semibold tracking-tight">
-              Vector
-            </span>
-          </Link>
-
-          <nav
-            className={`items-center gap-1 font-medium ${
-              appNav
-                ? "hidden md:flex text-[14px]"
-                : "flex flex-wrap justify-center flex-1 min-w-0 text-[12px] sm:text-[13px] md:text-[14px] md:flex-initial md:justify-start"
-            }`}
-            aria-label="Primary"
-          >
-            {appNav ? (
-              <>
-                <HeaderNavButton label="Swap" onClick={appNav.onSwap} />
-                <HeaderNavButton label="Bridge" onClick={appNav.onBridge} />
-                <HeaderNavButton label="Earn" onClick={appNav.onEarn} />
-                <HeaderNavButton label="Send" onClick={appNav.onSend} />
-                <HeaderNavButton label="Receive" onClick={appNav.onReceive} />
-                <HeaderNavButton label="Activity" onClick={appNav.onHistory} />
-              </>
-            ) : (
-              <>
-                <a
-                  href="#features"
-                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
-                >
-                  Features
-                </a>
-                <a
-                  href="#how-it-works"
-                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
-                >
-                  How it works
-                </a>
-                <a
-                  href="#faq"
-                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
-                >
-                  FAQ
-                </a>
-                <a
-                  href="#connect"
-                  className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] transition-colors"
-                >
-                  Connect
-                </a>
-              </>
-            )}
-          </nav>
-
-          <span className="text-xs text-[var(--vector-text-dim)] font-mono shrink-0">
-            {headerNetworkLabel}
-          </span>
-        </div>
-      </header>
+      <LandingNav
+        appNav={appNav}
+        networkLabel={headerNetworkLabel}
+        vectorMark={<VectorMark />}
+      />
 
       {!connected && <DigitalMarquee />}
 
-      <section className="flex-1 w-full mx-auto max-w-[var(--vector-max-content)] px-6 py-10 md:py-14 lg:py-16">
+      {!connected && (
+        <>
+          <HeroSection />
+          <StatsStrip />
+        </>
+      )}
+
+      <section
+        className={`vector-connect-section w-full scroll-mt-20 ${
+          connected ? "py-10 md:py-12" : "py-12 md:py-16"
+        }`}
+      >
         <div
-          className={`grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-10 lg:gap-14 ${
-            connected ? "items-start" : "items-stretch"
+          className={`mx-auto max-w-[var(--vector-max-content)] px-6 md:px-10 ${
+            connected
+              ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-10 lg:gap-14 items-start"
+              : "flex flex-col lg:flex-row lg:items-start lg:justify-between gap-10 lg:gap-16"
           }`}
         >
-          <div
-            className={`order-2 lg:order-1 flex flex-col justify-center min-h-0 lg:min-h-[560px] lg:py-8 ${
-              connected ? "hidden lg:flex" : "flex"
-            }`}
-            id="features"
-          >
-            <ProductOverview connected={Boolean(connected)} />
-          </div>
+          {connected && (
+            <div className="hidden lg:flex flex-col justify-center min-h-0 lg:py-4">
+              <ProductOverview connected />
+            </div>
+          )}
 
           <div
             id="connect"
-            className="order-1 lg:order-2 w-full max-w-[420px] mx-auto lg:mx-0 lg:max-w-[420px] scroll-mt-24 lg:flex lg:flex-col lg:justify-center lg:min-h-[560px]"
+            className={`w-full max-w-[440px] mx-auto lg:mx-0 shrink-0 ${
+              connected ? "" : "lg:sticky lg:top-24"
+            }`}
           >
           {!connected && (
             <div className="vector-connect-card flex flex-col gap-1">
@@ -947,71 +908,81 @@ export default function HomePage() {
           )}
 
           {connected && (
-            <>
-              <WalletCard
-                address={connected.address}
-                blockchain={connected.blockchain}
-                balance={connected.balance}
-                cirBtcBalance={cirBtcBalance}
-                source={connected.source}
-                onSend={() => setShowSend(true)}
-                onReceive={() => setShowReceive(true)}
-                onSwap={() => setShowSwap(true)}
-                onBridge={() => setShowBridge(true)}
-                onEarn={() => setShowEarn(true)}
-                onHistory={() => setShowHistory(true)}
-                onDisconnect={
-                  connected.source === "wallet"
-                    ? () => {
-                        clearSigningProviderCache();
-                        disconnect();
-                      }
-                    : handleCircleSignOut
-                }
-              />
-            </>
+            <WalletCard
+              address={connected.address}
+              blockchain={connected.blockchain}
+              balance={connected.balance}
+              cirBtcBalance={cirBtcBalance}
+              source={connected.source}
+              onSend={() => setShowSend(true)}
+              onReceive={() => setShowReceive(true)}
+              onSwap={() => setShowSwap(true)}
+              onBridge={() => setShowBridge(true)}
+              onEarn={() => setShowEarn(true)}
+              onHistory={() => setShowHistory(true)}
+              onDisconnect={
+                connected.source === "wallet"
+                  ? () => {
+                      clearSigningProviderCache();
+                      disconnect();
+                    }
+                  : handleCircleSignOut
+              }
+            />
           )}
           </div>
-        </div>
 
-        {!connected && (
-          <div className="mt-16 md:mt-20 lg:mt-24 grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 border-t border-[var(--vector-line)] pt-14 md:pt-16">
-            <HowItWorksSection />
-            <FaqSection />
-          </div>
-        )}
+          {!connected && (
+            <div className="flex-1 min-w-0 max-w-xl mx-auto lg:mx-0 pt-2 lg:pt-6">
+              <p className="text-[12px] uppercase tracking-wider text-[var(--vector-text-dim)] mb-2 font-medium">
+                Why Vector
+              </p>
+              <h2 className="text-[24px] md:text-[28px] font-semibold tracking-tight mb-4">
+                Built for Arc from day one
+              </h2>
+              <p className="text-[15px] leading-relaxed text-[var(--vector-text-dim)] mb-6">
+                No ETH for gas. Compare swap routes before you sign. Bridge with
+                Circle CCTP and track activity in one place — Google sign-in or
+                bring your own wallet.
+              </p>
+              <ul className="space-y-3 text-[14px] text-[var(--vector-text-dim)]">
+                <li className="flex gap-2">
+                  <span className="text-[var(--vector-pink)]" aria-hidden>
+                    ✓
+                  </span>
+                  USDC pays network fees on Arc
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-[var(--vector-pink)]" aria-hidden>
+                    ✓
+                  </span>
+                  Circle, Kyber, and LI.FI where supported
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-[var(--vector-pink)]" aria-hidden>
+                    ✓
+                  </span>
+                  Same actions in the header after you connect
+                </li>
+              </ul>
+            </div>
+          )}
+        </div>
       </section>
 
-      <footer className="mt-auto border-t border-[var(--vector-line)] flex flex-col items-center gap-4 px-6 py-8">
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[12px] text-[var(--vector-text-dim)]">
-          <Link href="/terms" className="hover:text-[var(--vector-pink)] transition-colors">
-            Terms
-          </Link>
-          <span className="text-[var(--vector-line)]" aria-hidden>
-            ·
-          </span>
-          <Link href="/privacy" className="hover:text-[var(--vector-pink)] transition-colors">
-            Privacy
-          </Link>
-        </div>
-        <div className="flex items-center justify-center gap-5">
-        <SocialLink
-          href="https://github.com/Isaaco3349/Vector"
-          label="Vector on GitHub"
-        >
-          <GitHubMark />
-        </SocialLink>
-        <SocialLink href="https://x.com/Vector_protocol" label="Vector on X">
-          <XMark />
-        </SocialLink>
-        <SocialLink
-          href="mailto:vectorprotocol7@gmail.com"
-          label="Email Vector"
-        >
-          <MailMark />
-        </SocialLink>
-        </div>
-      </footer>
+      {!connected && (
+        <>
+          <FeaturesGrid />
+          <HowItWorksSection />
+          <FaqSection />
+        </>
+      )}
+
+      <SiteFooter
+        githubMark={<GitHubMark />}
+        xMark={<XMark />}
+        mailMark={<MailMark />}
+      />
 
       {showSwap && connected?.source === "wallet" && (
         <SwapPanel onClose={() => setShowSwap(false)} />
@@ -1431,56 +1402,9 @@ function ArcLinkIcon() {
   );
 }
 
-function HeaderNavButton({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="px-3 py-2 rounded-lg text-[var(--vector-text-dim)] hover:text-[var(--vector-text)] hover:bg-[var(--vector-surface)] transition-colors"
-    >
-      {label}
-    </button>
-  );
-}
-
-function LandingHero({ compact }: { compact?: boolean }) {
-  return (
-    <div className={compact ? "mb-0" : "mb-10"}>
-      <h1
-        className={
-          compact
-            ? "text-[32px] leading-[1.15] font-semibold tracking-tight mb-3"
-            : "text-[40px] lg:text-[44px] leading-[1.1] font-semibold tracking-tight mb-4"
-        }
-      >
-        <span className="text-[var(--vector-pink)]">All on Arc.</span>
-      </h1>
-      <p
-        className={
-          compact
-            ? "text-[var(--vector-text-dim)] text-[15px] leading-relaxed"
-            : "text-[var(--vector-text-dim)] text-[16px] lg:text-[17px] leading-relaxed max-w-xl"
-        }
-      >
-        Vector is a home base for USDC-native DeFi on Circle&apos;s Arc network.
-        Trade, earn yield, and move USDC across chains with Google sign-in or
-        your own wallet.
-      </p>
-    </div>
-  );
-}
-
 function ProductOverview({ connected }: { connected: boolean }) {
   return (
     <div className="space-y-10">
-      {!connected && <LandingHero />}
-
       {connected && (
         <div>
           <p className="text-[12px] uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
@@ -1511,12 +1435,6 @@ function ProductOverview({ connected }: { connected: boolean }) {
         />
       </div>
 
-      {!connected && (
-        <p className="text-[14px] leading-relaxed text-[var(--vector-text-dim)] max-w-lg">
-          Arc uses USDC for gas, so one balance covers fees and transfers. Scroll
-          for how it works, FAQ, and legal links in the footer.
-        </p>
-      )}
     </div>
   );
 }
@@ -1588,30 +1506,6 @@ function GoogleMark() {
         d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"
       />
     </svg>
-  );
-}
-
-function SocialLink({
-  href,
-  label,
-  children,
-}: {
-  href: string;
-  label: string;
-  children: ReactNode;
-}) {
-  // Only http(s) links open in a new tab; mailto: opens the mail client in place.
-  const isExternal = href.startsWith("http");
-  return (
-    <a
-      href={href}
-      aria-label={label}
-      title={label}
-      {...(isExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-      className="text-[var(--vector-text-dim)] hover:text-[var(--vector-pink)] transition-colors"
-    >
-      {children}
-    </a>
   );
 }
 
