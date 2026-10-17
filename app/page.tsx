@@ -913,6 +913,7 @@ export default function HomePage() {
               blockchain={connected.blockchain}
               balance={connected.balance}
               cirBtcBalance={cirBtcBalance}
+              eurcBalance={eurcBalance}
               source={connected.source}
               onSend={() => setShowSend(true)}
               onReceive={() => setShowReceive(true)}
@@ -1132,6 +1133,7 @@ function WalletCard({
   blockchain,
   balance,
   cirBtcBalance,
+  eurcBalance,
   source,
   onSend,
   onReceive,
@@ -1145,6 +1147,7 @@ function WalletCard({
   blockchain: string;
   balance: string | null;
   cirBtcBalance?: string | null;
+  eurcBalance?: string | null;
   source: "circle" | "wallet";
   onSend?: () => void;
   onReceive?: () => void;
@@ -1164,12 +1167,24 @@ function WalletCard({
   // - Google (Circle) wallet: comes in via the cirBtcBalance prop, parsed from
   //   Circle's balances endpoint upstream.
   const cirBtcOnChain = useTokenBalance("cirBTC");
+  const eurcOnChain = useTokenBalance("EURC");
   const cirBtc =
     source === "wallet" ? cirBtcOnChain.formatted : cirBtcBalance ?? null;
+  const eurc =
+    source === "wallet" ? eurcOnChain.formatted : eurcBalance ?? null;
   const cirBtcNum = cirBtc !== null && cirBtc !== "" ? Number(cirBtc) : null;
+  const eurcNum = eurc !== null && eurc !== "" ? Number(eurc) : null;
   const hasCirBtc =
     (cirBtcNum !== null && Number.isFinite(cirBtcNum) && cirBtcNum > 0) ||
     (source === "wallet" && cirBtcOnChain.isLoading);
+  const hasEurc =
+    (eurcNum !== null && Number.isFinite(eurcNum) && eurcNum > 0) ||
+    (source === "wallet" && eurcOnChain.isLoading);
+  const showAssets =
+    hasCirBtc ||
+    hasEurc ||
+    (source === "wallet" &&
+      (cirBtcOnChain.isLoading || eurcOnChain.isLoading));
 
   // Arc's gas token IS USDC, so a 0-balance wallet is stuck until funded — show
   // a faucet nudge in that case.
@@ -1209,7 +1224,7 @@ function WalletCard({
           holdings out so Vector reads as a portfolio, not a single-balance
           wallet. Hidden for USDC-only wallets to keep the card clean. Built to
           take more rows as new verified assets are added. */}
-      {hasCirBtc && (
+      {showAssets && (
         <div className="mb-6 rounded-2xl bg-[var(--vector-surface-raised)] border border-[var(--vector-line)] overflow-hidden">
           <div className="px-4 pt-3 pb-2 text-[11px] uppercase tracking-wide text-[var(--vector-text-dim)]">
             Assets
@@ -1220,6 +1235,15 @@ function WalletCard({
               USDC
             </span>
             <span className="text-[14px] font-mono">{balance ?? "0.00"}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--vector-line)]">
+            <span className="flex items-center gap-2 text-[14px] font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--vector-text-dim)]" />
+              EURC
+            </span>
+            <span className="text-[14px] font-mono">
+              {eurcOnChain.isLoading && !eurc ? "…" : (eurc ?? "0")}
+            </span>
           </div>
           <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--vector-line)]">
             <span className="flex items-center gap-2 text-[14px] font-semibold">

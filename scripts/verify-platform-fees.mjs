@@ -7,8 +7,8 @@
 import { formatUnits, parseUnits } from "viem";
 
 const USDC_DECIMALS = 6;
-const VECTOR_SWAP_FEE_USDC = "0.15";
-const VECTOR_BRIDGE_FEE_USDC = "0.15";
+const VECTOR_SWAP_FEE_USDC = "0.1";
+const VECTOR_BRIDGE_FEE_USDC = "0.1";
 
 function swapFlatFeeBaseUnits() {
   return parseUnits(VECTOR_SWAP_FEE_USDC, USDC_DECIMALS);
@@ -67,7 +67,7 @@ for (const amount of amounts) {
   );
 }
 
-console.log("\n=== Swap fee: percentageBps maps to $0.15 flat per amount ===\n");
+console.log("\n=== Swap fee: percentageBps maps to $0.1 flat per amount ===\n");
 function swapBpsForAmount(amountHuman) {
   const amount = Number(amountHuman);
   const bps = Math.ceil((Number(VECTOR_SWAP_FEE_USDC) / amount) * 10_000);
