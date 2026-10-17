@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
+  flushArcBalancesImmediate,
   flushBalancesAfterSwap,
   scheduleBalancePoll,
 } from "../lib/balance-refresh";
+import { useArcBalancesSnapshot } from "./useArcBalancesPoll";
 import {
   estimateBridge,
   executeBridge,
@@ -105,6 +107,19 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
 
   const queryClient = useQueryClient();
   const balanceFrom = useBridgeBalance(fromChain);
+  const arcBalances = useArcBalancesSnapshot();
+  const [balancesRefreshing, setBalancesRefreshing] = useState(false);
+
+  const refreshBridgeBalances = useCallback(async () => {
+    setBalancesRefreshing(true);
+    try {
+      await flushArcBalancesImmediate(queryClient, arcBalances?.refresh, [
+        balanceFrom.refetch,
+      ]);
+    } finally {
+      setBalancesRefreshing(false);
+    }
+  }, [queryClient, arcBalances?.refresh, balanceFrom.refetch]);
 
   const syncBalancesAfterBridge = useCallback(
     async (txHash: string | null) => {
@@ -452,7 +467,12 @@ export function BridgePanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <VectorModalShell title="Bridge USDC" onClose={onClose}>
+    <VectorModalShell
+      title="Bridge USDC"
+      onClose={onClose}
+      onRefresh={refreshBridgeBalances}
+      refreshing={balancesRefreshing}
+    >
         {/* From chain + amount */}
         <div className="vector-input-panel p-4 mb-1">
           <div className="flex items-center justify-between mb-2">

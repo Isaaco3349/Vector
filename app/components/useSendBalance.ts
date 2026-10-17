@@ -1,6 +1,7 @@
 "use client";
 
 import { erc20Abi, formatUnits } from "viem";
+import { useCallback } from "react";
 import { useAccount, useBalance, useReadContracts } from "wagmi";
 import type { BridgeChain } from "../lib/bridge-chains";
 
@@ -22,6 +23,7 @@ export function useSendBalance(chain: BridgeChain | undefined): {
   raw: bigint | null;
   decimals: number | null;
   isLoading: boolean;
+  refetch: () => Promise<void>;
 } {
   const { address, isConnected } = useAccount();
 
@@ -55,39 +57,77 @@ export function useSendBalance(chain: BridgeChain | undefined): {
       : [],
   });
 
+  const refetch = useCallback(async () => {
+    await Promise.all([nativeQuery.refetch(), erc20Query.refetch()]);
+  }, [nativeQuery, erc20Query]);
+
   if (isNative) {
     if (nativeQuery.isLoading) {
-      return { formatted: null, raw: null, decimals: null, isLoading: true };
+      return {
+        formatted: null,
+        raw: null,
+        decimals: null,
+        isLoading: true,
+        refetch,
+      };
     }
     const v = nativeQuery.data;
-    if (!v) return { formatted: null, raw: null, decimals: null, isLoading: false };
+    if (!v) {
+      return {
+        formatted: null,
+        raw: null,
+        decimals: null,
+        isLoading: false,
+        refetch,
+      };
+    }
     return {
       formatted: trim(formatUnits(v.value, v.decimals)),
       raw: v.value,
       decimals: v.decimals,
       isLoading: false,
+      refetch,
     };
   }
 
   if (isErc20) {
     if (erc20Query.isLoading) {
-      return { formatted: null, raw: null, decimals: null, isLoading: true };
+      return {
+        formatted: null,
+        raw: null,
+        decimals: null,
+        isLoading: true,
+        refetch,
+      };
     }
     const results = erc20Query.data;
     const rawBalance = results?.[0]?.result;
     const decimals = results?.[1]?.result;
     if (typeof rawBalance !== "bigint" || typeof decimals !== "number") {
-      return { formatted: null, raw: null, decimals: null, isLoading: false };
+      return {
+        formatted: null,
+        raw: null,
+        decimals: null,
+        isLoading: false,
+        refetch,
+      };
     }
     return {
       formatted: trim(formatUnits(rawBalance, decimals)),
       raw: rawBalance,
       decimals,
       isLoading: false,
+      refetch,
     };
   }
 
-  return { formatted: null, raw: null, decimals: null, isLoading: false };
+  return {
+    formatted: null,
+    raw: null,
+    decimals: null,
+    isLoading: false,
+    refetch,
+  };
 }
 
 /** Trim to 4 dp for display without lying about tiny dust. */

@@ -17,7 +17,9 @@ import {
 } from "../lib/bridge-chains";
 import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
+import { BalanceRefreshButton } from "./BalanceRefreshButton";
 import { VectorModalShell } from "./VectorModalShell";
+import { useGooglePanelBalanceRefresh } from "./useGooglePanelBalanceRefresh";
 
 /**
  * Earn panel for the Google-login (Circle user-controlled / W3S) wallet.
@@ -51,6 +53,7 @@ export function GoogleEarnPanel({
   usdcBalance,
   onClose,
   onSuccess,
+  onRefreshBalances,
 }: {
   sdk: W3SSdk;
   auth: W3sAuth;
@@ -60,7 +63,10 @@ export function GoogleEarnPanel({
   usdcBalance: string | null;
   onClose: () => void;
   onSuccess: () => void;
+  onRefreshBalances?: () => Promise<void>;
 }) {
+  const { refresh: refreshCircleBalances, refreshing: balancesRefreshing } =
+    useGooglePanelBalanceRefresh(onRefreshBalances);
   const [vaults, setVaults] = useState<EarnVault[] | null>(null);
   const [vaultsLoading, setVaultsLoading] = useState(false);
   const [vaultsError, setVaultsError] = useState<string | null>(null);
@@ -126,6 +132,11 @@ export function GoogleEarnPanel({
     setPosition(null);
     if (selected) void refreshPosition();
   }, [selected, refreshPosition]);
+
+  const refreshEarnPanel = useCallback(async () => {
+    await refreshCircleBalances();
+    await refreshPosition();
+  }, [refreshCircleBalances, refreshPosition]);
 
   const amountNum = Number(amount);
   const amountValid =
@@ -306,9 +317,17 @@ export function GoogleEarnPanel({
               {selected ? "Earn" : "Earn — Arc vaults"}
             </span>
           </div>
-          <button type="button" onClick={onClose} className="vector-modal-close">
-            Close
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onRefreshBalances ? (
+              <BalanceRefreshButton
+                onClick={refreshEarnPanel}
+                refreshing={balancesRefreshing}
+              />
+            ) : null}
+            <button type="button" onClick={onClose} className="vector-modal-close">
+              Close
+            </button>
+          </div>
         </>
       }
     >

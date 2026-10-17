@@ -10,6 +10,7 @@ import {
 } from "../lib/google-swap";
 import { ARC_SWAP_TOKENS } from "../lib/swap-tokens";
 import { VectorModalShell } from "./VectorModalShell";
+import { useGooglePanelBalanceRefresh } from "./useGooglePanelBalanceRefresh";
 import {
   arcBridgeChainId,
   explorerAddressUrl,
@@ -69,6 +70,7 @@ export function GoogleSwapPanel({
   tokenBalances,
   onClose,
   onSuccess,
+  onRefreshBalances,
 }: {
   sdk: W3SSdk;
   auth: W3sAuth;
@@ -78,7 +80,10 @@ export function GoogleSwapPanel({
   tokenBalances: Record<SwapSymbol, string | null>;
   onClose: () => void;
   onSuccess: () => void;
+  onRefreshBalances?: () => Promise<void>;
 }) {
+  const { refresh: refreshBalances, refreshing: balancesRefreshing } =
+    useGooglePanelBalanceRefresh(onRefreshBalances);
   const [fromSymbol, setFromSymbol] = useState<SwapSymbol>("USDC");
   const [toSymbol, setToSymbol] = useState<SwapSymbol>("EURC");
   const [amount, setAmount] = useState("");
@@ -241,7 +246,12 @@ export function GoogleSwapPanel({
   }
 
   return (
-    <VectorModalShell title="Swap" onClose={onClose}>
+    <VectorModalShell
+      title="Swap"
+      onClose={onClose}
+      onRefresh={onRefreshBalances ? refreshBalances : undefined}
+      refreshing={balancesRefreshing}
+    >
         {done ? (
           <div className="text-center py-6">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-pink)]">

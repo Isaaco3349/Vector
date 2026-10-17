@@ -33,7 +33,11 @@ import { SiteFooter } from "./components/landing/SiteFooter";
 import { LandingNav } from "./components/landing/LandingNav";
 import { GoogleEarnPanel } from "./components/GoogleEarnPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
+import { BalanceRefreshButton } from "./components/BalanceRefreshButton";
 import { useTokenBalance } from "./components/useTokenBalance";
+import { useQueryClient } from "@tanstack/react-query";
+import { flushArcBalancesImmediate } from "./lib/balance-refresh";
+import { useArcBalancesSnapshot } from "./components/useArcBalancesPoll";
 import { bridgeChainByNumericId } from "./lib/bridge-chains";
 import {
   arcFaucetUrl,
@@ -701,6 +705,11 @@ export default function HomePage() {
         }
       : null;
 
+  const refreshGoogleWalletBalances = useCallback(async () => {
+    if (!loginResult || !primaryWallet) return;
+    await loadUsdcBalance(loginResult.userToken, primaryWallet.id);
+  }, [loginResult, primaryWallet]);
+
   return (
     <main className="min-h-screen flex flex-col">
       <LandingNav
@@ -921,6 +930,11 @@ export default function HomePage() {
               onBridge={() => setShowBridge(true)}
               onEarn={() => setShowEarn(true)}
               onHistory={() => setShowHistory(true)}
+              onRefreshCircle={
+                connected?.source === "circle"
+                  ? refreshGoogleWalletBalances
+                  : undefined
+              }
               onDisconnect={
                 connected.source === "wallet"
                   ? () => {
@@ -1008,6 +1022,7 @@ export default function HomePage() {
             onSuccess={() => {
               void loadUsdcBalance(loginResult.userToken, primaryWallet.id);
             }}
+            onRefreshBalances={refreshGoogleWalletBalances}
           />
         )}
 
@@ -1030,6 +1045,7 @@ export default function HomePage() {
             onSuccess={() => {
               void loadUsdcBalance(loginResult.userToken, primaryWallet.id);
             }}
+            onRefreshBalances={refreshGoogleWalletBalances}
           />
         )}
 
@@ -1075,6 +1091,7 @@ export default function HomePage() {
             onSuccess={() => {
               void loadUsdcBalance(loginResult.userToken, primaryWallet.id);
             }}
+            onRefreshBalances={refreshGoogleWalletBalances}
           />
         )}
 
@@ -1141,6 +1158,7 @@ function WalletCard({
   onBridge,
   onEarn,
   onHistory,
+  onRefreshCircle,
   onDisconnect,
 }: {
   address: string;
@@ -1155,9 +1173,11 @@ function WalletCard({
   onBridge?: () => void;
   onEarn?: () => void;
   onHistory?: () => void;
+  onRefreshCircle?: () => Promise<void>;
   onDisconnect?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [balancesRefreshing, setBalancesRefreshing] = useState(false);
   const short = `${address.slice(0, 6)}…${address.slice(-4)}`;
 
   // Multi-asset portfolio: show cirBTC alongside USDC.
@@ -1166,6 +1186,9 @@ function WalletCard({
   //   Google path.
   // - Google (Circle) wallet: comes in via the cirBtcBalance prop, parsed from
   //   Circle's balances endpoint upstream.
+  const queryClient = useQueryClient();
+  const arcBalances = useArcBalancesSnapshot();
+  const usdcOnChain = useTokenBalance("USDC");
   const cirBtcOnChain = useTokenBalance("cirBTC");
   const eurcOnChain = useTokenBalance("EURC");
   const cirBtc =
@@ -1191,6 +1214,33 @@ function WalletCard({
   const balanceNum = balance !== null && balance !== "" ? Number(balance) : null;
   const needsFunds = balanceNum !== null && Number.isFinite(balanceNum) && balanceNum === 0;
 
+  const refreshWalletBalances = useCallback(async () => {
+    setBalancesRefreshing(true);
+    try {
+      if (source === "circle" && onRefreshCircle) {
+        await onRefreshCircle();
+        return;
+      }
+      if (source === "wallet") {
+        await flushArcBalancesImmediate(queryClient, arcBalances?.refresh, [
+          usdcOnChain.refetch,
+          eurcOnChain.refetch,
+          cirBtcOnChain.refetch,
+        ]);
+      }
+    } finally {
+      setBalancesRefreshing(false);
+    }
+  }, [
+    source,
+    onRefreshCircle,
+    queryClient,
+    arcBalances?.refresh,
+    usdcOnChain.refetch,
+    eurcOnChain.refetch,
+    cirBtcOnChain.refetch,
+  ]);
+
   return (
     <div className="vector-panel-border bg-[var(--vector-surface)] p-7">
       <div className="flex items-center justify-between gap-3 mb-8">
@@ -1201,13 +1251,20 @@ function WalletCard({
           <span className="font-mono uppercase tracking-wider">{blockchain}</span>
           <ArcLinkIcon />
         </WalletMetaBadge>
-        <WalletMetaBadge role="status">
-          <span
-            className="h-2 w-2 shrink-0 rounded-full bg-[var(--vector-pink)]"
-            aria-hidden
+        <div className="flex items-center gap-2 shrink-0">
+          <BalanceRefreshButton
+            compact
+            refreshing={balancesRefreshing}
+            onClick={refreshWalletBalances}
           />
-          {source === "circle" ? "Google wallet" : "External wallet"}
-        </WalletMetaBadge>
+          <WalletMetaBadge role="status">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-[var(--vector-pink)]"
+              aria-hidden
+            />
+            {source === "circle" ? "Google wallet" : "External wallet"}
+          </WalletMetaBadge>
+        </div>
       </div>
 
       <p className="text-[13px] text-[var(--vector-text-dim)] mb-1.5">

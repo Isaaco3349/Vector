@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSwitchChain } from "wagmi";
+import { flushArcBalancesImmediate } from "../lib/balance-refresh";
 import {
   estimateDeposit,
   estimateWithdraw,
@@ -26,6 +28,8 @@ import { isOkxWallet, okxInAppBrowser } from "../lib/wallet-brand";
 import { useSendBalance } from "./useSendBalance";
 import { useWalletSigningProviderRef } from "./useWalletSigningProvider";
 import { TxSuccessCard } from "./TxSuccessCard";
+import { BalanceRefreshButton } from "./BalanceRefreshButton";
+import { useArcBalancesSnapshot } from "./useArcBalancesPoll";
 import { VectorModalShell } from "./VectorModalShell";
 import { errorTextBlob } from "../lib/wallet-errors";
 import { logVectorActivity } from "../lib/record-vector-activity";
@@ -50,6 +54,9 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
   const onArc = chainId === ARC_CHAIN_ID;
   const arcChain = useMemo(() => bridgeChainById(arcBridgeChainId()), []);
   const usdc = useSendBalance(arcChain);
+  const queryClient = useQueryClient();
+  const arcBalances = useArcBalancesSnapshot();
+  const [balancesRefreshing, setBalancesRefreshing] = useState(false);
 
   const [vaults, setVaults] = useState<EarnVault[] | null>(null);
   const [vaultsLoading, setVaultsLoading] = useState(false);
@@ -118,6 +125,18 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
     setPosition(null);
     if (selected) void refreshPosition();
   }, [selected, refreshPosition]);
+
+  const refreshEarnBalances = useCallback(async () => {
+    setBalancesRefreshing(true);
+    try {
+      await flushArcBalancesImmediate(queryClient, arcBalances?.refresh, [
+        usdc.refetch,
+      ]);
+      await refreshPosition();
+    } finally {
+      setBalancesRefreshing(false);
+    }
+  }, [queryClient, arcBalances?.refresh, usdc.refetch, refreshPosition]);
 
   const parsedAmount = useMemo(() => {
     const a = amount.trim();
@@ -268,9 +287,15 @@ export function EarnPanel({ onClose }: { onClose: () => void }) {
               {selected ? "Earn" : "Earn — Arc vaults"}
             </span>
           </div>
-          <button type="button" onClick={onClose} className="vector-modal-close">
-            Close
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <BalanceRefreshButton
+              onClick={refreshEarnBalances}
+              refreshing={balancesRefreshing}
+            />
+            <button type="button" onClick={onClose} className="vector-modal-close">
+              Close
+            </button>
+          </div>
         </>
       }
     >
