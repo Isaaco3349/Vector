@@ -4,7 +4,7 @@ import type { BridgeChain, BridgeChainId } from "./bridge-chains";
 const USDC_DECIMALS = 6;
 
 /** Flat Vector fee on swap / earn (USDC). */
-export const VECTOR_SWAP_FEE_USDC = "0.15";
+export const VECTOR_SWAP_FEE_USDC = "0.1";
 
 /** @deprecated Alias — use VECTOR_SWAP_FEE_USDC. */
 export const VECTOR_FLAT_FEE_USDC = VECTOR_SWAP_FEE_USDC;

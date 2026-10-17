@@ -1,9 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-const DOCS_URL =
-  "https://docs.google.com/document/d/1x9C9gIt6hwsGsaFd972tuuDe80RpO2EMpGNaOSnxiPY/edit?tab=t.0";
-
 export function SiteFooter({
   githubMark,
   xMark,
@@ -68,19 +65,6 @@ export function SiteFooter({
             </p>
             <ul className="space-y-2 text-[14px]">
               <li>
-                <a
-                  href={DOCS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--vector-text-dim)] hover:text-[var(--vector-pink)] transition-colors inline-flex items-center gap-1"
-                >
-                  Docs
-                  <span className="text-[12px]" aria-hidden>
-                    ↗
-                  </span>
-                </a>
-              </li>
-              <li>
                 <Link
                   href="/terms"
                   className="text-[var(--vector-text-dim)] hover:text-[var(--vector-pink)] transition-colors"
@@ -115,16 +99,8 @@ export function SiteFooter({
             </div>
           </div>
         </div>
-        <div className="pt-8 border-t border-[var(--vector-line)] flex flex-col sm:flex-row items-center justify-between gap-4 text-[12px] text-[var(--vector-text-dim)]">
+        <div className="pt-8 border-t border-[var(--vector-line)] text-center sm:text-left text-[12px] text-[var(--vector-text-dim)]">
           <p>© {new Date().getFullYear()} Vector Protocol</p>
-          <a
-            href={DOCS_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="vector-btn-secondary !h-10 !px-5 !text-[13px]"
-          >
-            Read the docs
-          </a>
         </div>
       </div>
     </footer>
