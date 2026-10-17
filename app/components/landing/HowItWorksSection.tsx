@@ -18,27 +18,32 @@ export function HowItWorksSection() {
   ] as const;
 
   return (
-    <section id="how-it-works" className="scroll-mt-28">
-      <p className="text-[12px] uppercase tracking-wide text-[var(--vector-text-dim)] mb-2">
+    <section id="how-it-works" className="scroll-mt-24 vector-landing-section-alt">
+      <div className="mx-auto max-w-[var(--vector-max-content)] px-6 md:px-10 py-14 md:py-20">
+      <p className="text-[12px] uppercase tracking-wider text-[var(--vector-text-dim)] mb-2 font-medium">
         How it works
       </p>
-      <h2 className="text-[26px] lg:text-[28px] font-semibold tracking-tight mb-6">
+      <h2 className="text-[28px] md:text-[32px] font-semibold tracking-tight mb-3">
         Three steps to DeFi on Arc
       </h2>
-      <ol className="space-y-4">
+      <p className="text-[15px] text-[var(--vector-text-dim)] mb-10 max-w-2xl leading-relaxed">
+        Connect once, fund with USDC on Arc, then use swap, bridge, and earn from
+        the same dashboard.
+      </p>
+      <ol className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
         {steps.map((step) => (
           <li
             key={step.n}
-            className="vector-panel-border flex gap-4 p-5 bg-[var(--vector-surface)]/60"
+            className="vector-panel-border flex flex-col gap-3 p-6 bg-[var(--vector-surface)]/80 h-full"
           >
             <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--vector-pink-dim)] text-[14px] font-semibold text-[var(--vector-pink)] font-mono"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--vector-pink-dim)] text-[14px] font-semibold text-[var(--vector-pink)] font-mono"
               aria-hidden
             >
               {step.n}
             </span>
             <div>
-              <h3 className="text-[15px] font-semibold mb-1.5">{step.title}</h3>
+              <h3 className="text-[16px] font-semibold mb-2">{step.title}</h3>
               <p className="text-[14px] leading-relaxed text-[var(--vector-text-dim)]">
                 {step.body}
               </p>
@@ -46,6 +51,7 @@ export function HowItWorksSection() {
           </li>
         ))}
       </ol>
+      </div>
     </section>
   );
 }

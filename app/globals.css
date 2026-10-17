@@ -14,7 +14,7 @@ html[data-theme="dark"] {
   --vector-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
   --vector-sans: var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont,
     sans-serif;
-  --vector-max-content: 72rem;
+  --vector-max-content: 76rem;
 }
 
 html[data-theme="light"] {
@@ -237,4 +237,105 @@ button {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 1rem 1.25rem 1.25rem;
+}
+
+/* —— Marketing / landing (pink + black unchanged) —— */
+.vector-landing-hero {
+  background: radial-gradient(
+    ellipse 80% 55% at 50% -20%,
+    color-mix(in srgb, var(--vector-pink) 14%, transparent),
+    transparent 65%
+  );
+}
+
+.vector-hero-badge {
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--vector-pink) 35%, var(--vector-line));
+  background: color-mix(in srgb, var(--vector-pink) 8%, var(--vector-surface));
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vector-text-dim);
+}
+
+.vector-hero-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vector-pink);
+  box-shadow: 0 0 10px var(--vector-pink);
+}
+
+.vector-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 48px;
+  padding: 0 1.35rem;
+  border-radius: 9999px;
+  background: var(--vector-pink);
+  color: var(--vector-on-pink);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.vector-btn-primary:hover {
+  opacity: 0.92;
+}
+
+.vector-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 48px;
+  padding: 0 1.35rem;
+  border-radius: 9999px;
+  border: 2px solid var(--vector-line);
+  background: transparent;
+  color: var(--vector-text);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.vector-btn-secondary:hover {
+  border-color: var(--vector-pink);
+  color: var(--vector-pink);
+}
+
+.vector-nav-link {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  color: var(--vector-text-dim);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.vector-nav-link:hover {
+  color: var(--vector-text);
+  background: color-mix(in srgb, var(--vector-surface) 80%, transparent);
+}
+
+.vector-stats-strip {
+  background: color-mix(in srgb, var(--vector-surface) 55%, transparent);
+}
+
+.vector-landing-section {
+  background: transparent;
+}
+
+.vector-landing-section-alt {
+  background: color-mix(in srgb, var(--vector-surface) 45%, var(--vector-bg));
+  border-y: 1px solid var(--vector-line);
+}
+
+.vector-connect-section {
+  background: color-mix(in srgb, var(--vector-surface) 30%, transparent);
+  border-bottom: 1px solid var(--vector-line);
 }
