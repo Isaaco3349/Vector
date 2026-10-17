@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { BalanceRefreshButton } from "./BalanceRefreshButton";
 
 /**
  * Full-screen overlay with a sheet that fits mobile / in-app wallet browsers
@@ -10,11 +11,15 @@ export function VectorModalShell({
   onClose,
   title,
   header,
+  onRefresh,
+  refreshing,
   children,
 }: {
   onClose: () => void;
   title?: string;
   header?: ReactNode;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -36,13 +41,21 @@ export function VectorModalShell({
                 <span className="text-[17px] font-semibold truncate pr-3">
                   {title}
                 </span>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="vector-modal-close"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {onRefresh ? (
+                    <BalanceRefreshButton
+                      onClick={onRefresh}
+                      refreshing={refreshing}
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="vector-modal-close"
+                  >
+                    Close
+                  </button>
+                </div>
               </>
             )}
           </div>

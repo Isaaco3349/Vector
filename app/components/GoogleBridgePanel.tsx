@@ -19,6 +19,7 @@ import {
 import { displayName as ARC_DISPLAY_NAME } from "../lib/network";
 import { formatBridgeFeeLabel } from "../lib/fees";
 import { VectorModalShell } from "./VectorModalShell";
+import { useGooglePanelBalanceRefresh } from "./useGooglePanelBalanceRefresh";
 import { useLatestTxHash } from "../lib/use-latest-tx-hash";
 
 /**
@@ -87,6 +88,7 @@ export function GoogleBridgePanel({
   balance,
   onClose,
   onSuccess,
+  onRefreshBalances,
 }: {
   sdk: W3SSdk;
   auth: W3sAuth;
@@ -95,7 +97,10 @@ export function GoogleBridgePanel({
   balance: string | null;
   onClose: () => void;
   onSuccess: () => void;
+  onRefreshBalances?: () => Promise<void>;
 }) {
+  const { refresh: refreshBalances, refreshing: balancesRefreshing } =
+    useGooglePanelBalanceRefresh(onRefreshBalances);
   const [toChain, setToChain] = useState<BridgeChainId>(defaultBridgeToChain());
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -255,7 +260,12 @@ export function GoogleBridgePanel({
   }
 
   return (
-    <VectorModalShell title="Bridge USDC" onClose={onClose}>
+    <VectorModalShell
+      title="Bridge USDC"
+      onClose={onClose}
+      onRefresh={onRefreshBalances ? refreshBalances : undefined}
+      refreshing={balancesRefreshing}
+    >
         {done ? (
           <div className="text-center py-6">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--vector-surface-raised)] border border-[var(--vector-pink)]">
